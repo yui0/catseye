@@ -166,7 +166,10 @@ void CatsEye_train(CatsEye *this, double *x, int *t, double N, int repeat/*=1000
 				}
 			}
 		}
+		printf(".");
+		fflush(stdout);
 	}
+	printf("\n");
 }
 
 // return most probable label to the input x

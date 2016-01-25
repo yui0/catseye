@@ -4,18 +4,17 @@
 //		©2016 Yuichiro Nakada
 //---------------------------------------------------------
 
-// clang weather.c -o weather -lm
+// clang digits.c -o digits -lm
 #include "../catseye.h"
 
 int main()
 {
-	int size = 4;	// 入力ベクトルの次元
-	int label = 2;	// ラベルの種類
-	int sample = 10000;
+	int size = 64;		// 入力層64ユニット(8x8)
+	int label = 10;	// 出力層10ユニット(0-9)
+	int sample = 1797;
 
-	// 入力ユニット4つ, 隠れユニット3つ, 出力ユニット2つの多層パーセプトロンを作る
 	CatsEye cat;
-	CatsEye__construct(&cat, size, 3, label);
+	CatsEye__construct(&cat, size, 100, label);
 
 	// 訓練データ
 	double x[size*sample];
@@ -23,20 +22,24 @@ int main()
 	int t[sample];
 
 	// CSVの読み込み
-	FILE *fp = fopen("weather_sapporo.train", "r");
+	printf("Training data:\n");
+	FILE *fp = fopen("digits.csv", "r");
 	if (fp==NULL) {
 		return -1;
 	}
 	int n=0;
-	while (fscanf(fp, "%d ", t+n) != EOF) {
-		if (t[n]<0) t[n]=0;
-
+	while (feof(fp)==0) {
 		// データの読み込み
+		if (n<3) printf("[%4d]  ", n);
 		for (int j=0; j<size; j++) {
-			int f;
-			fscanf(fp, "%d:%lf,", &f, x+size*n+j);
+			if (!fscanf(fp, "%lf,", x+size*n+j)) {
+				// 0-1に正規化
+				x[size*n+j] /= 16.0;
+			}
+			if (n<3) printf("%6.2f  ", x[size*n+j]);
 		}
-		//printf("%d %lf,%lf,%lf,%lf\n", t[n], x[size*n], x[size*n+1], x[size*n+2], x[size*n+3]);
+		fscanf(fp, "%d", t+n);
+		if (n<3) printf("<%d>\n", t[n]);
 		n++;
 	}
 	fclose(fp);
@@ -44,8 +47,10 @@ int main()
 
 	// 多層パーセプトロンの訓練
 	// 繰り返しの回数
-	int repeat = 1000;
-	CatsEye_train(&cat, x, t, sample, repeat, 0.001);
+	printf("Starting training using (stochastic) gradient descent\n");
+	int repeat = 100;
+	CatsEye_train(&cat, x, t, sample, repeat, 0.01);
+	printf("Training complete\n");
 
 	// 結果の表示
 	int r = 0;
@@ -56,7 +61,7 @@ int main()
 	}
 	printf("Prediction accuracy on training data = %f%%\n", (float)r/sample*100.0);
 
-	CatsEye_save(&cat, "weather_sapporo.weights");
+	CatsEye_save(&cat, "digits.weights");
 
 	return 0;
 }

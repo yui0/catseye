@@ -47,9 +47,13 @@ int main()
 	CatsEye_train(&cat, x, t, sample, repeat, 0.1);
 
 	// 結果の表示
+	int r = 0;
 	for (int i=0; i<sample; i++) {
-		printf("%d\n", CatsEye_predict(&cat, x+size*i));
+		int p = CatsEye_predict(&cat, x+size*i);
+		if (p==t[i]) r++;
+		printf("%d -> %d\n", p, t[i]);
 	}
+	printf("Prediction accuracy on training data = %f%%\n", (float)r/sample*100.0);
 
 	return 0;
 }
