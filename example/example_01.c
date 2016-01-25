@@ -6,7 +6,6 @@
 
 // clang example_01.c -o example_01 -lm
 // ref. http://kivantium.hateblo.jp/entry/2014/12/22/004640
-#include <stdio.h>
 #include "../catseye.h"
 
 int main()
@@ -33,13 +32,14 @@ int main()
 		return -1;
 	}
 	for (int i=0; i<sample; i++) {
-		// ラベルの読み込み
-		fscanf(fp, "%d,", t+i);
 		// データの読み込み
 		for (int j=0; j<size; j++) {
 			fscanf(fp, "%lf,", x+size*i+j);
 		}
+		// ラベルの読み込み
+		fscanf(fp, "%d", t+i);
 	}
+	fclose(fp);
 
 	// 多層パーセプトロンの訓練
 	// 繰り返しの回数

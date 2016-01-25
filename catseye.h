@@ -4,6 +4,7 @@
 //		©2016 Yuichiro Nakada
 //---------------------------------------------------------
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
@@ -30,7 +31,7 @@ typedef struct {
 	double *o1, *o2, *o3;
 	// error value
 	double *d2, *d3;
-	// wait
+	// weights
 	double *w1, *w2;
 } CatsEye;
 
@@ -63,7 +64,7 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out)
 	this->w1 = malloc(sizeof(double)*(this->in+1)*this->hid);
 	this->w2 = malloc(sizeof(double)*(this->hid+1)*this->out);
 
-	// initialize wait
+	// initialize weights
 	// range depends on the research of Y. Bengio et al. (2010)
 	srand((unsigned)(time(0)));
 	double range = sqrt(6)/sqrt(this->in+this->hid+2);
@@ -144,7 +145,7 @@ void CatsEye_train(CatsEye *this, double *x, int *t, double N, int repeat/*=1000
 					this->d3[j] = this->o3[j];
 				}
 			}
-			// update the wait of output layer
+			// update the weights of output layer
 			for (int i=0; i<this->hid+1; i++) {
 				for (int j=0; j<this->out; j++) {
 					this->w2[i*this->out+j] -= eta*this->d3[j]*this->o2[i];
@@ -158,7 +159,7 @@ void CatsEye_train(CatsEye *this, double *x, int *t, double N, int repeat/*=1000
 				}
 				this->d2[j] = tmp * d_sigmoid(this->xi2[j]);
 			}
-			// update the wait of hidden layer
+			// update the weights of hidden layer
 			for (int i=0; i<this->in+1; i++) {
 				for (int j=0; j<this->hid; j++) {
 					this->w1[i*this->hid+j] -= eta*this->d2[j]*this->o1[i];
@@ -183,4 +184,29 @@ int CatsEye_predict(CatsEye *this, double *x)
 		}
 	}
 	return ans;
+}
+
+// save weights to csv file
+int CatsEye_save(CatsEye *this, char *filename)
+{
+	FILE *fp = fopen(filename, "w");
+	if (fp==NULL) {
+		return -1;
+	}
+
+	fprintf(fp, "%d %d %d\n", this->in, this->hid, this->out);
+
+	int i;
+	for (i=0; i<(this->in+1)*this->hid-1; i++) {
+		fprintf(fp, "%lf ", this->w1[i]);
+	}
+	fprintf(fp, "%lf\n", this->w1[i]);
+
+	for (i=0; i<(this->hid+1)*this->out-1; i++) {
+		fprintf(fp, "%lf ", this->w2[i]);
+	}
+	fprintf(fp, "%lf\n", this->w2[i]);
+
+	fclose(fp);
+	return 0;
 }
