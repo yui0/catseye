@@ -5,6 +5,7 @@
 //---------------------------------------------------------
 
 #include <stdio.h>
+#include <string.h>
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
@@ -113,11 +114,13 @@ void CatsEye__destruct(CatsEye *this)
 void CatsEye_forward(CatsEye *this, double *x)
 {
 	// calculation of input layer
-	for (int j=0; j<this->in; j++) {
+	/*for (int j=0; j<this->in; j++) {
 		this->xi1[j] = x[j];
-		this->xi1[this->in] = 1;
 		this->o1[j] = this->xi1[j];
-	}
+	}*/
+//	memcpy(this->xi1, x, this->in*sizeof(double));
+	memcpy(this->o1, x, this->in*sizeof(double));
+//	this->xi1[this->in] = 1;
 	this->o1[this->in] = 1;
 
 	// caluculation of hidden layer
@@ -225,6 +228,33 @@ int CatsEye_save(CatsEye *this, char *filename)
 		fprintf(fp, "%lf ", this->w2[i]);
 	}
 	fprintf(fp, "%lf\n", this->w2[i]);
+
+	fclose(fp);
+	return 0;
+}
+
+// save weights to json file
+int CatsEye_saveJson(CatsEye *this, char *filename)
+{
+	FILE *fp = fopen(filename, "w");
+	if (fp==NULL) {
+		return -1;
+	}
+
+	fprintf(fp, "var config = [%d,%d,%d];\n", this->in, this->hid, this->out);
+
+	int i;
+	fprintf(fp, "var w1 = [");
+	for (i=0; i<(this->in+1)*this->hid-1; i++) {
+		fprintf(fp, "%lf,", this->w1[i]);
+	}
+	fprintf(fp, "%lf];\n", this->w1[i]);
+
+	fprintf(fp, "var w2 = [");
+	for (i=0; i<(this->hid+1)*this->out-1; i++) {
+		fprintf(fp, "%lf,", this->w2[i]);
+	}
+	fprintf(fp, "%lf];\n", this->w2[i]);
 
 	fclose(fp);
 	return 0;
