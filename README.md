@@ -6,6 +6,9 @@ just include header files in your project
 
 for more information, see example/
 
+# Demo
+- http://yui0.github.io/catseye/example/html/index.html
+
 # Refrence
 - Multilayer perceptron [http://kivantium.hateblo.jp/entry/2014/12/22/004640]
 - Weather example [http://arakilab.media.eng.hokudai.ac.jp/~t_ogawa/wiki/index.php?LibSVM]
