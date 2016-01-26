@@ -15,7 +15,7 @@ int main()
 
 	// 入力ユニット4つ, 隠れユニット3つ, 出力ユニット2つの多層パーセプトロンを作る
 	CatsEye cat;
-	CatsEye__construct(&cat, size, 3, label);
+	CatsEye__construct(&cat, size, 3, label, 0);
 
 	// 訓練データ
 	double x[size*sample];

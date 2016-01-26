@@ -39,12 +39,19 @@ typedef struct {
  * n_in:  number of input layer
  * n_hid: number of hidden layer
  * n_out: number of output layer */
-void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out)
+void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, char *filename)
 {
-	// unit number
-	this->in = n_in;
-	this->hid = n_hid;
-	this->out = n_out;
+	FILE *fp;
+	if (filename) {
+		fp = fopen(filename, "r");
+		if (fp==NULL) return;
+		fscanf(fp, "%d %d %d\n", &this->in, &this->hid, &this->out);
+	} else {
+		// unit number
+		this->in = n_in;
+		this->hid = n_hid;
+		this->out = n_out;
+	}
 
 	// allocate inputs
 	this->xi1 = malloc(sizeof(double)*(this->in+1));
@@ -64,16 +71,25 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out)
 	this->w1 = malloc(sizeof(double)*(this->in+1)*this->hid);
 	this->w2 = malloc(sizeof(double)*(this->hid+1)*this->out);
 
-	// initialize weights
-	// range depends on the research of Y. Bengio et al. (2010)
-	srand((unsigned)(time(0)));
-	double range = sqrt(6)/sqrt(this->in+this->hid+2);
-	srand((unsigned)(time(0)));
-	for (int i=0; i<(this->in+1)*this->hid; i++) {
-		this->w1[i] = 2.0*range*rand()/RAND_MAX-range;
-	}
-	for (int i=0; i<(this->hid+1)*this->out; i++) {
-		this->w2[i] = 2.0*range*rand()/RAND_MAX-range;
+	if (filename) {
+		for(int i=0; i<(this->in+1)*this->hid; i++) {
+			fscanf(fp, "%lf ", &this->w1[i]);
+		}
+		for(int i=0; i<(this->hid+1)*this->out; i++) {
+			fscanf(fp, "%lf ", &this->w2[i]);
+		}
+	} else {
+		// initialize weights
+		// range depends on the research of Y. Bengio et al. (2010)
+		srand((unsigned)(time(0)));
+		double range = sqrt(6)/sqrt(this->in+this->hid+2);
+		srand((unsigned)(time(0)));
+		for (int i=0; i<(this->in+1)*this->hid; i++) {
+			this->w1[i] = 2.0*range*rand()/RAND_MAX-range;
+		}
+		for (int i=0; i<(this->hid+1)*this->out; i++) {
+			this->w2[i] = 2.0*range*rand()/RAND_MAX-range;
+		}
 	}
 }
 

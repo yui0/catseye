@@ -14,7 +14,7 @@ int main()
 	int sample = 1797;
 
 	CatsEye cat;
-	CatsEye__construct(&cat, size, 100, label);
+	CatsEye__construct(&cat, size, 100, label, 0);
 
 	// 訓練データ
 	double x[size*sample];
