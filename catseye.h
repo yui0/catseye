@@ -212,9 +212,7 @@ int CatsEye_predict(CatsEye *this, double *x)
 int CatsEye_save(CatsEye *this, char *filename)
 {
 	FILE *fp = fopen(filename, "w");
-	if (fp==NULL) {
-		return -1;
-	}
+	if (fp==NULL) return -1;
 
 	fprintf(fp, "%d %d %d\n", this->in, this->hid, this->out);
 
@@ -237,9 +235,7 @@ int CatsEye_save(CatsEye *this, char *filename)
 int CatsEye_saveJson(CatsEye *this, char *filename)
 {
 	FILE *fp = fopen(filename, "w");
-	if (fp==NULL) {
-		return -1;
-	}
+	if (fp==NULL) return -1;
 
 	fprintf(fp, "var config = [%d,%d,%d];\n", this->in, this->hid, this->out);
 
@@ -255,6 +251,23 @@ int CatsEye_saveJson(CatsEye *this, char *filename)
 		fprintf(fp, "%lf,", this->w2[i]);
 	}
 	fprintf(fp, "%lf];\n", this->w2[i]);
+
+	fclose(fp);
+	return 0;
+}
+
+// save weights to binary file
+int CatsEye_saveBin(CatsEye *this, char *filename)
+{
+	FILE *fp = fopen(filename, "wb");
+	if (fp==NULL) return -1;
+
+	fwrite(&this->in, sizeof(this->in), 1, fp);
+	fwrite(&this->hid, sizeof(this->hid), 1, fp);
+	fwrite(&this->out, sizeof(this->out), 1, fp);
+
+	fwrite(this->w1, sizeof(double)*(this->in+1)*this->hid, 1, fp);
+	fwrite(this->w2, sizeof(double)*(this->hid+1)*this->out, 1, fp);
 
 	fclose(fp);
 	return 0;

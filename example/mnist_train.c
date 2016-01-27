@@ -26,7 +26,7 @@ int main()
 	if (fp==NULL) return -1;
 	fread(data, 16, 1, fp);		// header
 	fread(data, size, sample, fp);	// data
-	for (int i=0; i<sample*size; i++) x[i] = data[i] / 256.0;
+	for (int i=0; i<sample*size; i++) x[i] = data[i] / 255.0;
 	fclose(fp);
 	fp = fopen("train-labels-idx1-ubyte", "rb");
 	if (fp==NULL) return -1;
@@ -39,10 +39,12 @@ int main()
 	// 多層パーセプトロンの訓練
 	// 繰り返しの回数
 	printf("Starting training using (stochastic) gradient descent\n");
-	int repeat = 50;
+	int repeat = 100;
 	CatsEye_train(&cat, x, t, sample, repeat, 0.01);
 	printf("Training complete\n");
 	CatsEye_save(&cat, "mnist.weights");
+	CatsEye_saveJson(&cat, "mnist.json");
+	CatsEye_saveBin(&cat, "mnist.bin");
 
 	// 結果の表示
 	int r = 0;

@@ -86,9 +86,14 @@ Main.prototype = {
             for (i=0; i<28*28; i++) inputs[i] = 255-inputs[i];
             for (i=0; i<28*28; i++) inputs[i] /= 255;
             a = this.cat.predict(inputs);
-            $('#output tr').eq(a+1).find('td').eq(0).text(a);
+            //$('#output tr').eq(a+1).find('td').eq(0).text(a);
             for (i=0; i<10; i++) {
-                $('#output tr').eq(i+1).find('td').eq(1).text(this.cat.o3[i]);
+                $('#output tr').eq(i+1).find('td').eq(0).text(this.cat.o3[i].toFixed(2));
+                if (a === i) {
+                    $('#output tr').eq(i+1).find('td').eq(0).addClass('success');
+                } else {
+                    $('#output tr').eq(i+1).find('td').eq(0).removeClass('success');
+                }
             }
             /*$.ajax({
                 url: '/api/mnist',
