@@ -4,7 +4,7 @@
 //		©2016 Yuichiro Nakada
 //---------------------------------------------------------
 
-// clang digits.c -o digits -lm
+// clang digits_train.c -o digits_train -lm
 #include "../catseye.h"
 
 int main()
@@ -51,6 +51,8 @@ int main()
 	int repeat = 100;
 	CatsEye_train(&cat, x, t, sample, repeat, 0.01);
 	printf("Training complete\n");
+	CatsEye_save(&cat, "digits.weights");
+	CatsEye_saveJson(&cat, "digits.json");
 
 	// 結果の表示
 	int r = 0;
@@ -60,8 +62,6 @@ int main()
 		printf("%d -> %d\n", p, t[i]);
 	}
 	printf("Prediction accuracy on training data = %f%%\n", (float)r/sample*100.0);
-
-	CatsEye_save(&cat, "digits.weights");
 
 	return 0;
 }

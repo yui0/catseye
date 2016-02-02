@@ -10,11 +10,13 @@
 int main()
 {
 	int size = 784;	// 入力層ユニット(28x28)
+	//int hidden = 100;	// 隠れ層ユニット
+	int hidden = 64;	// 隠れ層ユニット
 	int label = 10;	// 出力層ユニット(0-9)
 	int sample = 60000;
 
 	CatsEye cat;
-	CatsEye__construct(&cat, size, 100, label, 0);
+	CatsEye__construct(&cat, size, hidden, label, 0);
 
 	double *x = malloc(sizeof(double)*size*sample);	// 訓練データ
 	int t[sample];			// ラベルデータ
@@ -39,8 +41,7 @@ int main()
 	// 多層パーセプトロンの訓練
 	// 繰り返しの回数
 	printf("Starting training using (stochastic) gradient descent\n");
-	int repeat = 100;
-	CatsEye_train(&cat, x, t, sample, repeat, 0.01);
+	CatsEye_train(&cat, x, t, sample, 10/*repeat*/, 0.01);
 	printf("Training complete\n");
 	CatsEye_save(&cat, "mnist.weights");
 	CatsEye_saveJson(&cat, "mnist.json");

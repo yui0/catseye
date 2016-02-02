@@ -23,6 +23,48 @@ double d_sigmoid(double x)
 	return (1-a)*a;
 }
 
+// rectified linear unit function
+double ReLU(double x)
+{
+	//return max(x, 0);
+	//return x * (x>0);
+	//return (x>0) ? ((x>=20.0) ? 20.0 : x) : 0.0;
+	return (x>0) > 1.0 - 1.0/x;
+}
+
+// derivative of rectified linear unit function
+double d_ReLU(double x)
+{
+	//return 1.0 * (x>0);
+	return (x>0) ? 1.0 : 0.0;
+}
+
+// tanh function
+double atanh(double x)
+{
+	return tanh(x);
+}
+
+// derivative of tanh function
+double d_atanh(double x)
+{
+	return 1.0 - x*x;
+}
+
+// activation function
+#define SIGMOID
+//#define TANH
+#ifdef SIGMOID
+#define afunc(x)	sigmoid(x)
+#define d_afunc(x)	d_sigmoid(x)
+#elif defined TANH
+#define afunc(x)	atanh(x)
+#define d_afunc(x)	d_atanh(x)
+#else
+#define afunc(x)	ReLU(x)
+#define d_afunc(x)	d_ReLU(x)
+#endif
+
 typedef struct {
 	// number of each layer
 	int in, hid, out;
@@ -129,7 +171,7 @@ void CatsEye_forward(CatsEye *this, double *x)
 		for (int i=0; i<this->in+1; i++) {
 			this->xi2[j] += this->w1[i*this->hid+j]*this->o1[i];
 		}
-		this->o2[j] = sigmoid(this->xi2[j]);
+		this->o2[j] = afunc(this->xi2[j]);
 	}
 	this->o2[this->hid] = 1;
 
@@ -144,8 +186,8 @@ void CatsEye_forward(CatsEye *this, double *x)
 }
 
 /* train: multi layer perceptron
- * x: train data(number of elements is in*N)
- * t: correct label(number of elements is N)
+ * x: train data (number of elements is in*N)
+ * t: correct label (number of elements is N)
  * N: data size
  * repeat: repeat times
  * eta: learning rate */
@@ -176,7 +218,7 @@ void CatsEye_train(CatsEye *this, double *x, int *t, double N, int repeat/*=1000
 				for (int l=0; l<this->out; l++) {
 					tmp += this->w2[j*this->out+l]*this->d3[l];
 				}
-				this->d2[j] = tmp * d_sigmoid(this->xi2[j]);
+				this->d2[j] = tmp * d_afunc(this->xi2[j]);
 			}
 			// update the weights of hidden layer
 			for (int i=0; i<this->in+1; i++) {
@@ -266,8 +308,16 @@ int CatsEye_saveBin(CatsEye *this, char *filename)
 	fwrite(&this->hid, sizeof(this->hid), 1, fp);
 	fwrite(&this->out, sizeof(this->out), 1, fp);
 
-	fwrite(this->w1, sizeof(double)*(this->in+1)*this->hid, 1, fp);
-	fwrite(this->w2, sizeof(double)*(this->hid+1)*this->out, 1, fp);
+	//fwrite(this->w1, sizeof(double)*(this->in+1)*this->hid, 1, fp);
+	//fwrite(this->w2, sizeof(double)*(this->hid+1)*this->out, 1, fp);
+	for (int i=0; i<(this->in+1)*this->hid; i++) {
+		float a = this->w1[i];
+		fwrite(&a, sizeof(float), 1, fp);
+	}
+	for (int i=0; i<(this->hid+1)*this->out; i++) {
+		float a = this->w2[i];
+		fwrite(&a, sizeof(float), 1, fp);
+	}
 
 	fclose(fp);
 	return 0;
