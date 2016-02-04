@@ -15,7 +15,6 @@ double sigmoid(double x)
 {
 	return 1/(1+exp(-x));
 }
-
 // derivative of sigmoid function
 double d_sigmoid(double x)
 {
@@ -23,46 +22,32 @@ double d_sigmoid(double x)
 	return (1-a)*a;
 }
 
-// rectified linear unit function
-double ReLU(double x)
-{
-	//return max(x, 0);
-	//return x * (x>0);
-	//return (x>0) ? ((x>=20.0) ? 20.0 : x) : 0.0;
-	return (x>0) > 1.0 - 1.0/x;
-}
-
-// derivative of rectified linear unit function
-double d_ReLU(double x)
-{
-	//return 1.0 * (x>0);
-	return (x>0) ? 1.0 : 0.0;
-}
-
-// tanh function
-double atanh(double x)
-{
-	return tanh(x);
-}
-
-// derivative of tanh function
-double d_atanh(double x)
-{
-	return 1.0 - x*x;
-}
+#define CATS_SIGMOID
+//#define CATS_TANH
+//#define CATS_SCALEDTANH
+//#define CATS_RELU
 
 // activation function
-#define SIGMOID
-//#define TANH
-#ifdef SIGMOID
-#define afunc(x)	sigmoid(x)
-#define d_afunc(x)	d_sigmoid(x)
-#elif defined TANH
-#define afunc(x)	atanh(x)
-#define d_afunc(x)	d_atanh(x)
+#ifdef CATS_SIGMOID
+// sigmoid function
+#define ACTIVATION_FUNCTION(x)		(1.0 / (1.0 + exp(-x)))
+#define DACTIVATION_FUNCTION(x)		d_sigmoid(x)
+#elif defined CATS_TANH
+// tanh function
+#define ACTIVATION_FUNCTION(x)		(tanh(x))
+#define DACTIVATION_FUNCTION(x)		(1.0 - x*x)
+#elif defined CATS_SCALEDTANH
+// scaled tanh function
+#define ACTIVATION_FUNCTION(x)		(1.7159 * tanh(2.0/3.0 * x))
+#define DACTIVATION_FUNCTION(x)		((2.0/3.0)/1.7159 * (1.7159-x)*(1.7159+x))
+#elif defined CATS_RELU
+// rectified linear unit function
+#define ACTIVATION_FUNCTION(x)		(x>0 ? x : 0.0)
+#define DACTIVATION_FUNCTION(x)		(x>0 ? 1.0 : 0.0)
 #else
-#define afunc(x)	ReLU(x)
-#define d_afunc(x)	d_ReLU(x)
+// identity function
+#define ACTIVATION_FUNCTION(x)		(x)
+#define DACTIVATION_FUNCTION(x)		(1.0)
 #endif
 
 typedef struct {
@@ -171,7 +156,7 @@ void CatsEye_forward(CatsEye *this, double *x)
 		for (int i=0; i<this->in+1; i++) {
 			this->xi2[j] += this->w1[i*this->hid+j]*this->o1[i];
 		}
-		this->o2[j] = afunc(this->xi2[j]);
+		this->o2[j] = ACTIVATION_FUNCTION(this->xi2[j]);
 	}
 	this->o2[this->hid] = 1;
 
@@ -218,7 +203,7 @@ void CatsEye_train(CatsEye *this, double *x, int *t, double N, int repeat/*=1000
 				for (int l=0; l<this->out; l++) {
 					tmp += this->w2[j*this->out+l]*this->d3[l];
 				}
-				this->d2[j] = tmp * d_afunc(this->xi2[j]);
+				this->d2[j] = tmp * DACTIVATION_FUNCTION(this->xi2[j]);
 			}
 			// update the weights of hidden layer
 			for (int i=0; i<this->in+1; i++) {
