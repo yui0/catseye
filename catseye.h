@@ -47,7 +47,8 @@ typedef struct {
 	// number of each layer
 	int in, hid, out;
 	// input layer
-	double *xi1, *xi2, *xi3;
+//	double *xi1, *xi2, *xi3;
+	double *xi2, *xi3;
 	// output layer
 	double *o1, *o2, *o3;
 	// error value
@@ -75,7 +76,7 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, char *fil
 	}
 
 	// allocate inputs
-	this->xi1 = malloc(sizeof(double)*(this->in+1));
+//	this->xi1 = malloc(sizeof(double)*(this->in+1));
 	this->xi2 = malloc(sizeof(double)*(this->hid+1));
 	this->xi3 = malloc(sizeof(double)*this->out);
 
@@ -118,7 +119,7 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, char *fil
 void CatsEye__destruct(CatsEye *this)
 {
 	// delete arrays
-	free(this->xi1);
+//	free(this->xi1);
 	free(this->xi2);
 	free(this->xi3);
 	free(this->o1);
@@ -134,13 +135,8 @@ void CatsEye__destruct(CatsEye *this)
 void CatsEye_forward(CatsEye *this, double *x)
 {
 	// calculation of input layer
-	/*for (int j=0; j<this->in; j++) {
-		this->xi1[j] = x[j];
-		this->o1[j] = this->xi1[j];
-	}*/
 //	memcpy(this->xi1, x, this->in*sizeof(double));
 	memcpy(this->o1, x, this->in*sizeof(double));
-//	this->xi1[this->in] = 1;
 	this->o1[this->in] = 1;
 
 	// caluculation of hidden layer
@@ -180,7 +176,7 @@ void CatsEye_train(CatsEye *this, double *x, int *t, double N, int repeat/*=1000
 
 			// calculate the error of output layer
 			for (int j=0; j<this->out; j++) {
-				if (t[sample] == j) {
+				if (t[sample] == j) {	// classifying
 					this->d3[j] = this->o3[j]-1;
 				} else {
 					this->d3[j] = this->o3[j];
@@ -207,29 +203,11 @@ void CatsEye_train(CatsEye *this, double *x, int *t, double N, int repeat/*=1000
 					this->w1[i*this->hid+j] -= eta*this->d2[j]*this->o1[i];
 				}
 			}
-#if 0
-//if (isnan(this->w1[1])) {
-	int i;
-	for (i=0; i<this->hid; i++) {
-		printf("%lf ", this->xi2[i]);
-	}
-	printf("\no2 ");
-	for (i=0; i<this->hid; i++) {
-		printf("%lf ", this->o2[i]);
-	}
-	printf("\nw1 ");
-	for (i=0; i<(this->in+1)*this->hid-1; i++) {
-		printf("%lf ", this->w1[i]);
-	}
-	printf("%lf\n", this->w1[i]);
-	printf("nan!! %lf %lf\n", this->d2[1], this->o1[1]);
-	if (isnan(this->w1[1])) return;
-//}
-#endif
+
 			// calculate the mean squared error
 			double mse = 0;
 			for (int i=0; i<this->out; i++) {
-				mse += 0.5 * (this->o3[i] - t[i]) * (this->o3[i] - t[i]);
+				mse += 0.5 * (this->d3[i] * this->d3[i]);
 			}
 			err = 0.5 * (err + mse);
 		}
