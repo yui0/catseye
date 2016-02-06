@@ -4,6 +4,7 @@
 //		©2016 Yuichiro Nakada
 //---------------------------------------------------------
 
+// gcc mnist_train.c -o mnist_train -lm -fopenmp -lgomp
 // clang mnist_train.c -o mnist_train -lm
 #include "../catseye.h"
 

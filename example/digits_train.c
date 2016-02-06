@@ -4,6 +4,7 @@
 //		©2016 Yuichiro Nakada
 //---------------------------------------------------------
 
+// gcc digits_train.c -o digits_train -lm -fopenmp -lgomp
 // clang digits_train.c -o digits_train -lm
 #include "../catseye.h"
 

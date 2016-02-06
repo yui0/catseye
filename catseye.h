@@ -10,32 +10,21 @@
 #include <time.h>
 #include <math.h>
 
-// sigmoid function
-double sigmoid(double x)
-{
-	return 1/(1+exp(-x));
-}
-// derivative of sigmoid function
-double d_sigmoid(double x)
-{
-	double a = sigmoid(x);
-	return (1-a)*a;
-}
-
 #define CATS_SIGMOID
 //#define CATS_TANH
 //#define CATS_SCALEDTANH
 //#define CATS_RELU
+//#define CATS_ABS
 
-// activation function
+// activation function and derivative of activation function
 #ifdef CATS_SIGMOID
 // sigmoid function
 #define ACTIVATION_FUNCTION(x)		(1.0 / (1.0 + exp(-x)))
-#define DACTIVATION_FUNCTION(x)		d_sigmoid(x)
+#define DACTIVATION_FUNCTION(x)		((1.0-x)*x)	// ((1.0-sigmod(x))*sigmod(x))
 #elif defined CATS_TANH
 // tanh function
 #define ACTIVATION_FUNCTION(x)		(tanh(x))
-#define DACTIVATION_FUNCTION(x)		(1.0 - x*x)
+#define DACTIVATION_FUNCTION(x)		(1.0 - x*x)	// (1.0 - tanh(x)*tanh(x))
 #elif defined CATS_SCALEDTANH
 // scaled tanh function
 #define ACTIVATION_FUNCTION(x)		(1.7159 * tanh(2.0/3.0 * x))
@@ -44,8 +33,12 @@ double d_sigmoid(double x)
 // rectified linear unit function
 #define ACTIVATION_FUNCTION(x)		(x>0 ? x : 0.0)
 #define DACTIVATION_FUNCTION(x)		(x>0 ? 1.0 : 0.0)
+#elif defined CATS_ABS
+// abs function
+#define ACTIVATION_FUNCTION(x)		(x / (1.0 + fabs(x)))
+#define DACTIVATION_FUNCTION(x)		(1.0 / (1.0 + fabs(x))*(1.0 + fabs(x)))
 #else
-// identity function
+// identity function (output only)
 #define ACTIVATION_FUNCTION(x)		(x)
 #define DACTIVATION_FUNCTION(x)		(1.0)
 #endif
@@ -178,7 +171,9 @@ void CatsEye_forward(CatsEye *this, double *x)
  * eta: learning rate */
 void CatsEye_train(CatsEye *this, double *x, int *t, double N, int repeat/*=1000*/, double eta/*=0.1*/)
 {
+//#pragma omp parallel for
 	for (int times=0; times<repeat; times++) {
+		double err = 0;
 		for (int sample=0; sample<N; sample++) {
 			// forward propagation
 			CatsEye_forward(this, x+sample*this->in);
@@ -203,7 +198,8 @@ void CatsEye_train(CatsEye *this, double *x, int *t, double N, int repeat/*=1000
 				for (int l=0; l<this->out; l++) {
 					tmp += this->w2[j*this->out+l]*this->d3[l];
 				}
-				this->d2[j] = tmp * DACTIVATION_FUNCTION(this->xi2[j]);
+				//this->d2[j] = tmp * DACTIVATION_FUNCTION(this->xi2[j]);	// xi2 = z
+				this->d2[j] = tmp * DACTIVATION_FUNCTION(this->o2[j]);	// o2 = f(z)
 			}
 			// update the weights of hidden layer
 			for (int i=0; i<this->in+1; i++) {
@@ -211,11 +207,37 @@ void CatsEye_train(CatsEye *this, double *x, int *t, double N, int repeat/*=1000
 					this->w1[i*this->hid+j] -= eta*this->d2[j]*this->o1[i];
 				}
 			}
-		}
-		printf(".");
-		fflush(stdout);
+#if 0
+//if (isnan(this->w1[1])) {
+	int i;
+	for (i=0; i<this->hid; i++) {
+		printf("%lf ", this->xi2[i]);
 	}
-	printf("\n");
+	printf("\no2 ");
+	for (i=0; i<this->hid; i++) {
+		printf("%lf ", this->o2[i]);
+	}
+	printf("\nw1 ");
+	for (i=0; i<(this->in+1)*this->hid-1; i++) {
+		printf("%lf ", this->w1[i]);
+	}
+	printf("%lf\n", this->w1[i]);
+	printf("nan!! %lf %lf\n", this->d2[1], this->o1[1]);
+	if (isnan(this->w1[1])) return;
+//}
+#endif
+			// calculate the mean squared error
+			double mse = 0;
+			for (int i=0; i<this->out; i++) {
+				mse += 0.5 * (this->o3[i] - t[i]) * (this->o3[i] - t[i]);
+			}
+			err = 0.5 * (err + mse);
+		}
+		printf("ephochs %d, mse %f\n", times, err);
+//		printf(".");
+//		fflush(stdout);
+	}
+//	printf("\n");
 }
 
 // return most probable label to the input x
