@@ -131,6 +131,38 @@ void CatsEye__destruct(CatsEye *this)
 	free(this->w2);
 }
 
+double dot(double *vec1, double *vec2, int n)
+{
+	double s = 0.0;
+//	#pragma omp parallel for private(i)
+//	#pragma omp parallel for reduction(+:s)
+//	#pragma omp parallel for
+	for (int i=0; i<n; i++) {
+		s += vec1[i] * vec2[i];
+	}
+	return s;
+}
+/*void dot(double *mat1, double *mat2, double *mat3, int r, int c)
+{
+	for (int i=0; i<c; i++) {
+		double s = 0.0;
+		for (int j=0; j<r; j++) {
+			s += mat2[i*c+j] * mat3[j];
+		}
+		mat1[i] = s;
+	}
+}
+void dotT(double *mat1, double *mat2, double *mat3, int r, int c)
+{
+	for (int i=0; i<c; i++) {
+		double s = 0.0;
+		for (int j=0; j<r; j++) {
+			s += mat2[j*c+i] * mat3[j];
+		}
+		mat1[i] = s;
+	}
+}*/
+
 // caluculate forward propagation of input x
 void CatsEye_forward(CatsEye *this, double *x)
 {
@@ -140,6 +172,7 @@ void CatsEye_forward(CatsEye *this, double *x)
 	this->o1[this->in] = 1;
 
 	// caluculation of hidden layer
+//	#pragma omp parallel for
 	for (int j=0; j<this->hid; j++) {
 		this->xi2[j] = 0;
 		for (int i=0; i<this->in+1; i++) {
@@ -195,8 +228,11 @@ void CatsEye_train(CatsEye *this, double *x, int *t, double N, int repeat/*=1000
 					tmp += this->w2[j*this->out+l]*this->d3[l];
 				}
 				//this->d2[j] = tmp * DACTIVATION_FUNCTION(this->xi2[j]);	// xi2 = z
+//				double tmp = dot(&this->w2[j*this->out], this->d3, this->out);
 				this->d2[j] = tmp * DACTIVATION_FUNCTION(this->o2[j]);	// o2 = f(z)
 			}
+//			dot(this->d2, this->w2, this->d3, this->hid+1, this->out);
+			//mul(this->d2);
 			// update the weights of hidden layer
 			for (int i=0; i<this->in+1; i++) {
 				for (int j=0; j<this->hid; j++) {
