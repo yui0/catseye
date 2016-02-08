@@ -131,37 +131,28 @@ void CatsEye__destruct(CatsEye *this)
 	free(this->w2);
 }
 
+void muladd(double *vec1, double *vec2, double a, int n)
+{
+	for (int i=0; i<n; i++) {
+		vec1[i] += vec2[i] * a;
+	}
+}
 double dot(double *vec1, double *vec2, int n)
 {
 	double s = 0.0;
-//	#pragma omp parallel for private(i)
-//	#pragma omp parallel for reduction(+:s)
-//	#pragma omp parallel for
 	for (int i=0; i<n; i++) {
 		s += vec1[i] * vec2[i];
 	}
 	return s;
 }
-/*void dot(double *mat1, double *mat2, double *mat3, int r, int c)
+double dotT(double *mat1, double *vec1, int r, int c)
 {
-	for (int i=0; i<c; i++) {
-		double s = 0.0;
-		for (int j=0; j<r; j++) {
-			s += mat2[i*c+j] * mat3[j];
-		}
-		mat1[i] = s;
+	double s = 0.0;
+	for (int i=0; i<r; i++) {
+		s += mat1[i*c] * vec1[i];
 	}
+	return s;
 }
-void dotT(double *mat1, double *mat2, double *mat3, int r, int c)
-{
-	for (int i=0; i<c; i++) {
-		double s = 0.0;
-		for (int j=0; j<r; j++) {
-			s += mat2[j*c+i] * mat3[j];
-		}
-		mat1[i] = s;
-	}
-}*/
 
 // caluculate forward propagation of input x
 void CatsEye_forward(CatsEye *this, double *x)
@@ -174,20 +165,22 @@ void CatsEye_forward(CatsEye *this, double *x)
 	// caluculation of hidden layer
 //	#pragma omp parallel for
 	for (int j=0; j<this->hid; j++) {
-		this->xi2[j] = 0;
+/*		this->xi2[j] = 0;
 		for (int i=0; i<this->in+1; i++) {
 			this->xi2[j] += this->w1[i*this->hid+j]*this->o1[i];
-		}
+		}*/
+		this->xi2[j] = dotT(&this->w1[j], this->o1, this->in+1, this->hid);
 		this->o2[j] = ACTIVATION_FUNCTION(this->xi2[j]);
 	}
 	this->o2[this->hid] = 1;
 
 	// caluculation of output layer
 	for (int j=0; j<this->out; j++) {
-		this->xi3[j] = 0;
+/*		this->xi3[j] = 0;
 		for (int i=0; i<this->hid+1; i++) {
 			this->xi3[j] += this->w2[i*this->out+j]*this->o2[i];
-		}
+		}*/
+		this->xi3[j] = dotT(&this->w2[j], this->o2, this->hid+1, this->out);
 		this->o3[j] = this->xi3[j];
 	}
 }
@@ -200,7 +193,6 @@ void CatsEye_forward(CatsEye *this, double *x)
  * eta: learning rate */
 void CatsEye_train(CatsEye *this, double *x, int *t, double N, int repeat/*=1000*/, double eta/*=0.1*/)
 {
-//#pragma omp parallel for
 	for (int times=0; times<repeat; times++) {
 		double err = 0;
 		for (int sample=0; sample<N; sample++) {
@@ -216,28 +208,29 @@ void CatsEye_train(CatsEye *this, double *x, int *t, double N, int repeat/*=1000
 				}
 			}
 			// update the weights of output layer
+//			#pragma omp parallel for
 			for (int i=0; i<this->hid+1; i++) {
-				for (int j=0; j<this->out; j++) {
+/*				for (int j=0; j<this->out; j++) {
 					this->w2[i*this->out+j] -= eta*this->d3[j]*this->o2[i];
-				}
+				}*/
+				muladd(&this->w2[i*this->out], this->d3, -eta*this->o2[i], this->out);
 			}
 			// calculate the error of hidden layer
 			for (int j=0; j<this->hid+1; j++) {
-				double tmp = 0;
+/*				double tmp = 0;
 				for (int l=0; l<this->out; l++) {
 					tmp += this->w2[j*this->out+l]*this->d3[l];
 				}
 				//this->d2[j] = tmp * DACTIVATION_FUNCTION(this->xi2[j]);	// xi2 = z
-//				double tmp = dot(&this->w2[j*this->out], this->d3, this->out);
-				this->d2[j] = tmp * DACTIVATION_FUNCTION(this->o2[j]);	// o2 = f(z)
+				this->d2[j] = tmp * DACTIVATION_FUNCTION(this->o2[j]);	// o2 = f(z)*/
+				this->d2[j] = dot(&this->w2[j*this->out], this->d3, this->out) * DACTIVATION_FUNCTION(this->o2[j]);	// o2 = f(z)
 			}
-//			dot(this->d2, this->w2, this->d3, this->hid+1, this->out);
-			//mul(this->d2);
 			// update the weights of hidden layer
 			for (int i=0; i<this->in+1; i++) {
-				for (int j=0; j<this->hid; j++) {
+/*				for (int j=0; j<this->hid; j++) {
 					this->w1[i*this->hid+j] -= eta*this->d2[j]*this->o1[i];
-				}
+				}*/
+				muladd(&this->w1[i*this->hid], this->d2, -eta*this->o1[i], this->hid);
 			}
 
 			// calculate the mean squared error
@@ -248,10 +241,7 @@ void CatsEye_train(CatsEye *this, double *x, int *t, double N, int repeat/*=1000
 			err = 0.5 * (err + mse);
 		}
 		printf("ephochs %d, mse %f\n", times, err);
-//		printf(".");
-//		fflush(stdout);
 	}
-//	printf("\n");
 }
 
 // return most probable label to the input x
