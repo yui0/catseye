@@ -185,16 +185,6 @@ void CatsEye_forward(CatsEye *this, double *x)
 	}
 }
 
-/*void CatsEye_loss(CatsEye *this, int t, int n)
-{
-	for (int i=0; i<n; i++) {
-		if (t == i) {	// classifying
-			this->d3[i] = this->o3[i]-1;
-		} else {
-			this->d3[i] = this->o3[i];
-		}
-	}
-}*/
 /* train: multi layer perceptron
  * x: train data (number of elements is in*N)
  * t: correct label (number of elements is N)
@@ -211,14 +201,16 @@ void CatsEye_train(CatsEye *this, double *x, void *t, double N, int repeat/*=100
 
 			// calculate the error of output layer
 			for (int i=0; i<this->out; i++) {
-/*				if (t[sample] == i) {	// classifying
+#ifndef CATS_LOSS_MSE
+				if (((int*)t)[sample] == i) {	// classifying
 					this->d3[i] = this->o3[i]-1;
 				} else {
 					this->d3[i] = this->o3[i];
-				}*/
+				}
+#else
 				this->d3[i] = this->o3[i]-((double*)t)[sample];
+#endif
 			}
-			//CatsEye_loss(this, ((int*)t)[sample], this->out);
 			// update the weights of output layer
 //			#pragma omp parallel for
 			for (int i=0; i<this->hid+1; i++) {

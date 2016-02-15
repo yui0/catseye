@@ -7,6 +7,7 @@
 // gcc sin.c -o sin -lm -fopenmp -lgomp
 // clang sin.c -o sin -lm
 // ps2pdf sin.ps 
+#define CATS_LOSS_MSE
 #include "../catseye.h"
 #include "../pssub.h"
 
