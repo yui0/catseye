@@ -8,7 +8,7 @@ for more information, see example/
 
 # Demo
 - http://yui0.github.io/catseye/example/html/index.html
-- Function approximation [https://raw.githubusercontent.com/yui0/catseye/master/example/sin.png]
+- ![Function approximation](example/sin.png)
 
 # Refrence
 - Multilayer perceptron [http://kivantium.hateblo.jp/entry/2014/12/22/004640]
