@@ -185,13 +185,23 @@ void CatsEye_forward(CatsEye *this, double *x)
 	}
 }
 
+/*void CatsEye_loss(CatsEye *this, int t, int n)
+{
+	for (int i=0; i<n; i++) {
+		if (t == i) {	// classifying
+			this->d3[i] = this->o3[i]-1;
+		} else {
+			this->d3[i] = this->o3[i];
+		}
+	}
+}*/
 /* train: multi layer perceptron
  * x: train data (number of elements is in*N)
  * t: correct label (number of elements is N)
  * N: data size
  * repeat: repeat times
  * eta: learning rate */
-void CatsEye_train(CatsEye *this, double *x, int *t, double N, int repeat/*=1000*/, double eta/*=0.1*/)
+void CatsEye_train(CatsEye *this, double *x, void *t, double N, int repeat/*=1000*/, double eta/*=0.1*/)
 {
 	for (int times=0; times<repeat; times++) {
 		double err = 0;
@@ -200,13 +210,15 @@ void CatsEye_train(CatsEye *this, double *x, int *t, double N, int repeat/*=1000
 			CatsEye_forward(this, x+sample*this->in);
 
 			// calculate the error of output layer
-			for (int j=0; j<this->out; j++) {
-				if (t[sample] == j) {	// classifying
-					this->d3[j] = this->o3[j]-1;
+			for (int i=0; i<this->out; i++) {
+/*				if (t[sample] == i) {	// classifying
+					this->d3[i] = this->o3[i]-1;
 				} else {
-					this->d3[j] = this->o3[j];
-				}
+					this->d3[i] = this->o3[i];
+				}*/
+				this->d3[i] = this->o3[i]-((double*)t)[sample];
 			}
+			//CatsEye_loss(this, ((int*)t)[sample], this->out);
 			// update the weights of output layer
 //			#pragma omp parallel for
 			for (int i=0; i<this->hid+1; i++) {
@@ -220,9 +232,8 @@ void CatsEye_train(CatsEye *this, double *x, int *t, double N, int repeat/*=1000
 /*				double tmp = 0;
 				for (int l=0; l<this->out; l++) {
 					tmp += this->w2[j*this->out+l]*this->d3[l];
-				}
+				}*/
 				//this->d2[j] = tmp * DACTIVATION_FUNCTION(this->xi2[j]);	// xi2 = z
-				this->d2[j] = tmp * DACTIVATION_FUNCTION(this->o2[j]);	// o2 = f(z)*/
 				this->d2[j] = dot(&this->w2[j*this->out], this->d3, this->out) * DACTIVATION_FUNCTION(this->o2[j]);	// o2 = f(z)
 			}
 			// update the weights of hidden layer

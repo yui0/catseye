@@ -25,9 +25,7 @@ int main()
 	// CSVの読み込み
 	printf("Training data:\n");
 	FILE *fp = fopen("digits.csv", "r");
-	if (fp==NULL) {
-		return -1;
-	}
+	if (fp==NULL) return -1;
 	int n=0;
 	while (feof(fp)==0) {
 		// データの読み込み

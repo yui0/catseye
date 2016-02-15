@@ -24,3 +24,5 @@
   * classify numbers image by using multi layer perceptron
 * mnist_train.c and mnist_test.c
   * classify numbers image by using multi layer perceptron
+* sin.c
+  * function approximation by using multi layer perceptron
