@@ -15,14 +15,16 @@
   * ref. http://y-uti.hatenablog.jp/entry/2014/07/23/074845
 
 ## Multilayer perceptron
+* autoencoder.c
+  * autoencoder sample
+* digits_train.c and digits_test.c
+  * classify numbers image by using multi layer perceptron
 * example\_01.c
   * classify sample data by using multi layer perceptron
   * as code is heavily commented, you can understand how it works
-* weather.c
-  * classify weather data by using multi layer perceptron
-* digits_train.c and digits_test.c
-  * classify numbers image by using multi layer perceptron
 * mnist_train.c and mnist_test.c
   * classify numbers image by using multi layer perceptron
 * sin.c
   * function approximation by using multi layer perceptron
+* weather.c
+  * classify weather data by using multi layer perceptron

@@ -17,10 +17,8 @@ int main()
 	CatsEye cat;
 	CatsEye__construct(&cat, size, 100, label, 0);
 
-	// 訓練データ
-	double x[size*sample];
-	// ラベルデータ
-	int t[sample];
+	double x[size*sample];	// 訓練データ
+	int t[sample];		// ラベルデータ
 
 	// CSVの読み込み
 	printf("Training data:\n");
@@ -45,10 +43,8 @@ int main()
 	sample = n;
 
 	// 多層パーセプトロンの訓練
-	// 繰り返しの回数
 	printf("Starting training using (stochastic) gradient descent\n");
-	int repeat = 100;
-	CatsEye_train(&cat, x, t, sample, repeat, 0.01);
+	CatsEye_train(&cat, x, t, sample, 100/*repeat*/, 0.01);
 	printf("Training complete\n");
 	CatsEye_save(&cat, "digits.weights");
 	CatsEye_saveJson(&cat, "digits.json");

@@ -14,11 +14,10 @@
 int main()
 {
 	int size = 1;		// 入力層
-	int label = 1;		// 出力層
 	int sample = 360;
 
 	CatsEye cat;
-	CatsEye__construct(&cat, size, 100, label, 0);
+	CatsEye__construct(&cat, size, 100/*hidden*/, 1/*output*/, 0);
 
 	// 訓練データ
 	double x[sample];

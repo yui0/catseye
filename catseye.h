@@ -208,7 +208,7 @@ void CatsEye_train(CatsEye *this, double *x, void *t, double N, int repeat/*=100
 					this->d3[i] = this->o3[i];
 				}
 #else
-				this->d3[i] = this->o3[i]-((double*)t)[sample];
+				this->d3[i] = this->o3[i]-((double*)t)[sample*this->out+i];
 #endif
 			}
 			// update the weights of output layer
@@ -242,8 +242,13 @@ void CatsEye_train(CatsEye *this, double *x, void *t, double N, int repeat/*=100
 				mse += 0.5 * (this->d3[i] * this->d3[i]);
 			}
 			err = 0.5 * (err + mse);
+
+/*			if (isnan(this->d3[0])) {
+				printf("epochs %d, samples %d, mse %f\n", times, sample, err);
+				break;
+			}*/
 		}
-		printf("ephochs %d, mse %f\n", times, err);
+		printf("epochs %d, mse %f\n", times, err);
 	}
 }
 
