@@ -53,7 +53,7 @@ typedef struct {
 	// error value
 	double *d2, *d3;
 	// gradient value
-	double *e2, *e3;
+	double *e2, *e3, *m2, *v2, *m3, *v3;
 	// weights
 	double *w1, *w2;
 } CatsEye;
@@ -92,6 +92,10 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, char *fil
 	// allocate gradient
 	this->e2 = calloc(1, sizeof(double)*(this->hid+1));
 	this->e3 = calloc(1, sizeof(double)*this->out);
+	this->m2 = calloc(1, sizeof(double)*(this->hid+1));
+	this->m3 = calloc(1, sizeof(double)*this->out);
+	this->v2 = calloc(1, sizeof(double)*(this->hid+1));
+	this->v3 = calloc(1, sizeof(double)*this->out);
 
 	// allocate memories
 	this->w1 = malloc(sizeof(double)*(this->in+1)*this->hid);
@@ -133,6 +137,10 @@ void CatsEye__destruct(CatsEye *this)
 	free(this->d3);
 	free(this->e2);
 	free(this->e3);
+	free(this->m2);
+	free(this->m3);
+	free(this->v2);
+	free(this->v3);
 	free(this->w1);
 	free(this->w2);
 }
@@ -228,18 +236,37 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat/*=1000*/
 			// update the weights of output layer
 //			#pragma omp parallel for
 #ifdef CATS_ADAGRAD
-			// AdaGrad (http://qiita.com/ak11/items/7f63a1198c345a138150)
+#define eps 1e-8		// 1e-4 - 1e-8
+#define decay_rate 0.999
+			// AdaGrad or RMSprop
 			for (int j=0; j<this->out; j++) {
+				// AdaGrad (http://qiita.com/ak11/items/7f63a1198c345a138150)
+				this->e3[j] += this->d3[j]*this->d3[j];
 //				this->e3[j] += this->d3[j]*this->d3[j]*0.7;
-				this->e3[j] = this->e3[j]*(0.99+times/times*0.01) + this->d3[j]*this->d3[j];
+//				this->e3[j] = this->e3[j]*(0.99+times/times*0.01) + this->d3[j]*this->d3[j];
+				// RMSprop (http://cs231n.github.io/neural-networks-3/#anneal)
+//				this->e3[j] = decay_rate * this->e3[j] + (1.0-decay_rate)*this->d3[j]*this->d3[j];
 			}
 			for (int i=0; i<this->hid+1; i++) {
 				for (int j=0; j<this->out; j++) {
 					//this->w2[i*this->out+j] -= eta*this->d3[j]*this->o2[i];
-					// AdaGrad (http://qiita.com/ak11/items/7f63a1198c345a138150)
 //					this->e3[j] += this->d3[j]*this->d3[j];
 					//this->w2[i*this->out+j] -= eta*this->o2[i] /sqrt(this->e3[j]) *this->d3[j];
-					this->w2[i*this->out+j] -= eta*this->o2[i] /sqrt(1.0+this->e3[j]) *this->d3[j];
+					this->w2[i*this->out+j] -= eta*this->o2[i] /sqrt(eps+this->e3[j]) *this->d3[j];
+				}
+			}
+#elif defined CATS_ADAM
+#define eps 1e-8
+#define beta1 0.9
+#define beta2 0.999
+			// Adam
+			for (int j=0; j<this->out; j++) {
+				this->m3[j] = beta1*this->m3[j] + (1.0-beta1) * this->d3[j];
+				this->v3[j] = beta2*this->v3[j] + (1.0-beta2) * this->d3[j]*this->d3[j];
+			}
+			for (int i=0; i<this->hid+1; i++) {
+				for (int j=0; j<this->out; j++) {
+					this->w2[i*this->out+j] -= eta*this->o2[i] *this->m3[j]/sqrt(this->v3[j]+eps);
 				}
 			}
 #else
@@ -259,16 +286,29 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat/*=1000*/
 			// update the weights of hidden layer
 #ifdef CATS_ADAGRAD
 			for (int j=0; j<this->hid; j++) {
+				// AdaGrad
+				this->e2[j] += this->d2[j]*this->d2[j];
 //				this->e2[j] += this->d2[j]*this->d2[j]*0.7;
-				this->e2[j] = this->e2[j]*(0.99+times/times*0.01) + this->d2[j]*this->d2[j];
+//				this->e2[j] = this->e2[j]*(0.99+times/times*0.01) + this->d2[j]*this->d2[j];
+				// RMSprop
+//				this->e2[j] = decay_rate * this->e2[j] + (1.0-decay_rate)*this->d2[j]*this->d2[j];
 			}
 			for (int i=0; i<this->in+1; i++) {
 				for (int j=0; j<this->hid; j++) {
 					//this->w1[i*this->hid+j] -= eta*this->d2[j]*this->o1[i];
-					// AdaGrad
 //					this->e2[j] += this->d2[j]*this->d2[j];
 					//this->w1[i*this->hid+j] -= eta*this->o1[i] /sqrt(this->e2[j]) *this->d2[j];
-					this->w1[i*this->hid+j] -= eta*this->o1[i] /sqrt(1.0+this->e2[j]) *this->d2[j];
+					this->w1[i*this->hid+j] -= eta*this->o1[i] /sqrt(eps+this->e2[j]) *this->d2[j];
+				}
+			}
+#elif defined CATS_ADAM
+			for (int j=0; j<this->hid; j++) {
+				this->m2[j] = beta1*this->m2[j] + (1.0-beta1) * this->d2[j];
+				this->v2[j] = beta2*this->v2[j] + (1.0-beta2) * this->d2[j]*this->d2[j];
+			}
+			for (int i=0; i<this->in+1; i++) {
+				for (int j=0; j<this->hid; j++) {
+					this->w1[i*this->hid+j] -= eta*this->o1[i] *this->m2[j]/sqrt(this->v2[j]+eps);
 				}
 			}
 #else

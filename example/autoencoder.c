@@ -8,6 +8,7 @@
 // clang autoencoder.c -o autoencoder -lm -Ofast
 #define CATS_LOSS_MSE
 #define CATS_ADAGRAD
+//#define CATS_ADAM
 #include "../catseye.h"
 //#define STB_IMAGE_IMPLEMENTATION
 //#include "../stb_image.h"
