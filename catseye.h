@@ -47,12 +47,13 @@ typedef struct {
 	// number of each layer
 	int in, hid, out;
 	// input layer
-//	double *xi1, *xi2, *xi3;
 	double *xi2, *xi3;
 	// output layer
 	double *o1, *o2, *o3;
 	// error value
 	double *d2, *d3;
+	// gradient value
+	double *e2, *e3;
 	// weights
 	double *w1, *w2;
 } CatsEye;
@@ -76,7 +77,6 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, char *fil
 	}
 
 	// allocate inputs
-//	this->xi1 = malloc(sizeof(double)*(this->in+1));
 	this->xi2 = malloc(sizeof(double)*(this->hid+1));
 	this->xi3 = malloc(sizeof(double)*this->out);
 
@@ -89,6 +89,10 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, char *fil
 	this->d2 = malloc(sizeof(double)*(this->hid+1));
 	this->d3 = malloc(sizeof(double)*this->out);
 
+	// allocate gradient
+	this->e2 = calloc(1, sizeof(double)*(this->hid+1));
+	this->e3 = calloc(1, sizeof(double)*this->out);
+
 	// allocate memories
 	this->w1 = malloc(sizeof(double)*(this->in+1)*this->hid);
 	this->w2 = malloc(sizeof(double)*(this->hid+1)*this->out);
@@ -100,6 +104,7 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, char *fil
 		for(int i=0; i<(this->hid+1)*this->out; i++) {
 			fscanf(fp, "%lf ", &this->w2[i]);
 		}
+		fclose(fp);
 	} else {
 		// initialize weights
 		// range depends on the research of Y. Bengio et al. (2010)
@@ -119,7 +124,6 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, char *fil
 void CatsEye__destruct(CatsEye *this)
 {
 	// delete arrays
-//	free(this->xi1);
 	free(this->xi2);
 	free(this->xi3);
 	free(this->o1);
@@ -127,6 +131,8 @@ void CatsEye__destruct(CatsEye *this)
 	free(this->o3);
 	free(this->d2);
 	free(this->d3);
+	free(this->e2);
+	free(this->e3);
 	free(this->w1);
 	free(this->w2);
 }
@@ -191,13 +197,21 @@ void CatsEye_forward(CatsEye *this, double *x)
  * N: data size
  * repeat: repeat times
  * eta: learning rate */
-void CatsEye_train(CatsEye *this, double *x, void *t, double N, int repeat/*=1000*/, double eta/*=0.1*/)
+void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat/*=1000*/, double eta/*=0.1*/)
 {
 	for (int times=0; times<repeat; times++) {
 		double err = 0;
+#ifndef CATS_MINI_BATCH
 		for (int sample=0; sample<N; sample++) {
 			// forward propagation
 			CatsEye_forward(this, x+sample*this->in);
+#else
+		for (int sample=0; sample<100; sample++) {
+			// forward propagation
+			srand((unsigned)time(NULL));
+			int n = ((double)rand()+1.0)/((double)RAND_MAX+2.0) * N;
+			CatsEye_forward(this, x+n*this->in);
+#endif
 
 			// calculate the error of output layer
 			for (int i=0; i<this->out; i++) {
@@ -213,28 +227,55 @@ void CatsEye_train(CatsEye *this, double *x, void *t, double N, int repeat/*=100
 			}
 			// update the weights of output layer
 //			#pragma omp parallel for
+#ifdef CATS_ADAGRAD
+			// AdaGrad (http://qiita.com/ak11/items/7f63a1198c345a138150)
+			for (int j=0; j<this->out; j++) {
+//				this->e3[j] += this->d3[j]*this->d3[j]*0.7;
+				this->e3[j] = this->e3[j]*(0.99+times/times*0.01) + this->d3[j]*this->d3[j];
+			}
 			for (int i=0; i<this->hid+1; i++) {
-/*				for (int j=0; j<this->out; j++) {
-					this->w2[i*this->out+j] -= eta*this->d3[j]*this->o2[i];
-				}*/
+				for (int j=0; j<this->out; j++) {
+					//this->w2[i*this->out+j] -= eta*this->d3[j]*this->o2[i];
+					// AdaGrad (http://qiita.com/ak11/items/7f63a1198c345a138150)
+//					this->e3[j] += this->d3[j]*this->d3[j];
+					//this->w2[i*this->out+j] -= eta*this->o2[i] /sqrt(this->e3[j]) *this->d3[j];
+					this->w2[i*this->out+j] -= eta*this->o2[i] /sqrt(1.0+this->e3[j]) *this->d3[j];
+				}
+			}
+#else
+			for (int i=0; i<this->hid+1; i++) {
 				muladd(&this->w2[i*this->out], this->d3, -eta*this->o2[i], this->out);
 			}
+#endif
 			// calculate the error of hidden layer
-			for (int j=0; j<this->hid+1; j++) {
+			for (int i=0; i<this->hid+1; i++) {
 /*				double tmp = 0;
 				for (int l=0; l<this->out; l++) {
 					tmp += this->w2[j*this->out+l]*this->d3[l];
 				}*/
 				//this->d2[j] = tmp * DACTIVATION_FUNCTION(this->xi2[j]);	// xi2 = z
-				this->d2[j] = dot(&this->w2[j*this->out], this->d3, this->out) * DACTIVATION_FUNCTION(this->o2[j]);	// o2 = f(z)
+				this->d2[i] = dot(&this->w2[i*this->out], this->d3, this->out) * DACTIVATION_FUNCTION(this->o2[i]);	// o2 = f(z)
 			}
 			// update the weights of hidden layer
+#ifdef CATS_ADAGRAD
+			for (int j=0; j<this->hid; j++) {
+//				this->e2[j] += this->d2[j]*this->d2[j]*0.7;
+				this->e2[j] = this->e2[j]*(0.99+times/times*0.01) + this->d2[j]*this->d2[j];
+			}
 			for (int i=0; i<this->in+1; i++) {
-/*				for (int j=0; j<this->hid; j++) {
-					this->w1[i*this->hid+j] -= eta*this->d2[j]*this->o1[i];
-				}*/
+				for (int j=0; j<this->hid; j++) {
+					//this->w1[i*this->hid+j] -= eta*this->d2[j]*this->o1[i];
+					// AdaGrad
+//					this->e2[j] += this->d2[j]*this->d2[j];
+					//this->w1[i*this->hid+j] -= eta*this->o1[i] /sqrt(this->e2[j]) *this->d2[j];
+					this->w1[i*this->hid+j] -= eta*this->o1[i] /sqrt(1.0+this->e2[j]) *this->d2[j];
+				}
+			}
+#else
+			for (int i=0; i<this->in+1; i++) {
 				muladd(&this->w1[i*this->hid], this->d2, -eta*this->o1[i], this->hid);
 			}
+#endif
 
 			// calculate the mean squared error
 			double mse = 0;

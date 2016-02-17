@@ -44,7 +44,7 @@ int main()
 
 	// 多層パーセプトロンの訓練
 	printf("Starting training using (stochastic) gradient descent\n");
-	CatsEye_train(&cat, x, t, sample, 100/*repeat*/, 0.01);
+	CatsEye_train(&cat, x, t, sample-1, 100/*repeat*/, 0.01);
 	printf("Training complete\n");
 	CatsEye_save(&cat, "digits.weights");
 	CatsEye_saveJson(&cat, "digits.json");

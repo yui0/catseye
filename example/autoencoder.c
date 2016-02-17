@@ -4,9 +4,10 @@
 //		©2016 Yuichiro Nakada
 //---------------------------------------------------------
 
-// gcc autoencoder.c -o autoencoder -lm -fopenmp -lgomp
-// clang autoencoder.c -o autoencoder -lm
+// gcc autoencoder.c -o autoencoder -lm -Ofast -fopenmp -lgomp
+// clang autoencoder.c -o autoencoder -lm -Ofast
 #define CATS_LOSS_MSE
+#define CATS_ADAGRAD
 #include "../catseye.h"
 //#define STB_IMAGE_IMPLEMENTATION
 //#include "../stb_image.h"
@@ -49,42 +50,35 @@ int main()
 
 	// 多層パーセプトロンの訓練
 	printf("Starting training using (stochastic) gradient descent\n");
-//	CatsEye_train(&cat, x, x, sample-1, 100/*repeat*/, 0.01);
+	//CatsEye_train(&cat, x, x, sample-1, 1000/*repeat*/, 0.004);
 //	CatsEye_train(&cat, x, x, 1, 50/*repeat*/, 0.01);
 //	CatsEye_train(&cat, x, x, 2, 1000/*repeat*/, 0.01);
 //	CatsEye_train(&cat, x, x, 3, 1000/*repeat*/, 0.001);
-	CatsEye_train(&cat, x, x, 10, 10000/*repeat*/, 0.001);
+//	CatsEye_train(&cat, x, x, 10, 10000/*repeat*/, 0.001);
+	//CatsEye_train(&cat, x, x, 10, 100000/*repeat*/, 0.01);
+	//CatsEye_train(&cat, x, x, 50, 1000000/*repeat*/, 0.01);
+	CatsEye_train(&cat, x, x, sample-1, 10000/*repeat*/, 0.01);
 	printf("Training complete\n");
-//	CatsEye_save(&cat, "digits.weights");
-//	CatsEye_saveJson(&cat, "digits.json");
+//	CatsEye_save(&cat, "autoencoder.weights");
+//	CatsEye_saveJson(&cat, "autoencoder.json");
 
 	// 結果の表示
-/*	int r = 0;
-	for (int i=0; i<sample; i++) {
-		int p = CatsEye_predict(&cat, x+size*i);
-		if (p==t[i]) r++;
-		printf("%d -> %d\n", p, t[i]);
-	}
-	printf("Prediction accuracy on training data = %f%%\n", (float)r/sample*100.0);*/
-
-	for (int i=0; i<10/*sample*/; i++) {
+	unsigned char *pixels = malloc(size*100);
+	for (int i=0; i<50; i++) {
 		double mse = 0;
-		unsigned char pixels[size*2];
 		CatsEye_forward(&cat, x+size*i);
 		for (int j=0; j<size; j++) {
-			pixels[j] = cat.o3[j] * 255.0;
+			pixels[(i/10)*8*8*10+(i%10)*8+(j/8)*8*10+(j%8)] = cat.o3[j] * 255.0;
 			mse += (x[size*i+j]-cat.o3[j])*(x[size*i+j]-cat.o3[j]);
 
-			pixels[size+j] = x[size*i+j] * 255.0;
+			pixels[5*8*8*10+(i/10)*8*8*10+(i%10)*8+(j/8)*8*10+(j%8)] = x[size*i+j] * 255.0;
 		}
-		char name[256];
-		snprintf(name, 256, "autoencoder_%02d.png", i);
-		stbi_write_png(name, 8, 8*2, 1, pixels, 8);
 		printf("mse %lf\n", mse);
 	}
+	stbi_write_png("autoencoder.png", 8*10, 8*10, 1, pixels, 8*10);
 
 	// 重みをスケーリング
-	unsigned char *pixels = malloc((size+1)*hidden);
+//	unsigned char *pixels = malloc((size+1)*hidden);
 	double max = cat.w1[0];
 	double min = cat.w1[0];
 	for (int i=0; i<(size+1)*hidden; i++) {
@@ -96,12 +90,7 @@ int main()
 		//cat.w1[i] *= 255.0;
 		pixels[i] = cat.w1[i] * 255.0;
 	}
-
-//	unsigned char *pixels;
-//	int width, height, bpp = 1;
-//	pixels = malloc(width*bpp);
-//	stbi_write_png("autoencoder.png", width, height, bpp, pixels, width*bpp);
-	stbi_write_png("autoencoder.png", size+1, hidden, 1, pixels, size+1);
+	stbi_write_png("autoencoder_weights.png", size+1, hidden, 1, pixels, size+1);
 	free(pixels);
 
 	return 0;
