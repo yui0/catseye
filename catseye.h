@@ -43,6 +43,55 @@
 #define DACTIVATION_FUNCTION(x)		(1.0)
 #endif
 
+#ifdef CATS_OPT_ADAGRAD
+// AdaGrad (http://qiita.com/ak11/items/7f63a1198c345a138150)
+#define eps 1e-8		// 1e-4 - 1e-8
+#define OPT_CALC1(x)		this->e##x[i] += this->d##x[i]*this->d##x[i]
+//#define OPT_CALC1(x)		this->e##x[i] += this->d##x[i]*this->d##x[i] *0.7
+//#define OPT_CALC1(x)		this->e##x[i] = this->e##x[i]*(0.99+times/times*0.01) + this->d##x[i]*this->d##x[i]
+//#define OPT_CALC2(n, x, y)		this->w##x[i*n+j] -= eta*this->o##x[i] *this->d##y[j] /sqrt(this->e##y[j])
+#define OPT_CALC2(n, x, y)	this->w##x[i*n+j] -= eta*this->o##x[i] *this->d##y[j] /sqrt(this->e##y[j]+eps)
+
+#elif defined CATS_OPT_ADAM
+// Adam
+//#define eps 1e-8
+//#define beta1 0.9
+//#define beta2 0.999
+#define OPT_CALC1(x)		this->m##x[i] = beta1*this->m##x[i] + (1.0-beta1) * this->d##x[i]; \
+				this->v##x[i] = beta2*this->v##x[i] + (1.0-beta2) * this->d##x[i]*this->d##x[i]
+#define OPT_CALC2(n, x, y)	this->w##x[i*n+j] -= eta*this->o##x[i] *this->m##y[j] /sqrt(this->v##y[j]+eps)
+
+#elif defined CATS_OPT_RMSPROP
+// RMSprop (http://cs231n.github.io/neural-networks-3/#anneal)
+#define eps 1e-8		// 1e-4 - 1e-8
+#define decay_rate 0.999	// [0.9, 0.99, 0.999]
+#define OPT_CALC1(x)		this->e##x[i] = decay_rate * this->e##x[i] + (1.0-decay_rate)*this->d##x[i]*this->d##x[i]
+#define OPT_CALC2(n, x, y)	this->w##x[i*n+j] -= eta*this->o##x[i] *this->d##y[j] /sqrt(this->e##y[j]+eps)
+
+#elif defined CATS_OPT_RMSPROPGRAVES
+// RMSpropGraves (https://github.com/pfnet/chainer/blob/master/chainer/optimizers/rmsprop_graves.py)
+#define eps 1e-4
+#define beta1 0.95
+#define beta2 0.95
+#define momentum 0.9
+#define OPT_CALC1(x)		this->m##x[i] = beta1*this->m##x[i] + (1.0-beta1) * this->d##x[i]; \
+				this->v##x[i] = beta2*this->v##x[i] + (1.0-beta2) * this->d##x[i]*this->d##x[i]
+#define OPT_CALC2(n, x, y)	this->dl##x[j] = this->dl##x[j] * momentum - eta*this->o##x[i]*this->d##y[j] /sqrt(this->v##y[j] - this->m##y[j]*this->m##y[j]+eps); \
+				this->w##x[i*n+j] += this->dl##x[j]
+
+#elif defined CATS_OPT_MOMENTUM
+// Momentum update (http://cs231n.github.io/neural-networks-3/#anneal)
+#define momentum 0.9		// [0.5, 0.9, 0.95, 0.99]
+#define OPT_CALC1(x)
+#define OPT_CALC2(n, x, y)	this->dl##x[i] = momentum * this->dl##x[i] - eta*this->o##x[i] *this->d##y[j]; \
+				this->w##x[i*n+j] += this->dl##x[i]
+
+#else
+// SGD (Vanilla update)
+#define OPT_CALC1(x)
+#define OPT_CALC2(n, x, y)		this->w##x[i*n+j] -= eta*this->o##x[i] *this->d##y[j]
+#endif
+
 typedef struct {
 	// number of each layer
 	int in, hid, out;
@@ -54,6 +103,7 @@ typedef struct {
 	double *d2, *d3;
 	// gradient value
 	double *e2, *e3, *m2, *v2, *m3, *v3;
+	double *dl1, *dl2;
 	// weights
 	double *w1, *w2;
 } CatsEye;
@@ -96,6 +146,8 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, char *fil
 	this->m3 = calloc(1, sizeof(double)*this->out);
 	this->v2 = calloc(1, sizeof(double)*(this->hid+1));
 	this->v3 = calloc(1, sizeof(double)*this->out);
+	this->dl1 = malloc(sizeof(double)*(this->in+1)*this->hid);
+	this->dl2 = malloc(sizeof(double)*(this->hid+1)*this->out);
 
 	// allocate memories
 	this->w1 = malloc(sizeof(double)*(this->in+1)*this->hid);
@@ -205,7 +257,7 @@ void CatsEye_forward(CatsEye *this, double *x)
  * N: data size
  * repeat: repeat times
  * eta: learning rate */
-void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat/*=1000*/, double eta/*=0.1*/)
+void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double eta)
 {
 	for (int times=0; times<repeat; times++) {
 		double err = 0;
@@ -220,11 +272,10 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat/*=1000*/
 			int n = ((double)rand()+1.0)/((double)RAND_MAX+2.0) * N;
 			CatsEye_forward(this, x+n*this->in);
 #endif
-
 			// calculate the error of output layer
 			for (int i=0; i<this->out; i++) {
 #ifndef CATS_LOSS_MSE
-				if (((int*)t)[sample] == i) {	// classifying
+				if (((int*)t)[sample] == i) {	// 1-of-K
 					this->d3[i] = this->o3[i]-1;
 				} else {
 					this->d3[i] = this->o3[i];
@@ -232,90 +283,39 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat/*=1000*/
 #else
 				this->d3[i] = this->o3[i]-((double*)t)[sample*this->out+i];
 #endif
-			}
-			// update the weights of output layer
-//			#pragma omp parallel for
-#ifdef CATS_ADAGRAD
-#define eps 1e-8		// 1e-4 - 1e-8
-#define decay_rate 0.999
-			// AdaGrad or RMSprop
-			for (int j=0; j<this->out; j++) {
 				// AdaGrad (http://qiita.com/ak11/items/7f63a1198c345a138150)
-				this->e3[j] += this->d3[j]*this->d3[j];
-//				this->e3[j] += this->d3[j]*this->d3[j]*0.7;
-//				this->e3[j] = this->e3[j]*(0.99+times/times*0.01) + this->d3[j]*this->d3[j];
+//				this->e3[j] += this->d3[j]*this->d3[j];
 				// RMSprop (http://cs231n.github.io/neural-networks-3/#anneal)
 //				this->e3[j] = decay_rate * this->e3[j] + (1.0-decay_rate)*this->d3[j]*this->d3[j];
+				OPT_CALC1(3);
 			}
+			// update the weights of output layer
 			for (int i=0; i<this->hid+1; i++) {
 				for (int j=0; j<this->out; j++) {
 					//this->w2[i*this->out+j] -= eta*this->d3[j]*this->o2[i];
-//					this->e3[j] += this->d3[j]*this->d3[j];
-					//this->w2[i*this->out+j] -= eta*this->o2[i] /sqrt(this->e3[j]) *this->d3[j];
-					this->w2[i*this->out+j] -= eta*this->o2[i] /sqrt(eps+this->e3[j]) *this->d3[j];
+//					this->w2[i*this->out+j] -= eta*this->o2[i] /sqrt(eps+this->e3[j]) *this->d3[j];
+					OPT_CALC2(this->out, 2, 3);
 				}
+				//muladd(&this->w2[i*this->out], this->d3, -eta*this->o2[i], this->out);
 			}
-#elif defined CATS_ADAM
-#define eps 1e-8
-#define beta1 0.9
-#define beta2 0.999
-			// Adam
-			for (int j=0; j<this->out; j++) {
-				this->m3[j] = beta1*this->m3[j] + (1.0-beta1) * this->d3[j];
-				this->v3[j] = beta2*this->v3[j] + (1.0-beta2) * this->d3[j]*this->d3[j];
-			}
-			for (int i=0; i<this->hid+1; i++) {
-				for (int j=0; j<this->out; j++) {
-					this->w2[i*this->out+j] -= eta*this->o2[i] *this->m3[j]/sqrt(this->v3[j]+eps);
-				}
-			}
-#else
-			for (int i=0; i<this->hid+1; i++) {
-				muladd(&this->w2[i*this->out], this->d3, -eta*this->o2[i], this->out);
-			}
-#endif
 			// calculate the error of hidden layer
-			for (int i=0; i<this->hid+1; i++) {
+			for (int i=0; i<this->hid; i++) {
 /*				double tmp = 0;
 				for (int l=0; l<this->out; l++) {
 					tmp += this->w2[j*this->out+l]*this->d3[l];
 				}*/
 				//this->d2[j] = tmp * DACTIVATION_FUNCTION(this->xi2[j]);	// xi2 = z
 				this->d2[i] = dot(&this->w2[i*this->out], this->d3, this->out) * DACTIVATION_FUNCTION(this->o2[i]);	// o2 = f(z)
+				OPT_CALC1(2);
 			}
+			this->d2[this->hid] = dot(&this->w2[this->hid*this->out], this->d3, this->out) * DACTIVATION_FUNCTION(this->o2[this->hid]);	// o2 = f(z)
 			// update the weights of hidden layer
-#ifdef CATS_ADAGRAD
-			for (int j=0; j<this->hid; j++) {
-				// AdaGrad
-				this->e2[j] += this->d2[j]*this->d2[j];
-//				this->e2[j] += this->d2[j]*this->d2[j]*0.7;
-//				this->e2[j] = this->e2[j]*(0.99+times/times*0.01) + this->d2[j]*this->d2[j];
-				// RMSprop
-//				this->e2[j] = decay_rate * this->e2[j] + (1.0-decay_rate)*this->d2[j]*this->d2[j];
-			}
 			for (int i=0; i<this->in+1; i++) {
 				for (int j=0; j<this->hid; j++) {
-					//this->w1[i*this->hid+j] -= eta*this->d2[j]*this->o1[i];
-//					this->e2[j] += this->d2[j]*this->d2[j];
-					//this->w1[i*this->hid+j] -= eta*this->o1[i] /sqrt(this->e2[j]) *this->d2[j];
-					this->w1[i*this->hid+j] -= eta*this->o1[i] /sqrt(eps+this->e2[j]) *this->d2[j];
+					OPT_CALC2(this->hid, 1, 2);
 				}
+				//muladd(&this->w1[i*this->hid], this->d2, -eta*this->o1[i], this->hid);
 			}
-#elif defined CATS_ADAM
-			for (int j=0; j<this->hid; j++) {
-				this->m2[j] = beta1*this->m2[j] + (1.0-beta1) * this->d2[j];
-				this->v2[j] = beta2*this->v2[j] + (1.0-beta2) * this->d2[j]*this->d2[j];
-			}
-			for (int i=0; i<this->in+1; i++) {
-				for (int j=0; j<this->hid; j++) {
-					this->w1[i*this->hid+j] -= eta*this->o1[i] *this->m2[j]/sqrt(this->v2[j]+eps);
-				}
-			}
-#else
-			for (int i=0; i<this->in+1; i++) {
-				muladd(&this->w1[i*this->hid], this->d2, -eta*this->o1[i], this->hid);
-			}
-#endif
 
 			// calculate the mean squared error
 			double mse = 0;

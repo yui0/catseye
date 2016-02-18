@@ -7,8 +7,11 @@
 // gcc autoencoder.c -o autoencoder -lm -Ofast -fopenmp -lgomp
 // clang autoencoder.c -o autoencoder -lm -Ofast
 #define CATS_LOSS_MSE
-#define CATS_ADAGRAD
-//#define CATS_ADAM
+//#define CATS_OPT_ADAGRAD
+//#define CATS_OPT_ADAM
+#define CATS_OPT_RMSPROP
+//#define CATS_OPT_RMSPROPGRAVES
+//#define CATS_OPT_MOMENTUM
 #include "../catseye.h"
 //#define STB_IMAGE_IMPLEMENTATION
 //#include "../stb_image.h"
@@ -55,10 +58,10 @@ int main()
 //	CatsEye_train(&cat, x, x, 1, 50/*repeat*/, 0.01);
 //	CatsEye_train(&cat, x, x, 2, 1000/*repeat*/, 0.01);
 //	CatsEye_train(&cat, x, x, 3, 1000/*repeat*/, 0.001);
-//	CatsEye_train(&cat, x, x, 10, 10000/*repeat*/, 0.001);
-	//CatsEye_train(&cat, x, x, 10, 100000/*repeat*/, 0.01);
-	//CatsEye_train(&cat, x, x, 50, 1000000/*repeat*/, 0.01);
-	CatsEye_train(&cat, x, x, sample-1, 10000/*repeat*/, 0.01);
+//	CatsEye_train(&cat, x, x, 10, 10000/*repeat*/, 0.001);		// Success by SGD
+	CatsEye_train(&cat, x, x, 50, 1000000/*repeat*/, 1e-5);		// SGD[3.0], Momentum[9.0]
+//	CatsEye_train(&cat, x, x, sample-1, 10000/*repeat*/, 0.01);	// AdaGrad
+	//CatsEye_train(&cat, x, x, sample-1, 10000/*repeat*/, 1e-4);	// Adam, RMSpropGraves
 	printf("Training complete\n");
 //	CatsEye_save(&cat, "autoencoder.weights");
 //	CatsEye_saveJson(&cat, "autoencoder.json");
