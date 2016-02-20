@@ -9,7 +9,7 @@
 #define CATS_LOSS_MSE
 //#define CATS_OPT_ADAGRAD
 //#define CATS_OPT_ADAM
-#define CATS_OPT_RMSPROP
+//#define CATS_OPT_RMSPROP
 //#define CATS_OPT_RMSPROPGRAVES
 //#define CATS_OPT_MOMENTUM
 #include "../catseye.h"
@@ -21,7 +21,10 @@
 int main()
 {
 	int size = 64;		// 入出力層(8x8)
+//	int hidden = 16;	// 隠れ層
 	int hidden = 32;	// 隠れ層
+//	int hidden = 48;	// 隠れ層
+//	int hidden = 64;	// 隠れ層
 	int sample = 1797;
 
 	CatsEye cat;
@@ -58,10 +61,19 @@ int main()
 //	CatsEye_train(&cat, x, x, 1, 50/*repeat*/, 0.01);
 //	CatsEye_train(&cat, x, x, 2, 1000/*repeat*/, 0.01);
 //	CatsEye_train(&cat, x, x, 3, 1000/*repeat*/, 0.001);
-//	CatsEye_train(&cat, x, x, 10, 10000/*repeat*/, 0.001);		// Success by SGD
-	CatsEye_train(&cat, x, x, 50, 1000000/*repeat*/, 1e-5);		// SGD[3.0], Momentum[9.0]
-//	CatsEye_train(&cat, x, x, sample-1, 10000/*repeat*/, 0.01);	// AdaGrad
-	//CatsEye_train(&cat, x, x, sample-1, 10000/*repeat*/, 1e-4);	// Adam, RMSpropGraves
+//	CatsEye_train(&cat, x, x, 10, 10000, 0.001);		// Success by SGD
+//	CatsEye_train(&cat, x, x, 50, 1000000, 1e-5);		// SGD[3.0], Momentum[9.0], Adam[96], SGD[h48/0.06]
+//	CatsEye_train(&cat, x, x, 100, 100000, 1e-5);		// SGD[h48/4.5]
+//	CatsEye_train(&cat, x, x, sample-1, 10000, 0.01);	// AdaGrad[127]
+//	CatsEye_train(&cat, x, x, sample-1, 10000, 1e-4);	// Adam, RMSpropGraves, SGD[89.0]
+	//CatsEye_train(&cat, x, x, 50, 30000, 1e-3);		// AdaGrad[h48/7.2]
+	CatsEye_train(&cat, x, x, 50, 100000, 1e-4);		// SGD[h48/0.48], SGD[h64/0.000058]
+	//CatsEye_train(&cat, x, x, 50, 1900, 1e-2);		// SGD[h48+sigmoid/0.000099]
+	//CatsEye_train(&cat, x, x, sample-1, 1900, 1e-3);	// SGD[h48+sigmoid/0.000063]
+	//CatsEye_train(&cat, x, x, sample-1, 5500, 1e-4);	// SGD[h48+sigmoid/0.0029]
+//	CatsEye_train(&cat, x, x, sample-1, 10000, 1e-5);	// SGD[27.0]
+	//CatsEye_train(&cat, x, x, sample-1, 30000, 1e-5);	// SGD[h48/8.8], SGD[h48+sigmoid/0.0047]
+	//CatsEye_train(&cat, x, x, sample-1, 10000, 1e-6);	// SGD[78.0], SGD/tanh[51.4]
 	printf("Training complete\n");
 //	CatsEye_save(&cat, "autoencoder.weights");
 //	CatsEye_saveJson(&cat, "autoencoder.json");

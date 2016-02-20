@@ -49,14 +49,14 @@
 #define OPT_CALC1(x)		this->e##x[i] += this->d##x[i]*this->d##x[i]
 //#define OPT_CALC1(x)		this->e##x[i] += this->d##x[i]*this->d##x[i] *0.7
 //#define OPT_CALC1(x)		this->e##x[i] = this->e##x[i]*(0.99+times/times*0.01) + this->d##x[i]*this->d##x[i]
-//#define OPT_CALC2(n, x, y)		this->w##x[i*n+j] -= eta*this->o##x[i] *this->d##y[j] /sqrt(this->e##y[j])
+//#define OPT_CALC2(n, x, y)	this->w##x[i*n+j] -= eta*this->o##x[i] *this->d##y[j] /sqrt(this->e##y[j])
 #define OPT_CALC2(n, x, y)	this->w##x[i*n+j] -= eta*this->o##x[i] *this->d##y[j] /sqrt(this->e##y[j]+eps)
 
 #elif defined CATS_OPT_ADAM
 // Adam
-//#define eps 1e-8
-//#define beta1 0.9
-//#define beta2 0.999
+#define eps 1e-8
+#define beta1 0.9
+#define beta2 0.999
 #define OPT_CALC1(x)		this->m##x[i] = beta1*this->m##x[i] + (1.0-beta1) * this->d##x[i]; \
 				this->v##x[i] = beta2*this->v##x[i] + (1.0-beta2) * this->d##x[i]*this->d##x[i]
 #define OPT_CALC2(n, x, y)	this->w##x[i*n+j] -= eta*this->o##x[i] *this->m##y[j] /sqrt(this->v##y[j]+eps)
@@ -248,6 +248,7 @@ void CatsEye_forward(CatsEye *this, double *x)
 		}*/
 		this->xi3[j] = dotT(&this->w2[j], this->o2, this->hid+1, this->out);
 		this->o3[j] = this->xi3[j];
+//		this->o3[j] = ACTIVATION_FUNCTION(this->xi3[j]);
 	}
 }
 
@@ -256,11 +257,13 @@ void CatsEye_forward(CatsEye *this, double *x)
  * t: correct label (number of elements is N)
  * N: data size
  * repeat: repeat times
- * eta: learning rate */
+ * eta: learning rate (1e-6 to 1) */
 void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double eta)
 {
 	for (int times=0; times<repeat; times++) {
 		double err = 0;
+//		memset(this->e3, 0, sizeof(double)*this->out);
+//		memset(this->e2, 0, sizeof(double)*this->hid);
 #ifndef CATS_MINI_BATCH
 		for (int sample=0; sample<N; sample++) {
 			// forward propagation
@@ -268,8 +271,9 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 #else
 		for (int sample=0; sample<100; sample++) {
 			// forward propagation
-			srand((unsigned)time(NULL));
-			int n = ((double)rand()+1.0)/((double)RAND_MAX+2.0) * N;
+			//srand((unsigned)time(NULL));
+			//int n = ((double)rand()+1.0)/((double)RAND_MAX+2.0) * N;
+			int n = (rand()/(double)RAND_MAX) * N;
 			CatsEye_forward(this, x+n*this->in);
 #endif
 			// calculate the error of output layer
@@ -282,11 +286,10 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 				}
 #else
 				this->d3[i] = this->o3[i]-((double*)t)[sample*this->out+i];
+//				this->d3[i] *= DACTIVATION_FUNCTION(this->o3[i]);
 #endif
 				// AdaGrad (http://qiita.com/ak11/items/7f63a1198c345a138150)
-//				this->e3[j] += this->d3[j]*this->d3[j];
-				// RMSprop (http://cs231n.github.io/neural-networks-3/#anneal)
-//				this->e3[j] = decay_rate * this->e3[j] + (1.0-decay_rate)*this->d3[j]*this->d3[j];
+//				this->e3[i] += this->d3[i]*this->d3[i];
 				OPT_CALC1(3);
 			}
 			// update the weights of output layer
