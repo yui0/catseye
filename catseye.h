@@ -16,6 +16,16 @@
 //#define CATS_RELU
 //#define CATS_ABS
 
+#ifdef CATS_SigmoidCrossEntropyLoss
+// sigmoid function with cross entropy loss
+#define CATS_SIGMOID
+#define ACT2(x)				ACTIVATION_FUNCTION(x)
+// SoftmaxWithLoss
+#else
+// identify function with mse loss
+#define ACT2(x)				(x)
+#endif
+
 // activation function and derivative of activation function
 #ifdef CATS_SIGMOID
 // sigmoid function
@@ -24,7 +34,7 @@
 #elif defined CATS_TANH
 // tanh function
 #define ACTIVATION_FUNCTION(x)		(tanh(x))
-#define DACTIVATION_FUNCTION(x)		(1.0 - x*x)	// (1.0 - tanh(x)*tanh(x))
+#define DACTIVATION_FUNCTION(x)		(1.0-x*x)	// (1.0-tanh(x)*tanh(x))
 #elif defined CATS_SCALEDTANH
 // scaled tanh function
 #define ACTIVATION_FUNCTION(x)		(1.7159 * tanh(2.0/3.0 * x))
@@ -89,7 +99,10 @@
 #else
 // SGD (Vanilla update)
 #define OPT_CALC1(x)
-#define OPT_CALC2(n, x, y)		this->w##x[i*n+j] -= eta*this->o##x[i] *this->d##y[j]
+//#define OPT_CALC2(n, x, y)		this->w##x[i*n+j] -= eta*this->o##x[i] *this->d##y[j]
+// http://d.hatena.ne.jp/echizen_tm/20110627/1309188711
+// ∂loss(w, x, t) / ∂w = ∂(λ - twx + α * w^2 / 2) / ∂w = - tx + αw
+#define OPT_CALC2(n, x, y)		this->w##x[i*n+j] -= eta*this->o##x[i] *this->d##y[j] +this->w##x[i*n+j]*1e-8
 #endif
 
 typedef struct {
@@ -154,10 +167,10 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, char *fil
 	this->w2 = malloc(sizeof(double)*(this->hid+1)*this->out);
 
 	if (filename) {
-		for(int i=0; i<(this->in+1)*this->hid; i++) {
+		for (int i=0; i<(this->in+1)*this->hid; i++) {
 			fscanf(fp, "%lf ", &this->w1[i]);
 		}
-		for(int i=0; i<(this->hid+1)*this->out; i++) {
+		for (int i=0; i<(this->hid+1)*this->out; i++) {
 			fscanf(fp, "%lf ", &this->w2[i]);
 		}
 		fclose(fp);
@@ -247,8 +260,7 @@ void CatsEye_forward(CatsEye *this, double *x)
 			this->xi3[j] += this->w2[i*this->out+j]*this->o2[i];
 		}*/
 		this->xi3[j] = dotT(&this->w2[j], this->o2, this->hid+1, this->out);
-		this->o3[j] = this->xi3[j];
-//		this->o3[j] = ACTIVATION_FUNCTION(this->xi3[j]);
+		this->o3[j] = ACT2(this->xi3[j]);
 	}
 }
 
@@ -279,28 +291,31 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 			// calculate the error of output layer
 			for (int i=0; i<this->out; i++) {
 #ifndef CATS_LOSS_MSE
+				// http://d.hatena.ne.jp/echizen_tm/20110606/1307378609
+				// E = max(0, -twx), ∂E / ∂w = max(0, -tx)
 				if (((int*)t)[sample] == i) {	// 1-of-K
 					this->d3[i] = this->o3[i]-1;
 				} else {
 					this->d3[i] = this->o3[i];
 				}
 #else
+				// http://qiita.com/Ugo-Nama/items/04814a13c9ea84978a4c
+				// https://github.com/nyanp/tiny-cnn/wiki/%E5%AE%9F%E8%A3%85%E3%83%8E%E3%83%BC%E3%83%88
 				this->d3[i] = this->o3[i]-((double*)t)[sample*this->out+i];
-//				this->d3[i] *= DACTIVATION_FUNCTION(this->o3[i]);
 #endif
 				// AdaGrad (http://qiita.com/ak11/items/7f63a1198c345a138150)
 //				this->e3[i] += this->d3[i]*this->d3[i];
 				OPT_CALC1(3);
 			}
 			// update the weights of output layer
-			for (int i=0; i<this->hid+1; i++) {
+/*			for (int i=0; i<this->hid+1; i++) {
 				for (int j=0; j<this->out; j++) {
 					//this->w2[i*this->out+j] -= eta*this->d3[j]*this->o2[i];
 //					this->w2[i*this->out+j] -= eta*this->o2[i] /sqrt(eps+this->e3[j]) *this->d3[j];
 					OPT_CALC2(this->out, 2, 3);
 				}
 				//muladd(&this->w2[i*this->out], this->d3, -eta*this->o2[i], this->out);
-			}
+			}*/
 			// calculate the error of hidden layer
 			for (int i=0; i<this->hid; i++) {
 /*				double tmp = 0;
@@ -312,6 +327,15 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 				OPT_CALC1(2);
 			}
 			this->d2[this->hid] = dot(&this->w2[this->hid*this->out], this->d3, this->out) * DACTIVATION_FUNCTION(this->o2[this->hid]);	// o2 = f(z)
+			// update the weights of output layer
+			for (int i=0; i<this->hid+1; i++) {
+				for (int j=0; j<this->out; j++) {
+					//this->w2[i*this->out+j] -= eta*this->d3[j]*this->o2[i];
+//					this->w2[i*this->out+j] -= eta*this->o2[i] /sqrt(eps+this->e3[j]) *this->d3[j];
+					OPT_CALC2(this->out, 2, 3);
+				}
+				//muladd(&this->w2[i*this->out], this->d3, -eta*this->o2[i], this->out);
+			}
 			// update the weights of hidden layer
 			for (int i=0; i<this->in+1; i++) {
 				for (int j=0; j<this->hid; j++) {

@@ -22,8 +22,9 @@ int main()
 {
 	int size = 64;		// 入出力層(8x8)
 //	int hidden = 16;	// 隠れ層
-	int hidden = 32;	// 隠れ層
-//	int hidden = 48;	// 隠れ層
+//	int hidden = 32;	// 隠れ層
+	int hidden = 48;	// 隠れ層
+//	int hidden = 56;	// 隠れ層
 //	int hidden = 64;	// 隠れ層
 	int sample = 1797;
 
@@ -67,11 +68,11 @@ int main()
 //	CatsEye_train(&cat, x, x, sample-1, 10000, 0.01);	// AdaGrad[127]
 //	CatsEye_train(&cat, x, x, sample-1, 10000, 1e-4);	// Adam, RMSpropGraves, SGD[89.0]
 	//CatsEye_train(&cat, x, x, 50, 30000, 1e-3);		// AdaGrad[h48/7.2]
-	CatsEye_train(&cat, x, x, 50, 100000, 1e-4);		// SGD[h48/0.48], SGD[h64/0.000058]
+	CatsEye_train(&cat, x, x, 50, 100000, 1e-4);		// SGD[h48/0.25], SGD[h56/0.002], SGD[h64/0.000013]
 	//CatsEye_train(&cat, x, x, 50, 1900, 1e-2);		// SGD[h48+sigmoid/0.000099]
 	//CatsEye_train(&cat, x, x, sample-1, 1900, 1e-3);	// SGD[h48+sigmoid/0.000063]
 	//CatsEye_train(&cat, x, x, sample-1, 5500, 1e-4);	// SGD[h48+sigmoid/0.0029]
-//	CatsEye_train(&cat, x, x, sample-1, 10000, 1e-5);	// SGD[27.0]
+//	CatsEye_train(&cat, x, x, sample-1, 10000, 1e-5);	// SGD[27.0], SGD[h56/4.6], SGD[h64/3.5]
 	//CatsEye_train(&cat, x, x, sample-1, 30000, 1e-5);	// SGD[h48/8.8], SGD[h48+sigmoid/0.0047]
 	//CatsEye_train(&cat, x, x, sample-1, 10000, 1e-6);	// SGD[78.0], SGD/tanh[51.4]
 	printf("Training complete\n");
