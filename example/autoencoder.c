@@ -6,6 +6,7 @@
 
 // gcc autoencoder.c -o autoencoder -lm -Ofast -fopenmp -lgomp
 // clang autoencoder.c -o autoencoder -lm -Ofast
+//#define CATS_AUTOENCODER
 #define CATS_LOSS_MSE
 //#define CATS_OPT_ADAGRAD
 //#define CATS_OPT_ADAM
@@ -72,7 +73,7 @@ int main()
 	//CatsEye_train(&cat, x, x, 50, 1900, 1e-2);		// SGD[h48+sigmoid/0.000099]
 	//CatsEye_train(&cat, x, x, sample-1, 1900, 1e-3);	// SGD[h48+sigmoid/0.000063]
 	//CatsEye_train(&cat, x, x, sample-1, 5500, 1e-4);	// SGD[h48+sigmoid/0.0029]
-//	CatsEye_train(&cat, x, x, sample-1, 10000, 1e-5);	// SGD[27.0], SGD[h56/4.6], SGD[h64/3.5]
+//	CatsEye_train(&cat, x, x, sample-1, 10000, 1e-5);	// SGD[27.0], SGD[h56/4.6], SGD[h64/3.5], SGD[h16/128]
 	//CatsEye_train(&cat, x, x, sample-1, 30000, 1e-5);	// SGD[h48/8.8], SGD[h48+sigmoid/0.0047]
 	//CatsEye_train(&cat, x, x, sample-1, 10000, 1e-6);	// SGD[78.0], SGD/tanh[51.4]
 	printf("Training complete\n");

@@ -16,41 +16,46 @@
 //#define CATS_RELU
 //#define CATS_ABS
 
-#ifdef CATS_SigmoidCrossEntropyLoss
+//#define CATS_SIGMOID_CROSSENTROPY
+#ifdef CATS_SIGMOID_CROSSENTROPY
 // sigmoid function with cross entropy loss
 #define CATS_SIGMOID
-#define ACT2(x)				ACTIVATION_FUNCTION(x)
+#define s_gain			10
+#define ACT2(x)			ACT1(x)
+#define DACT2(x)		DACT1(x)
 // SoftmaxWithLoss
 #else
 // identify function with mse loss
-#define ACT2(x)				(x)
+#define s_gain			1
+#define ACT2(x)			(x)
+#define DACT2(x)		1
 #endif
 
 // activation function and derivative of activation function
 #ifdef CATS_SIGMOID
 // sigmoid function
-#define ACTIVATION_FUNCTION(x)		(1.0 / (1.0 + exp(-x)))
-#define DACTIVATION_FUNCTION(x)		((1.0-x)*x)	// ((1.0-sigmod(x))*sigmod(x))
+#define ACT1(x)			(1.0 / (1.0 + exp(-x * s_gain)))
+#define DACT1(x)		((1.0-x)*x * s_gain)	// ((1.0-sigmod(x))*sigmod(x))
 #elif defined CATS_TANH
 // tanh function
-#define ACTIVATION_FUNCTION(x)		(tanh(x))
-#define DACTIVATION_FUNCTION(x)		(1.0-x*x)	// (1.0-tanh(x)*tanh(x))
+#define ACT1(x)			(tanh(x))
+#define DACT1(x)		(1.0-x*x)		// (1.0-tanh(x)*tanh(x))
 #elif defined CATS_SCALEDTANH
 // scaled tanh function
-#define ACTIVATION_FUNCTION(x)		(1.7159 * tanh(2.0/3.0 * x))
-#define DACTIVATION_FUNCTION(x)		((2.0/3.0)/1.7159 * (1.7159-x)*(1.7159+x))
+#define ACT1(x)			(1.7159 * tanh(2.0/3.0 * x))
+#define DACT1(x)		((2.0/3.0)/1.7159 * (1.7159-x)*(1.7159+x))
 #elif defined CATS_RELU
 // rectified linear unit function
-#define ACTIVATION_FUNCTION(x)		(x>0 ? x : 0.0)
-#define DACTIVATION_FUNCTION(x)		(x>0 ? 1.0 : 0.0)
+#define ACT1(x)			(x>0 ? x : 0.0)
+#define DACT1(x)		(x>0 ? 1.0 : 0.0)
 #elif defined CATS_ABS
 // abs function
-#define ACTIVATION_FUNCTION(x)		(x / (1.0 + fabs(x)))
-#define DACTIVATION_FUNCTION(x)		(1.0 / (1.0 + fabs(x))*(1.0 + fabs(x)))
+#define ACT1(x)			(x / (1.0 + fabs(x)))
+#define DACT1(x)		(1.0 / (1.0 + fabs(x))*(1.0 + fabs(x)))
 #else
 // identity function (output only)
-#define ACTIVATION_FUNCTION(x)		(x)
-#define DACTIVATION_FUNCTION(x)		(1.0)
+#define ACT1(x)			(x)
+#define DACT1(x)		(1.0)
 #endif
 
 #ifdef CATS_OPT_ADAGRAD
@@ -98,9 +103,10 @@
 
 #else
 // SGD (Vanilla update)
+#define CATS_OPT_SGD
 #define OPT_CALC1(x)
 //#define OPT_CALC2(n, x, y)		this->w##x[i*n+j] -= eta*this->o##x[i] *this->d##y[j]
-// http://d.hatena.ne.jp/echizen_tm/20110627/1309188711
+// SVM (http://d.hatena.ne.jp/echizen_tm/20110627/1309188711)
 // ∂loss(w, x, t) / ∂w = ∂(λ - twx + α * w^2 / 2) / ∂w = - tx + αw
 #define OPT_CALC2(n, x, y)		this->w##x[i*n+j] -= eta*this->o##x[i] *this->d##y[j] +this->w##x[i*n+j]*1e-8
 #endif
@@ -232,6 +238,15 @@ double dotT(double *mat1, double *vec1, int r, int c)
 	}
 	return s;
 }
+/*void transpose(double *src, double *dst, int N, int M)
+{
+//	#pragma omp parallel for
+	for (int i=0; i<M; i++) {
+		for (int j=0; j<N; j++) {
+			*dst++ = src[M*j + i];
+		}
+	}
+}*/
 
 // caluculate forward propagation of input x
 void CatsEye_forward(CatsEye *this, double *x)
@@ -239,7 +254,7 @@ void CatsEye_forward(CatsEye *this, double *x)
 	// calculation of input layer
 //	memcpy(this->xi1, x, this->in*sizeof(double));
 	memcpy(this->o1, x, this->in*sizeof(double));
-	this->o1[this->in] = 1;
+	this->o1[this->in] = 1;	// bias
 
 	// caluculation of hidden layer
 //	#pragma omp parallel for
@@ -249,9 +264,9 @@ void CatsEye_forward(CatsEye *this, double *x)
 			this->xi2[j] += this->w1[i*this->hid+j]*this->o1[i];
 		}*/
 		this->xi2[j] = dotT(&this->w1[j], this->o1, this->in+1, this->hid);
-		this->o2[j] = ACTIVATION_FUNCTION(this->xi2[j]);
+		this->o2[j] = ACT1(this->xi2[j]);
 	}
-	this->o2[this->hid] = 1;
+	this->o2[this->hid] = 1;	// bias
 
 	// caluculation of output layer
 	for (int j=0; j<this->out; j++) {
@@ -274,19 +289,21 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 {
 	for (int times=0; times<repeat; times++) {
 		double err = 0;
-//		memset(this->e3, 0, sizeof(double)*this->out);
-//		memset(this->e2, 0, sizeof(double)*this->hid);
-#ifndef CATS_MINI_BATCH
+#ifndef CATS_OPT_SGD
+		memset(this->e3, 0, sizeof(double)*this->out);
+		memset(this->e2, 0, sizeof(double)*this->hid);
+#endif
+#ifdef CATS_MINI_BATCH
 		for (int sample=0; sample<N; sample++) {
 			// forward propagation
 			CatsEye_forward(this, x+sample*this->in);
 #else
-		for (int sample=0; sample<100; sample++) {
+		for (int n=0; n<100; n++) {
 			// forward propagation
 			//srand((unsigned)time(NULL));
-			//int n = ((double)rand()+1.0)/((double)RAND_MAX+2.0) * N;
-			int n = (rand()/(double)RAND_MAX) * N;
-			CatsEye_forward(this, x+n*this->in);
+			//int sample = ((double)rand()+1.0)/((double)RAND_MAX+2.0) * N;
+			int sample = (rand()/(double)RAND_MAX) * N;
+			CatsEye_forward(this, x+sample*this->in);
 #endif
 			// calculate the error of output layer
 			for (int i=0; i<this->out; i++) {
@@ -302,31 +319,32 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 				// http://qiita.com/Ugo-Nama/items/04814a13c9ea84978a4c
 				// https://github.com/nyanp/tiny-cnn/wiki/%E5%AE%9F%E8%A3%85%E3%83%8E%E3%83%BC%E3%83%88
 				this->d3[i] = this->o3[i]-((double*)t)[sample*this->out+i];
+//				this->d3[i] = (this->o3[i]-((double*)t)[sample*this->out+i]) * DACT2(this->o3[i]);
 #endif
 				// AdaGrad (http://qiita.com/ak11/items/7f63a1198c345a138150)
 //				this->e3[i] += this->d3[i]*this->d3[i];
 				OPT_CALC1(3);
 			}
-			// update the weights of output layer
-/*			for (int i=0; i<this->hid+1; i++) {
-				for (int j=0; j<this->out; j++) {
-					//this->w2[i*this->out+j] -= eta*this->d3[j]*this->o2[i];
-//					this->w2[i*this->out+j] -= eta*this->o2[i] /sqrt(eps+this->e3[j]) *this->d3[j];
-					OPT_CALC2(this->out, 2, 3);
-				}
-				//muladd(&this->w2[i*this->out], this->d3, -eta*this->o2[i], this->out);
-			}*/
+#ifndef CATS_AUTOENCODER
 			// calculate the error of hidden layer
 			for (int i=0; i<this->hid; i++) {
 /*				double tmp = 0;
 				for (int l=0; l<this->out; l++) {
 					tmp += this->w2[j*this->out+l]*this->d3[l];
 				}*/
-				//this->d2[j] = tmp * DACTIVATION_FUNCTION(this->xi2[j]);	// xi2 = z
-				this->d2[i] = dot(&this->w2[i*this->out], this->d3, this->out) * DACTIVATION_FUNCTION(this->o2[i]);	// o2 = f(z)
+				//this->d2[j] = tmp * DACT1(this->xi2[j]);	// xi2 = z
+				this->d2[i] = dot(&this->w2[i*this->out], this->d3, this->out) * DACT1(this->o2[i]);	// o2 = f(z)
 				OPT_CALC1(2);
 			}
-			this->d2[this->hid] = dot(&this->w2[this->hid*this->out], this->d3, this->out) * DACTIVATION_FUNCTION(this->o2[this->hid]);	// o2 = f(z)
+			this->d2[this->hid] = dot(&this->w2[this->hid*this->out], this->d3, this->out) * DACT1(this->o2[this->hid]);	// o2 = f(z)
+			// update the weights of hidden layer
+			for (int i=0; i<this->in+1; i++) {
+				for (int j=0; j<this->hid; j++) {
+					OPT_CALC2(this->hid, 1, 2);
+				}
+				//muladd(&this->w1[i*this->hid], this->d2, -eta*this->o1[i], this->hid);
+			}
+#endif
 			// update the weights of output layer
 			for (int i=0; i<this->hid+1; i++) {
 				for (int j=0; j<this->out; j++) {
@@ -336,13 +354,16 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 				}
 				//muladd(&this->w2[i*this->out], this->d3, -eta*this->o2[i], this->out);
 			}
-			// update the weights of hidden layer
-			for (int i=0; i<this->in+1; i++) {
+#ifdef CATS_AUTOENCODER
+			// tied weight
+			double *dst = this->w1;
+			for (int i=0; i<this->out; i++) {
 				for (int j=0; j<this->hid; j++) {
-					OPT_CALC2(this->hid, 1, 2);
+					*dst++ = this->w2[this->out*j + i];
 				}
-				//muladd(&this->w1[i*this->hid], this->d2, -eta*this->o1[i], this->hid);
 			}
+			//transpose(this->w1, this->w2, this->in+1, this->hid);
+#endif
 
 			// calculate the mean squared error
 			double mse = 0;
