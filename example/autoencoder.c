@@ -63,17 +63,18 @@ int main()
 //	CatsEye_train(&cat, x, x, 1, 50/*repeat*/, 0.01);
 //	CatsEye_train(&cat, x, x, 2, 1000/*repeat*/, 0.01);
 //	CatsEye_train(&cat, x, x, 3, 1000/*repeat*/, 0.001);
-//	CatsEye_train(&cat, x, x, 10, 10000, 0.001);		// Success by SGD
-//	CatsEye_train(&cat, x, x, 50, 1000000, 1e-5);		// SGD[3.0], Momentum[9.0], Adam[96], SGD[h48/0.06]
+//	CatsEye_train(&cat, x, x, 10, 1000, 0.001);		// Success by SGD[0.0]
+	//CatsEye_train(&cat, x, x, 50, 1000000, 1e-5);		// SGD[3.0], Momentum[9.0], Adam[96], SGD[h48/0.06]
 //	CatsEye_train(&cat, x, x, 100, 100000, 1e-5);		// SGD[h48/4.5]
 //	CatsEye_train(&cat, x, x, sample-1, 10000, 0.01);	// AdaGrad[127]
 //	CatsEye_train(&cat, x, x, sample-1, 10000, 1e-4);	// Adam, RMSpropGraves, SGD[89.0]
 	//CatsEye_train(&cat, x, x, 50, 30000, 1e-3);		// AdaGrad[h48/7.2]
-	CatsEye_train(&cat, x, x, 50, 100000, 1e-4);		// SGD[h48/0.25], SGD[h56/0.002], SGD[h64/0.000013]
+//	CatsEye_train(&cat, x, x, 50, 100000, 1e-4);		// SGD[h48/0.25], SGD[h56/0.002], SGD[h64/0.000013]
 	//CatsEye_train(&cat, x, x, 50, 1900, 1e-2);		// SGD[h48+sigmoid/0.000099]
 	//CatsEye_train(&cat, x, x, sample-1, 1900, 1e-3);	// SGD[h48+sigmoid/0.000063]
 	//CatsEye_train(&cat, x, x, sample-1, 5500, 1e-4);	// SGD[h48+sigmoid/0.0029]
-//	CatsEye_train(&cat, x, x, sample-1, 10000, 1e-5);	// SGD[27.0], SGD[h56/4.6], SGD[h64/3.5], SGD[h16/128]
+	CatsEye_train(&cat, x, x, sample-1, 10000, 1e-5);	// SGD[27.0], SGD[h56/4.6], SGD[h64/3.5], SGD[h16/128]
+	//CatsEye_train(&cat, x, x, sample-1, 500, 1e-4);	// SGD[52.3]
 	//CatsEye_train(&cat, x, x, sample-1, 30000, 1e-5);	// SGD[h48/8.8], SGD[h48+sigmoid/0.0047]
 	//CatsEye_train(&cat, x, x, sample-1, 10000, 1e-6);	// SGD[78.0], SGD/tanh[51.4]
 	printf("Training complete\n");
@@ -85,11 +86,12 @@ int main()
 	for (int i=0; i<50; i++) {
 		double mse = 0;
 		CatsEye_forward(&cat, x+size*i);
+		unsigned char *p = &pixels[(i/10)*size*10 + (i%10)*8];
 		for (int j=0; j<size; j++) {
-			pixels[(i/10)*8*8*10+(i%10)*8+(j/8)*8*10+(j%8)] = cat.o3[j] * 255.0;
+			p[(j/8)*8*10+(j%8)] = cat.o3[j] * 255.0;
 			mse += (x[size*i+j]-cat.o3[j])*(x[size*i+j]-cat.o3[j]);
 
-			pixels[5*8*8*10+(i/10)*8*8*10+(i%10)*8+(j/8)*8*10+(j%8)] = x[size*i+j] * 255.0;
+			p[5*size*10+(j/8)*8*10+(j%8)] = x[size*i+j] * 255.0;
 		}
 		printf("mse %lf\n", mse);
 	}

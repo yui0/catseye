@@ -10,6 +10,8 @@
 #include <time.h>
 #include <math.h>
 
+#define CATS_RANDOM
+
 #define CATS_SIGMOID
 //#define CATS_TANH
 //#define CATS_SCALEDTANH
@@ -20,7 +22,7 @@
 #ifdef CATS_SIGMOID_CROSSENTROPY
 // sigmoid function with cross entropy loss
 #define CATS_SIGMOID
-#define s_gain			10
+#define s_gain			1
 #define ACT2(x)			ACT1(x)
 #define DACT2(x)		DACT1(x)
 // SoftmaxWithLoss
@@ -105,10 +107,10 @@
 // SGD (Vanilla update)
 #define CATS_OPT_SGD
 #define OPT_CALC1(x)
-//#define OPT_CALC2(n, x, y)		this->w##x[i*n+j] -= eta*this->o##x[i] *this->d##y[j]
+//#define OPT_CALC2(n, x, y)	this->w##x[i*n+j] -= eta*this->o##x[i] *this->d##y[j]
 // SVM (http://d.hatena.ne.jp/echizen_tm/20110627/1309188711)
 // ∂loss(w, x, t) / ∂w = ∂(λ - twx + α * w^2 / 2) / ∂w = - tx + αw
-#define OPT_CALC2(n, x, y)		this->w##x[i*n+j] -= eta*this->o##x[i] *this->d##y[j] +this->w##x[i*n+j]*1e-8
+#define OPT_CALC2(n, x, y)	this->w##x[i*n+j] -= eta*this->o##x[i] *this->d##y[j] +this->w##x[i*n+j]*1e-8
 #endif
 
 typedef struct {
@@ -257,7 +259,6 @@ void CatsEye_forward(CatsEye *this, double *x)
 	this->o1[this->in] = 1;	// bias
 
 	// caluculation of hidden layer
-//	#pragma omp parallel for
 	for (int j=0; j<this->hid; j++) {
 /*		this->xi2[j] = 0;
 		for (int i=0; i<this->in+1; i++) {
@@ -293,12 +294,12 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 		memset(this->e3, 0, sizeof(double)*this->out);
 		memset(this->e2, 0, sizeof(double)*this->hid);
 #endif
-#ifdef CATS_MINI_BATCH
+#ifndef CATS_RANDOM
 		for (int sample=0; sample<N; sample++) {
 			// forward propagation
 			CatsEye_forward(this, x+sample*this->in);
 #else
-		for (int n=0; n<100; n++) {
+		for (int n=0; n<2000/*N/*100*/; n++) {
 			// forward propagation
 			//srand((unsigned)time(NULL));
 			//int sample = ((double)rand()+1.0)/((double)RAND_MAX+2.0) * N;
@@ -321,7 +322,6 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 				this->d3[i] = this->o3[i]-((double*)t)[sample*this->out+i];
 //				this->d3[i] = (this->o3[i]-((double*)t)[sample*this->out+i]) * DACT2(this->o3[i]);
 #endif
-				// AdaGrad (http://qiita.com/ak11/items/7f63a1198c345a138150)
 //				this->e3[i] += this->d3[i]*this->d3[i];
 				OPT_CALC1(3);
 			}
@@ -363,6 +363,13 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 				}
 			}
 			//transpose(this->w1, this->w2, this->in+1, this->hid);
+			/*double *dst = this->w2;
+			for (int i=0; i<this->hid; i++) {
+				for (int j=0; j<this->in; j++) {
+					*dst++ = this->w1[this->hid*j + i];
+				}
+				dst++;
+			}*/
 #endif
 
 			// calculate the mean squared error
