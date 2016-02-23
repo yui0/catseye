@@ -8,15 +8,15 @@ for more information, see example/
 
 # Demo
 - Recognizing hand-written, MNIST digits
-  -http://yui0.github.io/catseye/example/html/index.html
+  - http://yui0.github.io/catseye/example/html/index.html
 - Function approximation
-  -![sin](example/sin.png)
-  -![quadratic function](example/quadratic.png)
+  - ![sin](example/sin.png)
+  - ![quadratic function](example/quadratic.png)
 - Autoencoder
-  -epoch=100![autoencoder](mnist_autoencoder_100.png)
-  -epoch=500![autoencoder](mnist_autoencoder_500.png)
-  -epoch=1500![autoencoder](mnist_autoencoder_1500.png)
-  -epoch=5500![autoencoder](mnist_autoencoder_5500.png)
+  - epoch=100![autoencoder](mnist_autoencoder_100.png)
+  - epoch=500![autoencoder](mnist_autoencoder_500.png)
+  - epoch=1500![autoencoder](mnist_autoencoder_1500.png)
+  - epoch=5500![autoencoder](mnist_autoencoder_5500.png)
 
 # Refrence
 - Multilayer perceptron [http://kivantium.hateblo.jp/entry/2014/12/22/004640]
