@@ -13,10 +13,10 @@ for more information, see example/
   - ![sin](example/sin.png)
   - ![quadratic function](example/quadratic.png)
 - Autoencoder
-  - ![epoch=100](mnist_autoencoder_100.png)
-  - ![epoch=500](mnist_autoencoder_500.png)
-  - ![epoch=1500](mnist_autoencoder_1500.png)
-  - ![epoch=5500](mnist_autoencoder_5500.png)
+  - ![epoch=100](example/mnist_autoencoder_100.png)
+  - ![epoch=500](example/mnist_autoencoder_500.png)
+  - ![epoch=1500](example/mnist_autoencoder_1500.png)
+  - ![epoch=5500](example/mnist_autoencoder_5500.png)
 
 # Refrence
 - Multilayer perceptron [http://kivantium.hateblo.jp/entry/2014/12/22/004640]
