@@ -7,6 +7,7 @@
 // gcc mnist_autoencoder.c -o mnist_autoencoder -lm -Ofast -fopenmp -lgomp
 // clang mnist_autoencoder.c -o mnist_autoencoder -lm -Ofast
 //#define CATS_AUTOENCODER
+#define CATS_SIGMOID_CROSSENTROPY
 #define CATS_LOSS_MSE
 //#define CATS_OPT_ADAGRAD
 //#define CATS_OPT_ADAM
@@ -22,7 +23,9 @@
 int main()
 {
 	int size = 28*28;	// 入出力層(28x28)
-	int hidden = 64;	// 隠れ層
+	//int hidden = 10;	// 隠れ層
+	int hidden = 16;	// 隠れ層
+	//int hidden = 64;	// 隠れ層
 	//int hidden = 500;	// 隠れ層
 	int sample = 60000;
 
@@ -51,12 +54,21 @@ int main()
 
 	// 多層パーセプトロンの訓練
 	printf("Starting training using (stochastic) gradient descent\n");
+//	CatsEye_train(&cat, x, x, sample-1, 100, 1e-1);		// SGD[h64/9.3]
+
+//	CatsEye_train(&cat, x, x, sample-1, 100, 1e-2);		// SGD[h64/3.3], SGD[h64+s/7.4/OK]
+//	CatsEye_train(&cat, x, x, sample-1, 500, 1e-2);		// SGD[h64/3.7], SGD[h64+s/4.1/OK]
+	CatsEye_train(&cat, x, x, sample-1, 1500, 1e-2);	// AE+sigmoid[h64/14.6], SGD[h16/11.5], SGD[h64+s/2.9/OK]
+//	CatsEye_train(&cat, x, x, sample-1, 5500, 1e-2);	// SGD[h10/12.6]
+
+//	CatsEye_train(&cat, x, x, sample-1, 100, 1e-3);		// SGD[h64/5.9]
+//	CatsEye_train(&cat, x, x, sample-1, 100, 1e-4);		// SGD[h64/9.8]
 //	CatsEye_train(&cat, x, x, sample-1, 100, 1e-5);		// SGD[h64/20.0]
 //	CatsEye_train(&cat, x, x, sample-1, 500, 1e-5);		// SGD[h64/15.0]
-	CatsEye_train(&cat, x, x, sample-1, 1500, 1e-5);	// SGD[h64/15.0]
+//	CatsEye_train(&cat, x, x, sample-1, 1500, 1e-5);	// SGD[h64/6.6]
 //	CatsEye_train(&cat, x, x, sample-1, 5500, 1e-5);	// SGD[h64/3.9]
 	printf("Training complete\n");
-//	CatsEye_save(&cat, "mnist_autoencoder.weights");
+	CatsEye_save(&cat, "mnist_autoencoder.weights");
 //	CatsEye_saveJson(&cat, "mnist_autoencoder.json");
 
 	// 結果の表示
@@ -71,23 +83,26 @@ int main()
 
 			p[5*size*10+(j/28)*28*10+(j%28)] = x[size*i+j] * 255.0;
 		}
-		printf("mse %lf\n", mse);
+		printf("mse %lf\n", mse/size);
 	}
 	stbi_write_png("mnist_autoencoder.png", 28*10, 28*10, 1, pixels, 28*10);
 
-	// 重みをスケーリング
-/*	double max = cat.w1[0];
-	double min = cat.w1[0];
-	for (int i=0; i<(size+1)*hidden; i++) {
-		if (max < cat.w1[i]) max = cat.w1[i];
-		if (min > cat.w1[i]) min = cat.w1[i];
+	for (int n=0; n<10/*hidden*/; n++) {
+		// 重みをスケーリング
+//		double *w = &cat.w1[n*(size+1)];
+		double *w = &cat.w1[n];
+		double max = w[0];
+		double min = w[0];
+		for (int i=1; i<size; i++) {
+			if (max < w[i *hidden]) max = w[i *hidden];
+			if (min > w[i *hidden]) min = w[i *hidden];
+		}
+		//printf("%lf %lf\n", max, min);
+		for (int i=0; i<size; i++) {
+			pixels[n*size + (i/28)*28 + i%28] = ((w[i *hidden] - min) / (max - min)) * 255.0;
+		}
 	}
-	for (int i=0; i<(size+1)*hidden; i++) {
-		cat.w1[i] = (cat.w1[i] - min) / (max - min);
-		//cat.w1[i] *= 255.0;
-		pixels[i] = cat.w1[i] * 255.0;
-	}
-	stbi_write_png("autoencoder_weights.png", size+1, hidden, 1, pixels, size+1);*/
+	stbi_write_png("mnist_autoencoder_weights.png", 28, 28*10/*hidden*/, 1, pixels, /*size+1*/28);
 	free(pixels);
 
 	return 0;

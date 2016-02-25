@@ -54,6 +54,10 @@
 // abs function
 #define ACT1(x)			(x / (1.0 + fabs(x)))
 #define DACT1(x)		(1.0 / (1.0 + fabs(x))*(1.0 + fabs(x)))
+/*#elif defined CATS_SOFTMAX
+// softmax function (output only)
+#define ACT1(x)			(x / sum(exp(x)))
+#define DACT1(x)		(1.0)*/
 #else
 // identity function (output only)
 #define ACT1(x)			(x)
@@ -299,7 +303,7 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 			// forward propagation
 			CatsEye_forward(this, x+sample*this->in);
 #else
-		for (int n=0; n<2000/*N/*100*/; n++) {
+		for (int n=0; n<1500/*N*/; n++) {
 			// forward propagation
 			//srand((unsigned)time(NULL));
 			//int sample = ((double)rand()+1.0)/((double)RAND_MAX+2.0) * N;
