@@ -329,7 +329,6 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 //				this->e3[i] += this->d3[i]*this->d3[i];
 				OPT_CALC1(3);
 			}
-#ifndef CATS_AUTOENCODER
 			// calculate the error of hidden layer
 			for (int i=0; i<this->hid; i++) {
 /*				double tmp = 0;
@@ -348,7 +347,6 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 				}
 				//muladd(&this->w1[i*this->hid], this->d2, -eta*this->o1[i], this->hid);
 			}
-#endif
 			// update the weights of output layer
 			for (int i=0; i<this->hid+1; i++) {
 				for (int j=0; j<this->out; j++) {
@@ -360,20 +358,19 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 			}
 #ifdef CATS_AUTOENCODER
 			// tied weight
-			double *dst = this->w1;
+/*			double *dst = this->w1;
 			for (int i=0; i<this->out; i++) {
 				for (int j=0; j<this->hid; j++) {
 					*dst++ = this->w2[this->out*j + i];
 				}
-			}
-			//transpose(this->w1, this->w2, this->in+1, this->hid);
-			/*double *dst = this->w2;
+			}*/
+			double *dst = this->w2;
 			for (int i=0; i<this->hid; i++) {
 				for (int j=0; j<this->in; j++) {
-					*dst++ = this->w1[this->hid*j + i];
+//					*dst++ = this->w1[this->hid*j + i];
+					this->w2[j + this->hid*i] = this->w1[this->hid*j + i];
 				}
-				dst++;
-			}*/
+			}
 #endif
 
 			// calculate the mean squared error
@@ -480,4 +477,19 @@ int CatsEye_saveBin(CatsEye *this, char *filename)
 
 	fclose(fp);
 	return 0;
+}
+
+// w1
+void CatsEye_visualizeWeights(CatsEye *this, int n, int size, unsigned char *p, int width)
+{
+	double *w = &this->w1[n];
+	double max = w[0];
+	double min = w[0];
+	for (int i=1; i<this->in; i++) {
+		if (max < w[i * this->hid]) max = w[i * this->hid];
+		if (min > w[i * this->hid]) min = w[i * this->hid];
+	}
+	for (int i=0; i<this->in; i++) {
+		p[(i/size)*width + i%size] = ((w[i * this->hid] - min) / (max - min)) * 255.0;
+	}
 }

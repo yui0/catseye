@@ -6,7 +6,7 @@
 
 // gcc mnist_autoencoder.c -o mnist_autoencoder -lm -Ofast -fopenmp -lgomp
 // clang mnist_autoencoder.c -o mnist_autoencoder -lm -Ofast
-//#define CATS_AUTOENCODER
+#define CATS_AUTOENCODER
 #define CATS_SIGMOID_CROSSENTROPY
 #define CATS_LOSS_MSE
 //#define CATS_OPT_ADAGRAD
@@ -24,8 +24,8 @@ int main()
 {
 	int size = 28*28;	// 入出力層(28x28)
 	//int hidden = 10;	// 隠れ層
-	int hidden = 16;	// 隠れ層
-	//int hidden = 64;	// 隠れ層
+	//int hidden = 16;	// 隠れ層
+	int hidden = 64;	// 隠れ層
 	//int hidden = 500;	// 隠れ層
 	int sample = 60000;
 
@@ -87,6 +87,7 @@ int main()
 	}
 	stbi_write_png("mnist_autoencoder.png", 28*10, 28*10, 1, pixels, 28*10);
 
+#if 0
 	for (int n=0; n<10/*hidden*/; n++) {
 		// 重みをスケーリング
 //		double *w = &cat.w1[n*(size+1)];
@@ -103,6 +104,13 @@ int main()
 		}
 	}
 	stbi_write_png("mnist_autoencoder_weights.png", 28, 28*10/*hidden*/, 1, pixels, /*size+1*/28);
+#endif
+	memset(pixels, 0, 28*28*100);
+	int m = (hidden<100 ? hidden : 100);
+	for (int n=0; n<m; n++) {
+		CatsEye_visualizeWeights(&cat, n, 28, &pixels[(n/10)*28*28*10 + (n%10)*28], 28*10);
+	}
+	stbi_write_png("mnist_autoencoder_weights.png", 28*10, 28*10, 1, pixels, 28*10);
 	free(pixels);
 
 	return 0;

@@ -4,9 +4,10 @@
 //		©2016 Yuichiro Nakada
 //---------------------------------------------------------
 
-// gcc autoencoder.c -o autoencoder -lm -Ofast -fopenmp -lgomp
-// clang autoencoder.c -o autoencoder -lm -Ofast
+// gcc digits_autoencoder.c -o digits_autoencoder -lm -Ofast -fopenmp -lgomp
+// clang digits_autoencoder.c -o digits_autoencoder -lm -Ofast
 //#define CATS_AUTOENCODER
+//#define CATS_SIGMOID_CROSSENTROPY
 #define CATS_LOSS_MSE
 //#define CATS_OPT_ADAGRAD
 //#define CATS_OPT_ADAM
@@ -22,9 +23,9 @@
 int main()
 {
 	int size = 64;		// 入出力層(8x8)
-//	int hidden = 16;	// 隠れ層
+	int hidden = 16;	// 隠れ層
 //	int hidden = 32;	// 隠れ層
-	int hidden = 48;	// 隠れ層
+//	int hidden = 48;	// 隠れ層
 //	int hidden = 56;	// 隠れ層
 //	int hidden = 64;	// 隠れ層
 	int sample = 1797;
@@ -78,8 +79,8 @@ int main()
 	//CatsEye_train(&cat, x, x, sample-1, 30000, 1e-5);	// SGD[h48/8.8], SGD[h48+sigmoid/0.0047]
 	//CatsEye_train(&cat, x, x, sample-1, 10000, 1e-6);	// SGD[78.0], SGD/tanh[51.4]
 	printf("Training complete\n");
-//	CatsEye_save(&cat, "autoencoder.weights");
-//	CatsEye_saveJson(&cat, "autoencoder.json");
+//	CatsEye_save(&cat, "digits_autoencoder.weights");
+//	CatsEye_saveJson(&cat, "digits_autoencoder.json");
 
 	// 結果の表示
 	unsigned char *pixels = malloc(size*100);
@@ -95,22 +96,24 @@ int main()
 		}
 		printf("mse %lf\n", mse);
 	}
-	stbi_write_png("autoencoder.png", 8*10, 8*10, 1, pixels, 8*10);
+	stbi_write_png("digits_autoencoder.png", 8*10, 8*10, 1, pixels, 8*10);
 
-	// 重みをスケーリング
-//	unsigned char *pixels = malloc((size+1)*hidden);
-	double max = cat.w1[0];
-	double min = cat.w1[0];
-	for (int i=0; i<(size+1)*hidden; i++) {
-		if (max < cat.w1[i]) max = cat.w1[i];
-		if (min > cat.w1[i]) min = cat.w1[i];
+	for (int n=0; n<10/*hidden*/; n++) {
+		// 重みをスケーリング
+//		double *w = &cat.w1[n*(size+1)];
+		double *w = &cat.w1[n];
+		double max = w[0];
+		double min = w[0];
+		for (int i=1; i<size; i++) {
+			if (max < w[i *hidden]) max = w[i *hidden];
+			if (min > w[i *hidden]) min = w[i *hidden];
+		}
+		//printf("%lf %lf\n", max, min);
+		for (int i=0; i<size; i++) {
+			pixels[n*size + (i/8)*8 + i%8] = ((w[i *hidden] - min) / (max - min)) * 255.0;
+		}
 	}
-	for (int i=0; i<(size+1)*hidden; i++) {
-		cat.w1[i] = (cat.w1[i] - min) / (max - min);
-		//cat.w1[i] *= 255.0;
-		pixels[i] = cat.w1[i] * 255.0;
-	}
-	stbi_write_png("autoencoder_weights.png", size+1, hidden, 1, pixels, size+1);
+	stbi_write_png("digits_autoencoder_weights.png", 8, 8*10/*hidden*/, 1, pixels, /*size+1*/8);
 	free(pixels);
 
 	return 0;

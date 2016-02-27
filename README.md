@@ -11,10 +11,16 @@ for more information, see example/
   - http://yui0.github.io/catseye/example/html/index.html
 
 - Function approximation
-  - ![sin](example/sin.png)
-  - ![quadratic function](example/quadratic.png)
+
+  ![sin](example/sin.png)
+  ![quadratic function](example/quadratic.png)
 
 - Autoencoder
+  - Unit 64 [tied weight]
+
+  ![epoch=100](example/mnist_autoencoder_u64ae_s100.png "epoch=100")
+  ![epoch=500](example/mnist_autoencoder_u64ae_s500.png "epoch=500")
+  ![epoch=1500](example/mnist_autoencoder_u64ae_s1500.png "epoch=1500")
   - Unit 64
 
   ![epoch=100](example/mnist_autoencoder_u64_s100.png "epoch=100")
