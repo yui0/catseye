@@ -358,12 +358,6 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 			}
 #ifdef CATS_AUTOENCODER
 			// tied weight
-/*			double *dst = this->w1;
-			for (int i=0; i<this->out; i++) {
-				for (int j=0; j<this->hid; j++) {
-					*dst++ = this->w2[this->out*j + i];
-				}
-			}*/
 			double *dst = this->w2;
 			for (int i=0; i<this->hid; i++) {
 				for (int j=0; j<this->in; j++) {

@@ -6,7 +6,7 @@
 
 // gcc mnist_autoencoder.c -o mnist_autoencoder -lm -Ofast -fopenmp -lgomp
 // clang mnist_autoencoder.c -o mnist_autoencoder -lm -Ofast
-#define CATS_AUTOENCODER
+//#define CATS_AUTOENCODER
 #define CATS_SIGMOID_CROSSENTROPY
 #define CATS_LOSS_MSE
 //#define CATS_OPT_ADAGRAD
