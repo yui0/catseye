@@ -21,11 +21,17 @@ for more information, see example/
   ![epoch=100](example/mnist_autoencoder_u64ae_s100.png "epoch=100")
   ![epoch=500](example/mnist_autoencoder_u64ae_s500.png "epoch=500")
   ![epoch=1500](example/mnist_autoencoder_u64ae_s1500.png "epoch=1500")
+
+  ![epoch=100](example/mnist_autoencoder_weights_u64ae_s100.png "epoch=100")
+  ![epoch=500](example/mnist_autoencoder_weights_u64ae_s500.png "epoch=500")
+  ![epoch=1500](example/mnist_autoencoder_weights_u64ae_s1500.png "epoch=1500")
+
   - Unit 64
 
   ![epoch=100](example/mnist_autoencoder_u64_s100.png "epoch=100")
   ![epoch=500](example/mnist_autoencoder_u64_s500.png "epoch=500")
   ![epoch=1500](example/mnist_autoencoder_u64_s1500.png "epoch=1500")
+
   - Unit 16
 
   ![epoch=100](example/mnist_autoencoder_u16_s100.png "epoch=100")
