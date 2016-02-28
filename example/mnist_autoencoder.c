@@ -7,6 +7,7 @@
 // gcc mnist_autoencoder.c -o mnist_autoencoder -lm -Ofast -fopenmp -lgomp
 // clang mnist_autoencoder.c -o mnist_autoencoder -lm -Ofast
 //#define CATS_AUTOENCODER
+#define CATS_DENOISING_AUTOENCODER
 #define CATS_SIGMOID_CROSSENTROPY
 #define CATS_LOSS_MSE
 //#define CATS_OPT_ADAGRAD
@@ -56,9 +57,9 @@ int main()
 	printf("Starting training using (stochastic) gradient descent\n");
 //	CatsEye_train(&cat, x, x, sample-1, 100, 1e-1);		// SGD[h64/9.3]
 
-//	CatsEye_train(&cat, x, x, sample-1, 100, 1e-2);		// SGD[h64/3.3], SGD[h64+s/7.4/OK]
+	CatsEye_train(&cat, x, x, sample-1, 100, 1e-2);		// SGD[h64/3.3], SGD[h64+s/7.4/OK]
 //	CatsEye_train(&cat, x, x, sample-1, 500, 1e-2);		// SGD[h64/3.7], SGD[h64+s/4.1/OK]
-	CatsEye_train(&cat, x, x, sample-1, 1500, 1e-2);	// AE+sigmoid[h64/14.6], SGD[h16/11.5], SGD[h64+s/2.9/OK]
+//	CatsEye_train(&cat, x, x, sample-1, 1500, 1e-2);	// AE+sigmoid[h64/14.6], SGD[h16/11.5], SGD[h64+s/2.9/OK]
 //	CatsEye_train(&cat, x, x, sample-1, 5500, 1e-2);	// SGD[h10/12.6]
 
 //	CatsEye_train(&cat, x, x, sample-1, 100, 1e-3);		// SGD[h64/5.9]

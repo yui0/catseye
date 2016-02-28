@@ -46,6 +46,7 @@ for more information, see example/
 - Neural Networks and Deep Learning [http://nnadl-ja.github.io/nnadl_site_ja/chap1.html]
 - Machine learning [http://hokuts.com/category/%E3%83%97%E3%83%AD%E3%82%B0%E3%83%A9%E3%83%A0/%E6%A9%9F%E6%A2%B0%E5%AD%A6%E7%BF%92/]
 - CS231n Convolutional Neural Networks for Visual Recognition [http://cs231n.github.io/neural-networks-3/#anneal]
+- Hello Autoencoder [http://kiyukuta.github.io/2013/08/20/hello_autoencoder.html]
 
 - Multilayer perceptron [http://kivantium.hateblo.jp/entry/2014/12/22/004640]
 - Weather example [http://arakilab.media.eng.hokudai.ac.jp/~t_ogawa/wiki/index.php?LibSVM]

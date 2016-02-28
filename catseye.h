@@ -57,7 +57,15 @@
 /*#elif defined CATS_SOFTMAX
 // softmax function (output only)
 #define ACT1(x)			(x / sum(exp(x)))
-#define DACT1(x)		(1.0)*/
+    float_t f(const vec_t& v, size_t i) const {
+        float_t alpha = *std::max_element(v.begin(), v.end());
+        float_t numer = std::exp(v[i] - alpha);
+        float_t denom = 0.0;
+        for (auto x : v)
+            denom += std::exp(x - alpha);
+        return numer / denom;
+    }
+#define DACT1(x)		(x * (1.0 - x))*/
 #else
 // identity function (output only)
 #define ACT1(x)			(x)
@@ -253,6 +261,16 @@ double dotT(double *mat1, double *vec1, int r, int c)
 		}
 	}
 }*/
+int binomial(/*int n, */double p)
+{
+//	if (p<0 || p>1) return 0;
+	int c = 0;
+//	for (int i=0; i<n; i++) {
+		double r = rand() / (RAND_MAX + 1.0);
+		if (r < p) c++;
+//	}
+	return c;
+}
 
 // caluculate forward propagation of input x
 void CatsEye_forward(CatsEye *this, double *x)
@@ -261,6 +279,12 @@ void CatsEye_forward(CatsEye *this, double *x)
 //	memcpy(this->xi1, x, this->in*sizeof(double));
 	memcpy(this->o1, x, this->in*sizeof(double));
 	this->o1[this->in] = 1;	// bias
+#ifdef CATS_DENOISING_AUTOENCODER
+	// Denoising Autoencoder (http://kiyukuta.github.io/2013/08/20/hello_autoencoder.html)
+	for (int i=0; i<this->in; i++) {
+		this->o1[i] *= binomial(/*0.8(20%)*//*0.2*/0.5);
+	}
+#endif
 
 	// caluculation of hidden layer
 	for (int j=0; j<this->hid; j++) {
@@ -307,7 +331,8 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 			// forward propagation
 			//srand((unsigned)time(NULL));
 			//int sample = ((double)rand()+1.0)/((double)RAND_MAX+2.0) * N;
-			int sample = (rand()/(double)RAND_MAX) * N;
+//			int sample = (rand()/(double)RAND_MAX) * N;
+			int sample = (rand()/(RAND_MAX+1.0)) * N;
 			CatsEye_forward(this, x+sample*this->in);
 #endif
 			// calculate the error of output layer
