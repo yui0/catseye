@@ -79,8 +79,8 @@ int main()
 		CatsEye_forward(&cat, x+size*i);
 		unsigned char *p = &pixels[(i/10)*size*10 + (i%10)*28];
 		for (int j=0; j<size; j++) {
-			p[(j/28)*28*10+(j%28)] = cat.o3[j] * 255.0;
-			mse += (x[size*i+j]-cat.o3[j])*(x[size*i+j]-cat.o3[j]);
+			p[(j/28)*28*10+(j%28)] = cat.o[2][j] * 255.0;
+			mse += (x[size*i+j]-cat.o[2][j])*(x[size*i+j]-cat.o[2][j]);
 
 			p[5*size*10+(j/28)*28*10+(j%28)] = x[size*i+j] * 255.0;
 		}
@@ -88,24 +88,6 @@ int main()
 	}
 	stbi_write_png("mnist_autoencoder.png", 28*10, 28*10, 1, pixels, 28*10);
 
-#if 0
-	for (int n=0; n<10/*hidden*/; n++) {
-		// 重みをスケーリング
-//		double *w = &cat.w1[n*(size+1)];
-		double *w = &cat.w1[n];
-		double max = w[0];
-		double min = w[0];
-		for (int i=1; i<size; i++) {
-			if (max < w[i *hidden]) max = w[i *hidden];
-			if (min > w[i *hidden]) min = w[i *hidden];
-		}
-		//printf("%lf %lf\n", max, min);
-		for (int i=0; i<size; i++) {
-			pixels[n*size + (i/28)*28 + i%28] = ((w[i *hidden] - min) / (max - min)) * 255.0;
-		}
-	}
-	stbi_write_png("mnist_autoencoder_weights.png", 28, 28*10/*hidden*/, 1, pixels, /*size+1*/28);
-#endif
 	memset(pixels, 0, 28*28*100);
 	int m = (hidden<100 ? hidden : 100);
 	for (int n=0; n<m; n++) {
@@ -115,7 +97,6 @@ int main()
 	free(pixels);
 
 	free(x);
-	free(data);
 	CatsEye__destruct(&cat);
 
 	return 0;
