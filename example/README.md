@@ -14,7 +14,7 @@
   * borrowed from http://yann.lecun.com/exdb/mnist/
   * ref. http://y-uti.hatenablog.jp/entry/2014/07/23/074845
 
-## Multilayer perceptron
+## Sample Program
 * digits_autoencoder.c
   * autoencoder sample
 * digits_train.c and digits_test.c

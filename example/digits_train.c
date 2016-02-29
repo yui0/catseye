@@ -58,5 +58,7 @@ int main()
 	}
 	printf("Prediction accuracy on training data = %f%%\n", (float)r/sample*100.0);
 
+	CatsEye__destruct(&cat);
+
 	return 0;
 }

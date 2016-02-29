@@ -31,5 +31,7 @@ int main(int argc, char *argv[])
 	int p = CatsEye_predict(&cat, x);
 	printf("%d\n", p);
 
+	CatsEye__destruct(&cat);
+
 	return 0;
 }

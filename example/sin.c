@@ -75,6 +75,9 @@ int main()
 	}
 	PS_stroke();
 	PS_fin();
+	system("ps2pdf sin.ps");
+
+	CatsEye__destruct(&cat);
 
 	return 0;
 }

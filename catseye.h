@@ -20,6 +20,7 @@
 
 //#define CATS_SIGMOID_CROSSENTROPY
 #ifdef CATS_SIGMOID_CROSSENTROPY
+// cross entropy df: (y - t) / (y * (1 - y))
 // sigmoid function with cross entropy loss
 #define CATS_SIGMOID
 #define s_gain			1
@@ -125,6 +126,94 @@
 #define OPT_CALC2(n, x, y)	this->w##x[i*n+j] -= eta*this->o##x[i] *this->d##y[j] +this->w##x[i*n+j]*1e-8
 #endif
 
+void muladd(double *vec1, double *vec2, double a, int n)
+{
+	for (int i=0; i<n; i++) {
+		vec1[i] += vec2[i] * a;
+	}
+}
+double dot(double *vec1, double *vec2, int n)
+{
+	double s = 0.0;
+	for (int i=0; i<n; i++) {
+		s += vec1[i] * vec2[i];
+	}
+	return s;
+}
+double dotT(double *mat1, double *vec1, int r, int c)
+{
+	double s = 0.0;
+	for (int i=0; i<r; i++) {
+		s += mat1[i*c] * vec1[i];
+	}
+	return s;
+}
+/*void transpose(double *src, double *dst, int N, int M)
+{
+//	#pragma omp parallel for
+	for (int i=0; i<M; i++) {
+		for (int j=0; j<N; j++) {
+			*dst++ = src[M*j + i];
+		}
+	}
+}*/
+int binomial(/*int n, */double p)
+{
+//	if (p<0 || p>1) return 0;
+	int c = 0;
+//	for (int i=0; i<n; i++) {
+		double r = rand() / (RAND_MAX + 1.0);
+		if (r < p) c++;
+//	}
+	return c;
+}
+
+typedef struct {
+	// number of the layer
+	int in, out;
+	// input
+	double *x;
+	// output
+	double *o, *z;
+	// delta
+	double *d;
+	// weights
+	double *w;
+	// activation function
+	double (*act)(double *x, int n);
+	double (*dact)(double *x, int n);
+} CatsEyeLayer;
+double eta;
+
+// caluculate forward propagation of input x
+void CatsEyeLayer_forward(CatsEyeLayer *this, double *x)
+{
+	for (int i=0; i<this->out; i++) {
+		this->z[i] = dotT(&this->w[i], this->x, this->in+1, this->out);
+		this->o[i] = this->act(this->z, i);
+	}
+	this->o[this->out] = 1;	// for bias
+}
+// caluculate back propagation
+void CatsEyeLayer_back(CatsEyeLayer *this, double *current_delta)
+{
+	// calculate the error
+	for (int i=0; i<this->in; i++) {
+		// o = f(z)
+		this->d[i] = dot(&this->w[i*this->out], current_delta, this->out) * this->dact(this->o, i);
+		//OPT_CALC1(2);
+	}
+	this->d[this->in] = dot(&this->w[this->in*this->out], current_delta, this->out) * this->dact(this->o, this->in);
+
+	// update the weights
+	for (int i=0; i<this->in+1; i++) {
+		for (int j=0; j<this->out; j++) {
+			this->w[i*this->out+j] -= eta*this->z[i]*current_delta[j];
+			//OPT_CALC2(this->out, 1, 2);
+		}
+	}
+}
+
 typedef struct {
 	// number of each layer
 	int in, hid, out;
@@ -195,7 +284,7 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, char *fil
 		}
 		fclose(fp);
 	} else {
-		// initialize weights
+		// initialize weights (http://aidiary.hatenablog.com/entry/20150618/1434628272)
 		// range depends on the research of Y. Bengio et al. (2010)
 		srand((unsigned)(time(0)));
 		double range = sqrt(6)/sqrt(this->in+this->hid+2);
@@ -230,55 +319,14 @@ void CatsEye__destruct(CatsEye *this)
 	free(this->w2);
 }
 
-void muladd(double *vec1, double *vec2, double a, int n)
-{
-	for (int i=0; i<n; i++) {
-		vec1[i] += vec2[i] * a;
-	}
-}
-double dot(double *vec1, double *vec2, int n)
-{
-	double s = 0.0;
-	for (int i=0; i<n; i++) {
-		s += vec1[i] * vec2[i];
-	}
-	return s;
-}
-double dotT(double *mat1, double *vec1, int r, int c)
-{
-	double s = 0.0;
-	for (int i=0; i<r; i++) {
-		s += mat1[i*c] * vec1[i];
-	}
-	return s;
-}
-/*void transpose(double *src, double *dst, int N, int M)
-{
-//	#pragma omp parallel for
-	for (int i=0; i<M; i++) {
-		for (int j=0; j<N; j++) {
-			*dst++ = src[M*j + i];
-		}
-	}
-}*/
-int binomial(/*int n, */double p)
-{
-//	if (p<0 || p>1) return 0;
-	int c = 0;
-//	for (int i=0; i<n; i++) {
-		double r = rand() / (RAND_MAX + 1.0);
-		if (r < p) c++;
-//	}
-	return c;
-}
-
 // caluculate forward propagation of input x
 void CatsEye_forward(CatsEye *this, double *x)
 {
 	// calculation of input layer
 //	memcpy(this->xi1, x, this->in*sizeof(double));
 	memcpy(this->o1, x, this->in*sizeof(double));
-	this->o1[this->in] = 1;	// bias
+	this->o1[this->in] = 1;	// for bias
+
 #ifdef CATS_DENOISING_AUTOENCODER
 	// Denoising Autoencoder (http://kiyukuta.github.io/2013/08/20/hello_autoencoder.html)
 	for (int i=0; i<this->in; i++) {
@@ -295,7 +343,7 @@ void CatsEye_forward(CatsEye *this, double *x)
 		this->xi2[j] = dotT(&this->w1[j], this->o1, this->in+1, this->hid);
 		this->o2[j] = ACT1(this->xi2[j]);
 	}
-	this->o2[this->hid] = 1;	// bias
+	this->o2[this->hid] = 1;	// for bias
 
 	// caluculation of output layer
 	for (int j=0; j<this->out; j++) {
@@ -329,10 +377,7 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 #else
 		for (int n=0; n<1500/*N*/; n++) {
 			// forward propagation
-			//srand((unsigned)time(NULL));
-			//int sample = ((double)rand()+1.0)/((double)RAND_MAX+2.0) * N;
-//			int sample = (rand()/(double)RAND_MAX) * N;
-			int sample = (rand()/(RAND_MAX+1.0)) * N;
+			int sample = (rand()/(RAND_MAX+1.0)) * N;	// 0 <= rand < 1
 			CatsEye_forward(this, x+sample*this->in);
 #endif
 			// calculate the error of output layer
@@ -386,7 +431,6 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 			double *dst = this->w2;
 			for (int i=0; i<this->hid; i++) {
 				for (int j=0; j<this->in; j++) {
-//					*dst++ = this->w1[this->hid*j + i];
 					this->w2[j + this->hid*i] = this->w1[this->hid*j + i];
 				}
 			}

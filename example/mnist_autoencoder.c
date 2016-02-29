@@ -114,5 +114,9 @@ int main()
 	stbi_write_png("mnist_autoencoder_weights.png", 28*10, 28*10, 1, pixels, 28*10);
 	free(pixels);
 
+	free(x);
+	free(data);
+	CatsEye__destruct(&cat);
+
 	return 0;
 }

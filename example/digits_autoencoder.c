@@ -23,9 +23,9 @@
 int main()
 {
 	int size = 64;		// 入出力層(8x8)
-	int hidden = 16;	// 隠れ層
+//	int hidden = 16;	// 隠れ層
 //	int hidden = 32;	// 隠れ層
-//	int hidden = 48;	// 隠れ層
+	int hidden = 48;	// 隠れ層
 //	int hidden = 56;	// 隠れ層
 //	int hidden = 64;	// 隠れ層
 	int sample = 1797;
@@ -98,23 +98,15 @@ int main()
 	}
 	stbi_write_png("digits_autoencoder.png", 8*10, 8*10, 1, pixels, 8*10);
 
-	for (int n=0; n<10/*hidden*/; n++) {
-		// 重みをスケーリング
-//		double *w = &cat.w1[n*(size+1)];
-		double *w = &cat.w1[n];
-		double max = w[0];
-		double min = w[0];
-		for (int i=1; i<size; i++) {
-			if (max < w[i *hidden]) max = w[i *hidden];
-			if (min > w[i *hidden]) min = w[i *hidden];
-		}
-		//printf("%lf %lf\n", max, min);
-		for (int i=0; i<size; i++) {
-			pixels[n*size + (i/8)*8 + i%8] = ((w[i *hidden] - min) / (max - min)) * 255.0;
-		}
+	memset(pixels, 0, 8*8*100);
+	int m = (hidden<100 ? hidden : 100);
+	for (int n=0; n<m; n++) {
+		CatsEye_visualizeWeights(&cat, n, 8, &pixels[(n/10)*8*8*10 + (n%10)*8], 8*10);
 	}
-	stbi_write_png("digits_autoencoder_weights.png", 8, 8*10/*hidden*/, 1, pixels, /*size+1*/8);
+	stbi_write_png("digits_autoencoder_weights.png", 8*10, 8*10, 1, pixels, 8*10);
 	free(pixels);
+
+	CatsEye__destruct(&cat);
 
 	return 0;
 }

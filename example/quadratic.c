@@ -73,5 +73,7 @@ int main()
 	PS_fin();
 	system("ps2pdf quadratic.ps");
 
+	CatsEye__destruct(&cat);
+
 	return 0;
 }

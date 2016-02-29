@@ -13,9 +13,9 @@ int main()
 	int label = 2;	// ラベルの種類
 	int sample = 10000;
 
-	// 入力ユニット4つ, 隠れユニット3つ, 出力ユニット2つの多層パーセプトロンを作る
+	// 入力ユニット4つ, 隠れユニット4つ, 出力ユニット2つの多層パーセプトロンを作る
 	CatsEye cat;
-	CatsEye__construct(&cat, size, 3, label, 0);
+	CatsEye__construct(&cat, size, 4, label, 0);
 
 	// 訓練データ
 	double x[size*sample];
@@ -43,9 +43,8 @@ int main()
 	sample = n;
 
 	// 多層パーセプトロンの訓練
-	// 繰り返しの回数
-	int repeat = 1000;
-	CatsEye_train(&cat, x, t, sample, repeat, 0.001);
+//	CatsEye_train(&cat, x, t, sample, 1000/*repeat*/, 0.001);
+	CatsEye_train(&cat, x, t, sample, 1000/*repeat*/, 1e-1);
 
 	// 結果の表示
 	int r = 0;
@@ -57,6 +56,7 @@ int main()
 	printf("Prediction accuracy on training data = %f%%\n", (float)r/sample*100.0);
 
 	CatsEye_save(&cat, "weather_sapporo.weights");
+	CatsEye__destruct(&cat);
 
 	return 0;
 }

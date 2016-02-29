@@ -4,7 +4,7 @@
 //		©2016 Yuichiro Nakada
 //---------------------------------------------------------
 
-// clang example_01.c -o example_01 -lm
+// clang example.c -o example -lm
 // ref. http://kivantium.hateblo.jp/entry/2014/12/22/004640
 #include "../catseye.h"
 
@@ -27,7 +27,7 @@ int main()
 	int t[sample];
 
 	// CSVの読み込み
-	FILE *fp = fopen("example_01.csv", "r");
+	FILE *fp = fopen("example.csv", "r");
 	if (fp==NULL) {
 		return -1;
 	}
@@ -42,8 +42,7 @@ int main()
 	fclose(fp);
 
 	// 多層パーセプトロンの訓練
-	// 繰り返しの回数
-	int repeat = 500;
+	int repeat = 500;	// 繰り返しの回数
 	CatsEye_train(&cat, x, t, sample, repeat, 0.1);
 
 	// 結果の表示
@@ -54,6 +53,8 @@ int main()
 		printf("%d -> %d\n", p, t[i]);
 	}
 	printf("Prediction accuracy on training data = %f%%\n", (float)r/sample*100.0);
+
+	CatsEye__destruct(&cat);
 
 	return 0;
 }
