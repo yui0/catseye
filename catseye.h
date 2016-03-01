@@ -55,18 +55,6 @@
 // abs function
 #define ACT1(x)			(x / (1.0 + fabs(x)))
 #define DACT1(x)		(1.0 / (1.0 + fabs(x))*(1.0 + fabs(x)))
-/*#elif defined CATS_SOFTMAX
-// softmax function (output only)
-#define ACT1(x)			(x / sum(exp(x)))
-    float_t f(const vec_t& v, size_t i) const {
-        float_t alpha = *std::max_element(v.begin(), v.end());
-        float_t numer = std::exp(v[i] - alpha);
-        float_t denom = 0.0;
-        for (auto x : v)
-            denom += std::exp(x - alpha);
-        return numer / denom;
-    }
-#define DACT1(x)		(x * (1.0 - x))*/
 #else
 // identity function (output only)
 #define ACT1(x)			(x)
@@ -168,74 +156,9 @@ int binomial(/*int n, */double p)
 	return c;
 }
 
-/*typedef struct {
-	// number of the layer
-	int in, out;
-	// input
-	double *x;
-	// output
-	double *o, *z;
-	// delta
-	double *d;
-	// weights
-	double *w;
-	// activation function
-	double (*act)(double *x, int n);
-	double (*dact)(double *x, int n);
-} CatsEyeLayer;
-
-void CatsEyeLayer__construct(CatsEyeLayer *this, int n_in, int n_out, double *x)
-{
-	this->units[0] = n_in;
-	this->units[2] = n_out;
-	this->x = x;
-	this->o = malloc(sizeof(double)*(this->units[2]));
-	this->z = malloc(sizeof(double)*(this->units[2]));
-	this->d = malloc(sizeof(double)*(this->units[0]+1));
-	this->w = malloc(sizeof(double)*(this->units[0]+1));
-//	this->act = ;
-//	this->dact = ;
-}
-void CatsEyeLayer__destruct(CatsEyeLayer *this)
-{
-	free(this->o);
-	free(this->z);
-	free(this->d);
-	free(this->w);
-}
-
-// caluculate forward propagation of input x
-void CatsEyeLayer_forward(CatsEyeLayer *this)
-{
-	for (int i=0; i<this->units[2]; i++) {
-		this->z[i] = dotT(&this->w[i], this->x, this->units[0]+1, this->units[2]);
-		this->o[i] = this->act(this->z, i);
-	}
-	this->o[this->units[2]] = 1;	// for bias
-}
-// caluculate back propagation
-void CatsEyeLayer_back(CatsEyeLayer *this, double eta, double *current_delta)
-{
-	// calculate the error
-	for (int i=0; i<this->units[0]; i++) {
-		// o = f(z)
-		this->d[i] = dot(&this->w[i*this->units[2]], current_delta, this->units[2]) * this->dact(this->o, i);
-		//OPT_CALC1(2);
-	}
-	this->d[this->units[0]] = dot(&this->w[this->units[0]*this->units[2]], current_delta, this->units[2]) * this->dact(this->o, this->units[0]);
-
-	// update the weights
-	for (int i=0; i<this->units[0]+1; i++) {
-		for (int j=0; j<this->units[2]; j++) {
-			this->w[i*this->units[2]+j] -= eta*this->z[i]*current_delta[j];
-			//OPT_CALC2(this->units[2], 1, 2);
-		}
-	}
-}*/
-
 typedef struct {
 	// number of each layer
-//	int in, hid, out;
+	int *layer, layers, *units;
 	// input layer
 //	double *x;
 	// output layers [o = f(z)]
@@ -247,14 +170,104 @@ typedef struct {
 	double *dl1, *dl2;
 	// weights
 	double **w;
-
-	// hidden layer
-	int layers, *units;
-//	CatsEyeLayer *l;
-	// activation function
-	double (**act)(double *x, int n);
-	double (**dact)(double *x, int n);
 } CatsEye;
+
+// identity function (output only)
+double CatsEye_act_identity(double *x, int n, int len)
+{
+	return (x[n]);
+}
+double CatsEye_dact_identity(double *x, int n, int len)
+{
+	return (1.0);
+}
+// softmax function (output only)
+double CatsEye_act_softmax(double *x, int n, int len)
+{
+	double alpha = x[0];
+	for (int i=1; i<len; i++) if (alpha<x[i]) alpha = x[i];
+	double numer = exp(x[n] - alpha);
+	double denom = 0.0;
+	for (int i=0; i<len; i++) denom += exp(x[i] - alpha);
+	return (numer / denom);
+}
+double CatsEye_dact_softmax(double *x, int n, int len)
+{
+	return (x[n] * (1.0 - x[n]));
+}
+// sigmoid function
+double CatsEye_act_sigmoid(double *x, int n, int len)
+{
+	return (1.0 / (1.0 + exp(-x[n] * s_gain)));
+}
+double CatsEye_dact_sigmoid(double *x, int n, int len)
+{
+	return ((1.0-x[n])*x[n] * s_gain);	// ((1.0-sigmod(x))*sigmod(x))
+}
+// tanh function
+double CatsEye_act_tanh(double *x, int n, int len)
+{
+	return (tanh(x[n]));
+}
+double CatsEye_dact_tanh(double *x, int n, int len)
+{
+	return (1.0-x[n]*x[n]);		// (1.0-tanh(x)*tanh(x))
+}
+
+// activation function
+double (*CatsEye_act[])(double *x, int n, int len) = {
+	CatsEye_act_identity,
+	CatsEye_act_softmax,
+	CatsEye_act_sigmoid,
+	CatsEye_act_tanh
+};
+double (*CatsEye_dact[])(double *x, int n, int len) = {
+	CatsEye_dact_identity,
+	CatsEye_dact_softmax,
+	CatsEye_dact_sigmoid,
+	CatsEye_dact_tanh
+};
+
+// caluculate forward propagation of input x
+void CatsEye_layer_forward(double *x, double *w, double *z, double *o, int in, int out, int a)
+{
+	for (int i=0; i<out; i++) {
+		z[i] = dotT(&w[i], x, in+1, out);
+		o[i] = CatsEye_act[a](z, i, out);
+	}
+//	o[out] = 1;	// for bias
+}
+// caluculate back propagation
+void CatsEye_layer_back(double *o, double *w, double *d, double *delta, int in, int out, int a)
+{
+	// calculate the error
+	for (int i=0; i<in; i++) {
+		d[i] = dot(&w[i*out], delta, out) * CatsEye_dact[a](o, i, in);
+		//OPT_CALC1(2);
+	}
+	d[in] = dot(&w[in*out], delta, out) * CatsEye_dact[a](o, in, in);
+}
+void CatsEye_layer_update(double eta, double *o, double *w, double *d, int in, int out)
+/*{
+	// update the weights
+	for (int i=0; i<in+1; i++) {
+		for (int j=0; j<out; j++) {
+			w[i*out+j] -= eta*o[i]*d[j];
+			//OPT_CALC2(out, 1, 2);
+		}
+	}
+}
+void CatsEye_SVM_update(double eta, double *o, double *w, double *d, int in, int out)*/
+{
+	// update the weights
+	for (int i=0; i<in+1; i++) {
+		for (int j=0; j<out; j++) {
+			// SVM (http://d.hatena.ne.jp/echizen_tm/20110627/1309188711)
+			// ∂loss(w, x, t) / ∂w = ∂(λ - twx + α * w^2 / 2) / ∂w = - tx + αw
+			w[i*out+j] -= eta*o[i]*d[j] + w[i*out+j]*1e-8;
+		}
+	}
+}
 
 /* constructor
  * n_in:  number of input layer
@@ -262,7 +275,11 @@ typedef struct {
  * n_out: number of output layer */
 void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, char *filename)
 {
+//	int n[] = { n_in, CATS_RANDOM, 0, n_hid, CATS_SIGMOID, CATS_MLP, n_out, CATS_SIGMOID, 0 };
+	int n[] = { n_in, 0, 0, n_hid, 2, 0, n_out, 2, 0 };
 	this->layers = 3;
+	this->layer = malloc(sizeof(int)*this->layers*3);
+	for (int i=0; i<this->layers*3; i++) this->layer[i] = n[i];
 	this->units = malloc(sizeof(int)*this->layers);
 
 	FILE *fp;
@@ -353,6 +370,7 @@ void CatsEye__destruct(CatsEye *this)
 	free(this->w[0]);
 	free(this->w[1]);
 	free(this->w);
+	free(this->layer);
 	free(this->units);
 }
 
@@ -369,27 +387,20 @@ void CatsEye_forward(CatsEye *this, double *x)
 	}
 #endif
 
-	// caluculation of hidden layer
-	//CatsEyeLayer_forward(this->l, this->o);
-	for (int j=0; j<this->units[1]; j++) {
-/*		this->z[0][j] = 0;
+	// caluculation of hidden layer [z = wx, o = f(z)]
+	CatsEye_layer_forward(this->o[0], this->w[0], this->z[0], this->o[1], this->units[0], this->units[1], this->layer[1*3+1]);
+	this->o[1][this->units[1]] = 1;	// for bias
+/*	for (int j=0; j<this->units[1]; j++) {
+		this->z[0][j] = 0;
 		for (int i=0; i<this->units[0]+1; i++) {
 			this->z[0][j] += this->w[0][i*this->units[1]+j]*this->o[0][i];
-		}*/
-		this->z[0][j] = dotT(&this->w[0][j], this->o[0], this->units[0]+1, this->units[1]);
+		}
 		this->o[1][j] = ACT1(this->z[0][j]);
 	}
-	this->o[1][this->units[1]] = 1;	// for bias
+	this->o[1][this->units[1]] = 1;	// for bias*/
 
 	// caluculation of output layer
-	for (int j=0; j<this->units[2]; j++) {
-/*		this->z[1][j] = 0;
-		for (int i=0; i<this->units[1]+1; i++) {
-			this->z[1][j] += this->w[1][i*this->units[2]+j]*this->o[1][i];
-		}*/
-		this->z[1][j] = dotT(&this->w[1][j], this->o[1], this->units[1]+1, this->units[2]);
-		this->o[2][j] = ACT2(this->z[1][j]);
-	}
+	CatsEye_layer_forward(this->o[1], this->w[1], this->z[1], this->o[2], this->units[1], this->units[2], this->layer[2*3+1]);
 }
 
 /* train: multi layer perceptron
@@ -408,14 +419,13 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 #endif
 #ifndef CATS_RANDOM
 		for (int sample=0; sample<N; sample++) {
-			// forward propagation
-			CatsEye_forward(this, x+sample*this->units[0]);
 #else
 		for (int n=0; n<1500/*N*/; n++) {
-			// forward propagation
 			int sample = (rand()/(RAND_MAX+1.0)) * N;	// 0 <= rand < 1
-			CatsEye_forward(this, x+sample*this->units[0]);
 #endif
+			// forward propagation
+			CatsEye_forward(this, x+sample*this->units[0]);
+
 			// calculate the error of output layer
 			for (int i=0; i<this->units[2]; i++) {
 #ifndef CATS_LOSS_MSE
@@ -436,32 +446,29 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 				OPT_CALC1(3);
 			}
 			// calculate the error of hidden layer
+			CatsEye_layer_back(this->o[1], this->w[1], this->d[0], this->d[1], this->units[1], this->units[2], this->layer[1*3+1]);
+#if 0
 			for (int i=0; i<this->units[1]; i++) {
 /*				double tmp = 0;
 				for (int l=0; l<this->units[2]; l++) {
 					tmp += this->w[1][j*this->units[2]+l]*this->d[1][l];
 				}*/
-				//this->d[0][j] = tmp * DACT1(this->z[0][j]);	// xi2 = z
-				this->d[0][i] = dot(&this->w[1][i*this->units[2]], this->d[1], this->units[2]) * DACT1(this->o[1][i]);	// o2 = f(z)
+				//this->d[0][j] = tmp * DACT1(this->z[0][j]);
+				this->d[0][i] = dot(&this->w[1][i*this->units[2]], this->d[1], this->units[2]) * DACT1(this->o[1][i]);
 				OPT_CALC1(2);
 			}
-			this->d[0][this->units[1]] = dot(&this->w[1][this->units[1]*this->units[2]], this->d[1], this->units[2]) * DACT1(this->o[1][this->units[1]]);	// o2 = f(z)
+			this->d[0][this->units[1]] = dot(&this->w[1][this->units[1]*this->units[2]], this->d[1], this->units[2]) * DACT1(this->o[1][this->units[1]]);
+#endif
 			// update the weights of hidden layer
-			for (int i=0; i<this->units[0]+1; i++) {
+			CatsEye_layer_update(eta, this->o[0], this->w[0], this->d[0], this->units[0], this->units[1]);
+/*			for (int i=0; i<this->units[0]+1; i++) {
 				for (int j=0; j<this->units[1]; j++) {
 					OPT_CALC2(this->units[1], 1, 2);
 				}
 				//muladd(&this->w[0][i*this->units[1]], this->d[0], -eta*this->o[0][i], this->units[1]);
-			}
+			}*/
 			// update the weights of output layer
-			for (int i=0; i<this->units[1]+1; i++) {
-				for (int j=0; j<this->units[2]; j++) {
-					//this->w[1][i*this->units[2]+j] -= eta*this->d[1][j]*this->o[1][i];
-//					this->w[1][i*this->units[2]+j] -= eta*this->o[1][i] /sqrt(eps+this->e3[j]) *this->d[1][j];
-					OPT_CALC2(this->units[2], 2, 3);
-				}
-				//muladd(&this->w[1][i*this->units[2]], this->d[1], -eta*this->o[1][i], this->units[2]);
-			}
+			CatsEye_layer_update(eta, this->o[1], this->w[1], this->d[1], this->units[1], this->units[2]);
 #ifdef CATS_AUTOENCODER
 			// tied weight
 			double *dst = this->w[1];
