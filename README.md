@@ -1,12 +1,19 @@
 # Cat's Eye
 Neural network library written in C and Javascript
 
-# Usage
+## Features
+- Lightweight and minimalistic
+- Support Multilayer perceptron
+- Support Deep Learning
+- Support activation functions
+  - sigmoid, tanh, scaled tanh, ReLU, abs, identity function
+
+## Usage
 just include header files in your project
 
 for more information, see example/
 
-# Demo
+## Demo
 - Recognizing handwritten digits by MNIST training
   - http://yui0.github.io/catseye/example/html/index.html
 
@@ -48,7 +55,7 @@ for more information, see example/
   ![epoch=100](example/mnist_autoencoder_u64da_s100.png "epoch=100")
   ![epoch=100](example/mnist_autoencoder_weights_u64da_s100.png "epoch=100")
 
-# Refrence
+## Refrence
 - Documents
   - Neural Networks and Deep Learning [http://nnadl-ja.github.io/nnadl_site_ja/chap1.html]
   - Machine learning [http://hokuts.com/category/%E3%83%97%E3%83%AD%E3%82%B0%E3%83%A9%E3%83%A0/%E6%A9%9F%E6%A2%B0%E5%AD%A6%E7%BF%92/]

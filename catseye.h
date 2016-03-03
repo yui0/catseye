@@ -279,7 +279,7 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, char *fil
 //	int n[] = { n_in, 0, 0, n_hid, 2/*sigmoid*/, 0/*mlp*/, n_out, 2/*sigmoid*/, 0 };
 //	int n[] = { n_in, 0, 0, n_hid, 2/*sigmoid*/, 0/*mlp*/, n_out, 0, 0 };
 	int n[] = { n_in, 0, 0, n_hid, 2, 0, n_hid/2, 2, 0, n_out, 0, 0 };
-	this->layers = 3;
+	this->layers = 4;//3;
 	this->layer = malloc(sizeof(int)*this->layers*3);
 	for (int i=0; i<this->layers*3; i++) this->layer[i] = n[i];
 	this->units = malloc(sizeof(int)*this->layers);
@@ -294,6 +294,7 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, char *fil
 		this->units[1] = n_hid;
 		this->units[2] = n_out;
 	}
+	for (int i=0; i<this->layers; i++) this->units[i] = this->layer[i*3];
 
 	// allocate inputs
 	this->z = malloc(sizeof(double*)*(this->layers-1));
@@ -443,7 +444,7 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 			for (int i=this->layers-2; i>0; i--) {
 				// calculate the error of hidden layer
 				// t[hidden] += w[1][hidden * out] * d[1][out]
-				// d[hidden] = dact(t[hidden])
+				// d[hidden] = t[hidden] * dact(o[hidden])
 				CatsEye_layer_back(this->o[i], this->w[i], this->d[i-1], this->d[i], this->units[i], this->units[i+1], this->layer[i*3+1]);
 
 				// update the weights of hidden layer
@@ -484,12 +485,14 @@ int CatsEye_predict(CatsEye *this, double *x)
 {
 	// forward propagation
 	CatsEye_forward(this, x);
+
 	// biggest output means most probable label
-	double max = this->o[2][0];
+	int a = this->layers-1;
+	double max = this->o[a][0];
 	int ans = 0;
-	for (int i=1; i<this->units[2]; i++) {
-		if (this->o[2][i] > max) {
-			max = this->o[2][i];
+	for (int i=1; i<this->units[a]; i++) {
+		if (this->o[a][i] > max) {
+			max = this->o[a][i];
 			ans = i;
 		}
 	}
