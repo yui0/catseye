@@ -276,7 +276,9 @@ void CatsEye_SVM_update(double eta, double *o, double *w, double *d, int in, int
 void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, char *filename)
 {
 //	int n[] = { n_in, CATS_RANDOM, 0, n_hid, CATS_SIGMOID, CATS_MLP, n_out, CATS_SIGMOID, 0 };
-	int n[] = { n_in, 0, 0, n_hid, 2, 0, n_out, 2, 0 };
+//	int n[] = { n_in, 0, 0, n_hid, 2/*sigmoid*/, 0/*mlp*/, n_out, 2/*sigmoid*/, 0 };
+//	int n[] = { n_in, 0, 0, n_hid, 2/*sigmoid*/, 0/*mlp*/, n_out, 0, 0 };
+	int n[] = { n_in, 0, 0, n_hid, 2, 0, n_hid/2, 2, 0, n_out, 0, 0 };
 	this->layers = 3;
 	this->layer = malloc(sizeof(int)*this->layers*3);
 	for (int i=0; i<this->layers*3; i++) this->layer[i] = n[i];
@@ -295,19 +297,21 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, char *fil
 
 	// allocate inputs
 	this->z = malloc(sizeof(double*)*(this->layers-1));
-	this->z[0] = malloc(sizeof(double)*(this->units[1]+1));
-	this->z[1] = malloc(sizeof(double)*this->units[2]);
+	for (int i=0; i<this->layers-1; i++) {
+		this->z[i] = malloc(sizeof(double)*(this->units[i+1]+1));
+	}
 
 	// allocate outputs
 	this->o = malloc(sizeof(double*)*(this->layers));
-	this->o[0] = malloc(sizeof(double)*(this->units[0]+1));
-	this->o[1] = malloc(sizeof(double)*(this->units[1]+1));
-	this->o[2] = malloc(sizeof(double)*this->units[2]);
+	for (int i=0; i<this->layers; i++) {
+		this->o[i] = malloc(sizeof(double)*(this->units[i]+1));
+	}
 
 	// allocate errors
 	this->d = malloc(sizeof(double*)*(this->layers-1));
-	this->d[0] = malloc(sizeof(double)*(this->units[1]+1));
-	this->d[1] = malloc(sizeof(double)*this->units[2]);
+	for (int i=0; i<this->layers-1; i++) {
+		this->d[i] = malloc(sizeof(double)*(this->units[i+1]+1));
+	}
 
 	// allocate gradient
 	this->e2 = calloc(1, sizeof(double)*(this->units[1]+1));
@@ -321,8 +325,9 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, char *fil
 
 	// allocate memories
 	this->w = malloc(sizeof(double*)*(this->layers-1));
-	this->w[0] = malloc(sizeof(double)*(this->units[0]+1)*this->units[1]);
-	this->w[1] = malloc(sizeof(double)*(this->units[1]+1)*this->units[2]);
+	for (int i=0; i<this->layers-1; i++) {
+		this->w[i] = malloc(sizeof(double)*(this->units[i]+1)*this->units[i+1]);
+	}
 
 	if (filename) {
 		for (int i=0; i<(this->units[0]+1)*this->units[1]; i++) {
@@ -338,11 +343,10 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, char *fil
 		srand((unsigned)(time(0)));
 		double range = sqrt(6)/sqrt(this->units[0]+this->units[1]+2);
 		srand((unsigned)(time(0)));
-		for (int i=0; i<(this->units[0]+1)*this->units[1]; i++) {
-			this->w[0][i] = 2.0*range*rand()/RAND_MAX-range;
-		}
-		for (int i=0; i<(this->units[1]+1)*this->units[2]; i++) {
-			this->w[1][i] = 2.0*range*rand()/RAND_MAX-range;
+		for (int i=0; i<this->layers-1; i++) {
+			for (int j=0; j<(this->units[i]+1)*this->units[i+1]; j++) {
+				this->w[i][j] = 2.0*range*rand()/RAND_MAX-range;
+			}
 		}
 	}
 }
@@ -351,15 +355,11 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, char *fil
 void CatsEye__destruct(CatsEye *this)
 {
 	// delete arrays
-	free(this->z[0]);
-	free(this->z[1]);
+	for (int i=0; i<this->layers-1; i++) free(this->z[i]);
 	free(this->z);
-	free(this->o[0]);
-	free(this->o[1]);
-	free(this->o[2]);
+	for (int i=0; i<this->layers; i++) free(this->o[i]);
 	free(this->o);
-	free(this->d[0]);
-	free(this->d[1]);
+	for (int i=0; i<this->layers-1; i++) free(this->d[i]);
 	free(this->d);
 	free(this->e2);
 	free(this->e3);
@@ -367,8 +367,7 @@ void CatsEye__destruct(CatsEye *this)
 	free(this->m3);
 	free(this->v2);
 	free(this->v3);
-	free(this->w[0]);
-	free(this->w[1]);
+	for (int i=0; i<this->layers-1; i++) free(this->w[i]);
 	free(this->w);
 	free(this->layer);
 	free(this->units);
@@ -387,20 +386,14 @@ void CatsEye_forward(CatsEye *this, double *x)
 	}
 #endif
 
-	// caluculation of hidden layer [z = wx, o = f(z)]
+	// caluculation of hidden and output layer [z = wx, o = f(z)]
+	// z[hidden] += w[in * hidden] * o[0][in]
+	// o[1][hidden] = act(z[hidden])
 	CatsEye_layer_forward(this->o[0], this->w[0], this->z[0], this->o[1], this->units[0], this->units[1], this->layer[1*3+1]);
-	this->o[1][this->units[1]] = 1;	// for bias
-/*	for (int j=0; j<this->units[1]; j++) {
-		this->z[0][j] = 0;
-		for (int i=0; i<this->units[0]+1; i++) {
-			this->z[0][j] += this->w[0][i*this->units[1]+j]*this->o[0][i];
-		}
-		this->o[1][j] = ACT1(this->z[0][j]);
+	for (int i=1; i<this->layers-1; i++) {
+		this->o[i][this->units[i]] = 1;	// for bias
+		CatsEye_layer_forward(this->o[i], this->w[i], this->z[i], this->o[i+1], this->units[i], this->units[i+1], this->layer[(i+1)*3+1]);
 	}
-	this->o[1][this->units[1]] = 1;	// for bias*/
-
-	// caluculation of output layer
-	CatsEye_layer_forward(this->o[1], this->w[1], this->z[1], this->o[2], this->units[1], this->units[2], this->layer[2*3+1]);
 }
 
 /* train: multi layer perceptron
@@ -427,48 +420,39 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 			CatsEye_forward(this, x+sample*this->units[0]);
 
 			// calculate the error of output layer
-			for (int i=0; i<this->units[2]; i++) {
+			int a = this->layers-1;
+			for (int i=0; i<this->units[a]; i++) {
 #ifndef CATS_LOSS_MSE
 				// http://d.hatena.ne.jp/echizen_tm/20110606/1307378609
 				// E = max(0, -twx), ∂E / ∂w = max(0, -tx)
 				if (((int*)t)[sample] == i) {	// 1-of-K
-					this->d[1][i] = this->o[2][i]-1;
+					this->d[a-1][i] = this->o[a][i]-1;
 				} else {
-					this->d[1][i] = this->o[2][i];
+					this->d[a-1][i] = this->o[a][i];
 				}
 #else
 				// http://qiita.com/Ugo-Nama/items/04814a13c9ea84978a4c
 				// https://github.com/nyanp/tiny-cnn/wiki/%E5%AE%9F%E8%A3%85%E3%83%8E%E3%83%BC%E3%83%88
-				this->d[1][i] = this->o[2][i]-((double*)t)[sample*this->units[2]+i];
+				this->d[a-1][i] = this->o[a][i]-((double*)t)[sample*this->units[a]+i];
 //				this->d[1][i] = (this->o[2][i]-((double*)t)[sample*this->units[2]+i]) * DACT2(this->o[2][i]);
 #endif
 //				this->e3[i] += this->d[1][i]*this->d[1][i];
 				OPT_CALC1(3);
 			}
-			// calculate the error of hidden layer
-			CatsEye_layer_back(this->o[1], this->w[1], this->d[0], this->d[1], this->units[1], this->units[2], this->layer[1*3+1]);
-#if 0
-			for (int i=0; i<this->units[1]; i++) {
-/*				double tmp = 0;
-				for (int l=0; l<this->units[2]; l++) {
-					tmp += this->w[1][j*this->units[2]+l]*this->d[1][l];
-				}*/
-				//this->d[0][j] = tmp * DACT1(this->z[0][j]);
-				this->d[0][i] = dot(&this->w[1][i*this->units[2]], this->d[1], this->units[2]) * DACT1(this->o[1][i]);
-				OPT_CALC1(2);
+
+			for (int i=this->layers-2; i>0; i--) {
+				// calculate the error of hidden layer
+				// t[hidden] += w[1][hidden * out] * d[1][out]
+				// d[hidden] = dact(t[hidden])
+				CatsEye_layer_back(this->o[i], this->w[i], this->d[i-1], this->d[i], this->units[i], this->units[i+1], this->layer[i*3+1]);
+
+				// update the weights of hidden layer
+				// w[0][in] -= eta * o[0][in] * d[0][in * hidden]
+				CatsEye_layer_update(eta, this->o[i-1], this->w[i-1], this->d[i-1], this->units[i-1], this->units[i]);
 			}
-			this->d[0][this->units[1]] = dot(&this->w[1][this->units[1]*this->units[2]], this->d[1], this->units[2]) * DACT1(this->o[1][this->units[1]]);
-#endif
-			// update the weights of hidden layer
-			CatsEye_layer_update(eta, this->o[0], this->w[0], this->d[0], this->units[0], this->units[1]);
-/*			for (int i=0; i<this->units[0]+1; i++) {
-				for (int j=0; j<this->units[1]; j++) {
-					OPT_CALC2(this->units[1], 1, 2);
-				}
-				//muladd(&this->w[0][i*this->units[1]], this->d[0], -eta*this->o[0][i], this->units[1]);
-			}*/
+
 			// update the weights of output layer
-			CatsEye_layer_update(eta, this->o[1], this->w[1], this->d[1], this->units[1], this->units[2]);
+			CatsEye_layer_update(eta, this->o[a-1], this->w[a-1], this->d[a-1], this->units[a-1], this->units[a]);
 #ifdef CATS_AUTOENCODER
 			// tied weight
 			double *dst = this->w[1];
