@@ -3,10 +3,20 @@ Neural network library written in C and Javascript
 
 ## Features
 - Lightweight and minimalistic
-- Support Multilayer perceptron
+  - Header only
+  - Just include catseye.h and write your model in c. There is nothing to install.
+  - Small dependency & simple implementation
 - Support Deep Learning
-- Support activation functions
-  - sigmoid, tanh, scaled tanh, ReLU, abs, identity function
+  - Multilayer perceptron
+  - Deep Neural Networks (DNN)
+  - Deep Belief Networks (DBN)
+- Supported networks
+  - Activation functions
+    - sigmoid, tanh, scaled tanh, ReLU, abs, identity function
+  - Loss functions
+    - cross-entropy, mean-squared-error
+  - Optimization algorithms
+    - stochastic gradient descent (with/without L2 normalization and momentum)
 
 ## Usage
 just include header files in your project
