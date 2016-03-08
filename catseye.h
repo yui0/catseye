@@ -287,8 +287,8 @@ void CatsEye_layer_forward(double *x, double *w, double *z, double *o, int u[])
 // caluculate back propagation
 void CatsEye_layer_backward(double *o, double *w, double *d, double *delta, int u[])
 {
-	int in = u[XSIZE-CATS_LPARAM];
-	int out = u[XSIZE];
+	int in = u[XSIZE];
+	int out = u[XSIZE+CATS_LPARAM];
 
 	// calculate the error
 	for (int i=0; i<in; i++) {
@@ -525,7 +525,7 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 				// calculate the error of hidden layer
 				// t[hidden] += w[1][hidden * out] * d[1][out]
 				// d[hidden] = t[hidden] * dact(o[hidden])
-				CatsEye_layer_backward(this->o[i], this->w[i], this->d[i-1], this->d[i], &this->u[CATS_LPARAM*(i+1)]);
+				CatsEye_layer_backward(this->o[i], this->w[i], this->d[i-1], this->d[i], &this->u[CATS_LPARAM*i]);
 //			}
 //			for (int i=this->layers-2; i>0; i--) {
 				// update the weights of hidden layer
