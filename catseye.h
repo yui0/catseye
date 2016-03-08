@@ -326,14 +326,14 @@ void CatsEye_SVM_update(double eta, double *o, double *w, double *d, int u[])*/
 }
 
 // caluculate forward propagation of input x
-void CatsEye_convolutional_layer_forward(double *xx, double *w, double *z, double *o, int u[])
+void CatsEye_convolutional_layer_forward(double *s, double *w, double *z, double *o, int u[])
 {
 	int sx = u[XSIZE] - u[KSIZE];
 	int sy = u[YSIZE] - u[KSIZE];
 
 	for (int y=0; y<sy; y++) {
 		for (int x=0; x<sx; x++) {
-			double *p = &xx[y*sx+x];
+			double *p = &s[y*sx+x];
 			double a = 0;
 			double *k = w;
 			for (int wy=0; wy<u[KSIZE]; wy++) {
