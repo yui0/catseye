@@ -261,23 +261,24 @@ double (*CatsEye_dact[])(double *x, int n, int len) = {
 	CatsEye_dact_abs
 };
 
-#define CATS_LPARAM	7
 enum CATS_LP {
-	TYPE,
-	ACT,
+	TYPE,		// MLP, Conv
+	ACT,		// activation function type
 	CHANNEL,
-	XSIZE,
+	XSIZE,		// input size
 	YSIZE,
-	KSIZE,
+	KSIZE,		// kernel size
 	STRIDE,
+	CATS_LPARAM	// length of layer params
 };
-//#define CATS_U(i, x)	this->u[CATS_LPARAM*i+x]
 #define CATS_SIZE(i)	this->u[CATS_LPARAM*(i)+XSIZE]
 // caluculate forward propagation of input x
-void CatsEye_layer_forward(double *x, double *w, double *z, double *o, int u[])
+// f(x) = h(scale*x+bias)
+void CatsEye_linear_layer_forward(double *x, double *w, double *z, double *o, int u[])
 {
 	int in = u[XSIZE-CATS_LPARAM]+1;
 	int out = u[XSIZE];
+
 	for (int i=0; i<out; i++) {
 		z[i] = dotT(&w[i], x, in, out);
 		o[i] = CatsEye_act[u[ACT]](z, i, out);
@@ -285,7 +286,7 @@ void CatsEye_layer_forward(double *x, double *w, double *z, double *o, int u[])
 //	o[out] = 1;	// for bias
 }
 // caluculate back propagation
-void CatsEye_layer_backward(double *o, double *w, double *d, double *delta, int u[])
+void CatsEye_linear_layer_backward(double *o, double *w, double *d, double *delta, int u[])
 {
 	int in = u[XSIZE];
 	int out = u[XSIZE+CATS_LPARAM];
@@ -297,7 +298,7 @@ void CatsEye_layer_backward(double *o, double *w, double *d, double *delta, int 
 	}
 	d[in] = dot(&w[in*out], delta, out) * CatsEye_dact[u[ACT]](o, in, in);
 }
-void CatsEye_layer_update(double eta, double *o, double *w, double *d, int u[])
+void CatsEye_linear_layer_update(double eta, double *o, double *w, double *d, int u[])
 /*{
 	int in = u[XSIZE-CATS_LPARAM]+1;
 	int out = u[XSIZE];
@@ -310,7 +311,7 @@ void CatsEye_layer_update(double eta, double *o, double *w, double *d, int u[])
 		}
 	}
 }
-void CatsEye_SVM_update(double eta, double *o, double *w, double *d, int u[])*/
+void CatsEye_SVM_layer_update(double eta, double *o, double *w, double *d, int u[])*/
 {
 	int in = u[XSIZE-CATS_LPARAM]+1;
 	int out = u[XSIZE];
@@ -342,11 +343,71 @@ void CatsEye_convolutional_layer_forward(double *s, double *w, double *z, double
 				}
 				p += sx;
 			}
-//			*o++ = a + bias;
-//			*o++ = CatsEye_act[act](a);
+			a += *k;	// bias
+			*o++ = CatsEye_act[u[ACT]](&a, 0, 1);
 		}
 	}
 }
+// caluculate back propagation
+void CatsEye_convolutional_layer_backward(double *o, double *w, double *d, double *delta, int u[])
+{
+	int sx = u[XSIZE];
+	int sy = u[YSIZE];
+
+	// calculate the error
+	for (int y=0; y<sy; y++) {
+		for (int x=0; x<sx; x++) {
+			double a = 0;
+			double *k = w;
+			for (int wy=0; wy<u[KSIZE]; wy++) {
+				for (int wx=0; wx<u[KSIZE]; wx++) {
+					if (y-wy<0 || x-wx<0) continue;
+					a += delta[(y-wy)*sx+(x-wx)] * (*k++);
+				}
+			}
+			*d++ = CatsEye_dact[u[ACT]](&a, 0, 1);
+		}
+	}
+}
+void CatsEye_convolutional_layer_update(double eta, double *s, double *w, double *d, int u[])
+{
+	int sx = u[XSIZE] - u[KSIZE];
+	int sy = u[YSIZE] - u[KSIZE];
+
+	// update the weights
+	for (int wy=0; wy<u[KSIZE]; wy++) {
+		for (int wx=0; wx<u[KSIZE]; wx++) {
+			double *delta = d;
+			for (int y=0; y<sy; y++) {
+				double *p = &s[y*sx + wy*u[XSIZE]+wx];
+				for (int x=0; x<sx; x++) {
+					*w -= eta * (*delta++) * (*p++);
+				}
+			}
+			w++;
+		}
+	}
+
+	// bias
+	double *delta = d;
+	for (int y=0; y<sy; y++) {
+		for (int x=0; x<sx; x++) {
+			*w -= eta * (*delta++);
+		}
+	}
+}
+void (*CatsEye_layer_forward[])(double *s, double *w, double *z, double *o, int u[]) = {
+	CatsEye_linear_layer_forward,
+	CatsEye_convolutional_layer_forward,
+};
+void (*CatsEye_layer_backward[])(double *o, double *w, double *d, double *delta, int u[]) = {
+	CatsEye_linear_layer_backward,
+	CatsEye_convolutional_layer_backward,
+};
+void (*CatsEye_layer_update[])(double eta, double *s, double *w, double *d, int u[]) = {
+	CatsEye_linear_layer_update,
+	CatsEye_convolutional_layer_update,
+};
 
 /* constructor
  * n_in:  number of input layer
@@ -358,8 +419,8 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, char *fil
 		0, 0, 1, n_in,    0, 0, 0,
 		0, 2, 1, n_hid,   0, 0, 0,
 //		0, 2, 1, n_hid/2, 0, 0, 0,
-		0, 2, 1, n_out,   0, 0, 0,
-//		0, 0, 1, n_out,   0, 0, 0,
+//		0, 2, 1, n_out,   0, 0, 0,
+		0, 0, 1, n_out,   0, 0, 0,
 	};
 	this->layers = 3;
 	this->u = malloc(sizeof(int)*CATS_LPARAM*this->layers);
@@ -470,10 +531,10 @@ void CatsEye_forward(CatsEye *this, double *x)
 	// caluculation of hidden and output layer [z = wx, o = f(z)]
 	// z[hidden] += w[in * hidden] * o[0][in]
 	// o[1][hidden] = act(z[hidden])
-	CatsEye_layer_forward(this->o[0], this->w[0], this->z[0], this->o[1], &this->u[CATS_LPARAM*1]);
+	CatsEye_layer_forward[0](this->o[0], this->w[0], this->z[0], this->o[1], &this->u[CATS_LPARAM*1]);
 	for (int i=1; i<this->layers-1; i++) {
 		this->o[i][CATS_SIZE(i)] = 1;	// for bias
-		CatsEye_layer_forward(this->o[i], this->w[i], this->z[i], this->o[i+1], &this->u[CATS_LPARAM*(i+1)]);
+		CatsEye_layer_forward[0](this->o[i], this->w[i], this->z[i], this->o[i+1], &this->u[CATS_LPARAM*(i+1)]);
 	}
 }
 
@@ -525,16 +586,16 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 				// calculate the error of hidden layer
 				// t[hidden] += w[1][hidden * out] * d[1][out]
 				// d[hidden] = t[hidden] * dact(o[hidden])
-				CatsEye_layer_backward(this->o[i], this->w[i], this->d[i-1], this->d[i], &this->u[CATS_LPARAM*i]);
+				CatsEye_layer_backward[0](this->o[i], this->w[i], this->d[i-1], this->d[i], &this->u[CATS_LPARAM*i]);
 //			}
 //			for (int i=this->layers-2; i>0; i--) {
 				// update the weights of hidden layer
 				// w[0][in] -= eta * o[0][in] * d[0][in * hidden]
-				CatsEye_layer_update(eta, this->o[i-1], this->w[i-1], this->d[i-1], &this->u[CATS_LPARAM*i]);
+				CatsEye_layer_update[0](eta, this->o[i-1], this->w[i-1], this->d[i-1], &this->u[CATS_LPARAM*i]);
 			}
 
 			// update the weights of output layer
-			CatsEye_layer_update(eta, this->o[a-1], this->w[a-1], this->d[a-1], &this->u[CATS_LPARAM*a]);
+			CatsEye_layer_update[0](eta, this->o[a-1], this->w[a-1], this->d[a-1], &this->u[CATS_LPARAM*a]);
 #ifdef CATS_AUTOENCODER
 			// tied weight
 			double *dst = this->w[1];
