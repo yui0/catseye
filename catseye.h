@@ -341,7 +341,8 @@ void CatsEye_convolutional_layer_forward(double *s, double *w, double *z, double
 			double *k = w;
 			for (int wy=0; wy<u[KSIZE]; wy++) {
 				for (int wx=0; wx<u[KSIZE]; wx++) {
-					a += p[wx] * (*k++);
+//					a += p[wx] * (*k++);
+					a += (*p++) * (*k++);
 				}
 				p += sx;
 			}
@@ -381,7 +382,8 @@ void CatsEye_convolutional_layer_update(double eta, double *s, double *w, double
 		for (int wx=0; wx<u[KSIZE]; wx++) {
 			double *delta = d;
 			for (int y=0; y<sy; y++) {
-				double *p = &s[y*sx + wy*u[XSIZE]+wx];
+//				double *p = &s[y*sx + wy*u[XSIZE]+wx];
+				double *p = &s[y*u[XSIZE] + wy*u[XSIZE]+wx];
 				for (int x=0; x<sx; x++) {
 					*w -= eta * (*delta++) * (*p++);
 				}
@@ -419,13 +421,17 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, char *fil
 {
 	int u[] = {
 		0, 0, 1, n_in,    0, 0, 0, 0,
-//		1, 0, 1, 25*25, 28, 28,     3, 1,
-		0, 2, 1, n_hid,   0, 0, 0, 0,
+//		1, 0, 1, 25*25, 28, 28, 3, 1,
+		1, 2, 1, 25*25, 28, 28, 3, 1,
+		//1, 5, 1, 25*25, 28, 28, 3, 1,
+		//0, 5, 1, n_out,   0, 0, 0, 0,
+
+//		0, 2, 1, n_hid,   0, 0, 0, 0,
+
 //		0, 2, 1, n_hid/2, 0, 0, 0, 0,
-//		0, 2, 1, n_out,   0, 0, 0, 0,
-		0, 0, 1, n_out,   0, 0, 0, 0,
+		0, 2, 1, n_out,   0, 0, 0, 0,
+//		0, 0, 1, n_out,   0, 0, 0, 0,
 	};
-//	this->layers = 3;
 	this->layers = sizeof(u)/sizeof(int)/CATS_LPARAM;
 	this->u = malloc(sizeof(int)*CATS_LPARAM*this->layers);
 	memcpy(this->u, u, sizeof(int)*CATS_LPARAM*this->layers);
@@ -506,7 +512,7 @@ void CatsEye__destruct(CatsEye *this)
 	free(this->z);
 	for (int i=0; i<this->layers; i++) free(this->o[i]);
 	free(this->o);
-	for (int i=0; i<this->layers-1; i++) free(this->d[i]);
+	for (int i=0; i<this->layers-1; i++) { printf("%d:%x\n",i,this->d[i]); free(this->d[i]); }
 	free(this->d);
 	free(this->e2);
 	free(this->e3);
@@ -590,7 +596,7 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 				// calculate the error of hidden layer
 				// t[hidden] += w[1][hidden * out] * d[1][out]
 				// d[hidden] = t[hidden] * dact(o[hidden])
-				CatsEye_layer_backward[CATS_TYPE(i)](this->o[i], this->w[i], this->d[i-1], this->d[i], &this->u[CATS_LPARAM*i]);
+				CatsEye_layer_backward[CATS_TYPE(i+1)](this->o[i], this->w[i], this->d[i-1], this->d[i], &this->u[CATS_LPARAM*i]);
 //			}
 //			for (int i=this->layers-2; i>0; i--) {
 				// update the weights of hidden layer
