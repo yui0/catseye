@@ -339,7 +339,8 @@ void CatsEye_convolutional_layer_forward(double *s, double *w, double *z, double
 
 	for (int y=0; y<sy; y++) {
 		for (int x=0; x<sx; x++) {
-			double *p = &s[y*sx+x];
+//			double *p = &s[y*sx+x];
+			double *p = &s[y*u[XSIZE]+x];
 			double a = 0;
 //			double *k = w;
 			double *k = &w[c*(u[KSIZE]*u[KSIZE]+1)];
@@ -363,11 +364,14 @@ void CatsEye_convolutional_layer_backward(double *o, double *w, double *d, doubl
 	int sx = u[XSIZE];
 	int sy = u[YSIZE];
 
+	for (int c=0; c<u[CHANNEL]; c++) {
+
 	// calculate the error
 	for (int y=0; y<sy; y++) {
 		for (int x=0; x<sx; x++) {
 			double a = 0;
-			double *k = w;
+//			double *k = w;
+			double *k = &w[c*(u[KSIZE]*u[KSIZE]+1)];
 			for (int wy=0; wy<u[KSIZE]; wy++) {
 				for (int wx=0; wx<u[KSIZE]; wx++) {
 					if (y-wy<0 || x-wx<0) continue;
@@ -376,6 +380,8 @@ void CatsEye_convolutional_layer_backward(double *o, double *w, double *d, doubl
 			}
 			*d++ = CatsEye_dact[u[ACT]](&a, 0, 1);
 		}
+	}
+
 	}
 }
 void CatsEye_convolutional_layer_update(double eta, double *s, double *w, double *d, int u[])
@@ -440,16 +446,7 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 	} else {
 		int u[] = {
 			0, 0, 1, n_in,    0, 0, 0, 0,
-//			1, 0, 1, 25*25, 28, 28, 3, 1,
-//			1, 2, 1, 25*25, 28, 28, 3, 1,
-			//1, 2, 1, 23*23, 28, 28, 5, 1,
-			//1, 5, 1, 25*25, 28, 28, 3, 1,
-			//0, 5, 1, n_out,   0, 0, 0, 0,
-
 			0, 2, 1, n_hid,   0, 0, 0, 0,
-
-//			0, 2, 1, n_hid/2, 0, 0, 0, 0,
-//			0, 2, 1, n_out,   0, 0, 0, 0,
 			0, 0, 1, n_out,   0, 0, 0, 0,
 		};
 		this->layers = sizeof(u)/sizeof(int)/LPLEN;
@@ -756,7 +753,7 @@ void CatsEye_visualizeWeights(CatsEye *this, int n, int size, unsigned char *p, 
 }
 
 // visualize
-void CatsEye_visualize(double *o, int ch, int n, int size, unsigned char *p, int width)
+void CatsEye_visualize(double *o, int n, int size, unsigned char *p, int width)
 {
 	double max = o[0];
 	double min = o[0];
