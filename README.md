@@ -10,6 +10,7 @@ Neural network library written in C and Javascript
   - Multilayer perceptron
   - Deep Neural Networks (DNN)
   - Deep Belief Networks (DBN)
+  - Convolutional Neural Networks (CNN)
 - Supported networks
   - Activation functions
     - sigmoid, tanh, scaled tanh, ReLU, abs, identity function
@@ -73,6 +74,7 @@ for more information, see example/
   - SVM [http://d.hatena.ne.jp/echizen_tm/20110627/1309188711]
   - Hello Autoencoder [http://kiyukuta.github.io/2013/08/20/hello_autoencoder.html]
   - Autoencoder [http://pc.atsuhiro-me.net/entry/2015/08/18/003402]
+  - Convolutional Neural Networks [http://blog.yusugomori.com/post/129688163130/%E6%95%B0%E5%BC%8F%E3%81%A7%E6%9B%B8%E3%81%8D%E4%B8%8B%E3%81%99-convolutional-neural-networks-cnn]
 - Programing
   - Multilayer perceptron [http://kivantium.hateblo.jp/entry/2014/12/22/004640]
   - Weather example [http://arakilab.media.eng.hokudai.ac.jp/~t_ogawa/wiki/index.php?LibSVM]

@@ -285,7 +285,6 @@ void CatsEye_linear_layer_forward(double *x, double *w, double *z, double *o, in
 		z[i] = dotT(&w[i], x, in, out);
 		o[i] = CatsEye_act[u[ACT]](z, i, out);
 	}
-//	o[out] = 1;	// for bias
 }
 // caluculate back propagation
 void CatsEye_linear_layer_backward(double *o, double *w, double *d, double *delta, int u[])
@@ -301,7 +300,7 @@ void CatsEye_linear_layer_backward(double *o, double *w, double *d, double *delt
 	d[in] = dot(&w[in*out], delta, out) * CatsEye_dact[u[ACT]](o, in, in);
 }
 void CatsEye_linear_layer_update(double eta, double *o, double *w, double *d, int u[])
-/*{
+{
 	int in = u[SIZE-CATS_LPARAM]+1;
 	int out = u[SIZE];
 
@@ -313,7 +312,7 @@ void CatsEye_linear_layer_update(double eta, double *o, double *w, double *d, in
 		}
 	}
 }
-void CatsEye_SVM_layer_update(double eta, double *o, double *w, double *d, int u[])*/
+void CatsEye_SVM_layer_update(double eta, double *o, double *w, double *d, int u[])
 {
 	int in = u[SIZE-CATS_LPARAM]+1;
 	int out = u[SIZE];
@@ -351,7 +350,7 @@ void CatsEye_convolutional_layer_forward(double *s, double *w, double *z, double
 		}
 	}
 }
-// caluculate back propagation (http://blog.yusugomori.com/post/129688163130/%E6%95%B0%E5%BC%8F%E3%81%A7%E6%9B%B8%E3%81%8D%E4%B8%8B%E3%81%99-convolutional-neural-networks-cnn)
+// caluculate back propagation
 void CatsEye_convolutional_layer_backward(double *o, double *w, double *d, double *delta, int u[])
 {
 	int sx = u[XSIZE];
@@ -409,7 +408,8 @@ void (*CatsEye_layer_backward[])(double *o, double *w, double *d, double *delta,
 	CatsEye_convolutional_layer_backward,
 };
 void (*CatsEye_layer_update[])(double eta, double *s, double *w, double *d, int u[]) = {
-	CatsEye_linear_layer_update,
+//	CatsEye_linear_layer_update,
+	CatsEye_SVM_layer_update,
 	CatsEye_convolutional_layer_update,
 };
 
@@ -512,7 +512,7 @@ void CatsEye__destruct(CatsEye *this)
 	free(this->z);
 	for (int i=0; i<this->layers; i++) free(this->o[i]);
 	free(this->o);
-	for (int i=0; i<this->layers-1; i++) { printf("%d:%x\n",i,this->d[i]); free(this->d[i]); }
+	for (int i=0; i<this->layers-1; i++) free(this->d[i]);
 	free(this->d);
 	free(this->e2);
 	free(this->e3);
@@ -534,7 +534,7 @@ void CatsEye_forward(CatsEye *this, double *x)
 #ifdef CATS_DENOISING_AUTOENCODER
 	// Denoising Autoencoder (http://kiyukuta.github.io/2013/08/20/hello_autoencoder.html)
 	for (int i=0; i<CATS_SIZE(0); i++) {
-		this->o[0][i] *= binomial(/*0.8(20%)*//*0.2*/0.5);
+		this->o[0][i] *= binomial(/*0.7(30%)*/0.5);
 	}
 #endif
 
@@ -724,7 +724,7 @@ int CatsEye_saveBin(CatsEye *this, char *filename)
 	return 0;
 }
 
-// w1
+// visualize weights [w1]
 void CatsEye_visualizeWeights(CatsEye *this, int n, int size, unsigned char *p, int width)
 {
 	double *w = &this->w[0][n];
@@ -736,5 +736,19 @@ void CatsEye_visualizeWeights(CatsEye *this, int n, int size, unsigned char *p, 
 	}
 	for (int i=0; i<CATS_SIZE(0); i++) {
 		p[(i/size)*width + i%size] = ((w[i * CATS_SIZE(1)] - min) / (max - min)) * 255.0;
+	}
+}
+
+// visualize
+void CatsEye_visualize(double *o, int ch, int n, int size, unsigned char *p, int width)
+{
+	double max = o[0];
+	double min = o[0];
+	for (int i=1; i<n; i++) {
+		if (max < o[i]) max = o[i];
+		if (min > o[i]) min = o[i];
+	}
+	for (int i=0; i<n; i++) {
+		p[(i/size)*width + i%size] = ((o[i] - min) / (max - min)) * 255.0;
 	}
 }
