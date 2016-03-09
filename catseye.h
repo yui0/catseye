@@ -274,6 +274,7 @@ enum CATS_LP {
 };
 #define TYPE(i)		this->u[LPLEN*(i)+TYPE]
 #define SIZE(i)		this->u[LPLEN*(i)+SIZE]
+#define CH(i)		this->u[LPLEN*(i)+CH]
 
 // caluculate forward propagation of input x
 // f(x) = h(scale*x+bias)
@@ -334,11 +335,14 @@ void CatsEye_convolutional_layer_forward(double *s, double *w, double *z, double
 	int sx = u[XSIZE] - u[KSIZE];
 	int sy = u[YSIZE] - u[KSIZE];
 
+	for (int c=0; c<u[CHANNEL]; c++) {
+
 	for (int y=0; y<sy; y++) {
 		for (int x=0; x<sx; x++) {
 			double *p = &s[y*sx+x];
 			double a = 0;
-			double *k = w;
+//			double *k = w;
+			double *k = &w[c*(u[KSIZE]*u[KSIZE]+1)];
 			for (int wy=0; wy<u[KSIZE]; wy++) {
 				for (int wx=0; wx<u[KSIZE]; wx++) {
 //					a += p[wx] * (*k++);
@@ -349,6 +353,8 @@ void CatsEye_convolutional_layer_forward(double *s, double *w, double *z, double
 			a += *k;	// bias
 			*o++ = CatsEye_act[u[ACT]](&a, 0, 1);
 		}
+	}
+
 	}
 }
 // caluculate back propagation
@@ -377,10 +383,13 @@ void CatsEye_convolutional_layer_update(double eta, double *s, double *w, double
 	int sx = u[XSIZE] - u[KSIZE];
 	int sy = u[YSIZE] - u[KSIZE];
 
+	for (int c=0; c<u[CHANNEL]; c++) {
+
 	// update the weights
 	for (int wy=0; wy<u[KSIZE]; wy++) {
 		for (int wx=0; wx<u[KSIZE]; wx++) {
-			double *delta = d;
+//			double *delta = d;
+			double *delta = &d[c*sx*sy];
 			for (int y=0; y<sy; y++) {
 //				double *p = &s[y*sx + wy*u[XSIZE]+wx];
 				double *p = &s[y*u[XSIZE] + wy*u[XSIZE]+wx];
@@ -393,11 +402,14 @@ void CatsEye_convolutional_layer_update(double eta, double *s, double *w, double
 	}
 
 	// bias
-	double *delta = d;
+//	double *delta = d;
+	double *delta = &d[c*sx*sy];
 	for (int y=0; y<sy; y++) {
 		for (int x=0; x<sx; x++) {
 			*w -= eta * (*delta++);
 		}
+	}
+
 	}
 }
 void (*CatsEye_layer_forward[])(double *s, double *w, double *z, double *o, int u[]) = {
@@ -429,16 +441,16 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 		int u[] = {
 			0, 0, 1, n_in,    0, 0, 0, 0,
 //			1, 0, 1, 25*25, 28, 28, 3, 1,
-			1, 2, 1, 25*25, 28, 28, 3, 1,
+//			1, 2, 1, 25*25, 28, 28, 3, 1,
 			//1, 2, 1, 23*23, 28, 28, 5, 1,
 			//1, 5, 1, 25*25, 28, 28, 3, 1,
 			//0, 5, 1, n_out,   0, 0, 0, 0,
 
-//			0, 2, 1, n_hid,   0, 0, 0, 0,
+			0, 2, 1, n_hid,   0, 0, 0, 0,
 
 //			0, 2, 1, n_hid/2, 0, 0, 0, 0,
-			0, 2, 1, n_out,   0, 0, 0, 0,
-//			0, 0, 1, n_out,   0, 0, 0, 0,
+//			0, 2, 1, n_out,   0, 0, 0, 0,
+			0, 0, 1, n_out,   0, 0, 0, 0,
 		};
 		this->layers = sizeof(u)/sizeof(int)/LPLEN;
 		this->u = malloc(sizeof(int)*LPLEN*this->layers);
@@ -759,3 +771,4 @@ void CatsEye_visualize(double *o, int ch, int n, int size, unsigned char *p, int
 
 #undef TYPE
 #undef SIZE
+#undef CH
