@@ -265,20 +265,21 @@ enum CATS_LP {
 	TYPE,		// MLP, Conv
 	ACT,		// activation function type
 	CHANNEL,
-	SIZE,		// input size
+	SIZE,		// input size (ch * x * y)
 	XSIZE,		// width
 	YSIZE,		// height
 	KSIZE,		// kernel size
 	STRIDE,
-	CATS_LPARAM	// length of layer params
+	LPLEN		// length of layer params
 };
-#define CATS_TYPE(i)	this->u[CATS_LPARAM*(i)+TYPE]
-#define CATS_SIZE(i)	this->u[CATS_LPARAM*(i)+SIZE]
+#define TYPE(i)		this->u[LPLEN*(i)+TYPE]
+#define SIZE(i)		this->u[LPLEN*(i)+SIZE]
+
 // caluculate forward propagation of input x
 // f(x) = h(scale*x+bias)
 void CatsEye_linear_layer_forward(double *x, double *w, double *z, double *o, int u[])
 {
-	int in = u[SIZE-CATS_LPARAM]+1;
+	int in = u[SIZE-LPLEN]+1;
 	int out = u[SIZE];
 
 	for (int i=0; i<out; i++) {
@@ -290,7 +291,7 @@ void CatsEye_linear_layer_forward(double *x, double *w, double *z, double *o, in
 void CatsEye_linear_layer_backward(double *o, double *w, double *d, double *delta, int u[])
 {
 	int in = u[SIZE];
-	int out = u[SIZE+CATS_LPARAM];
+	int out = u[SIZE+LPLEN];
 
 	// calculate the error
 	for (int i=0; i<in; i++) {
@@ -301,7 +302,7 @@ void CatsEye_linear_layer_backward(double *o, double *w, double *d, double *delt
 }
 void CatsEye_linear_layer_update(double eta, double *o, double *w, double *d, int u[])
 {
-	int in = u[SIZE-CATS_LPARAM]+1;
+	int in = u[SIZE-LPLEN]+1;
 	int out = u[SIZE];
 
 	// update the weights
@@ -314,7 +315,7 @@ void CatsEye_linear_layer_update(double eta, double *o, double *w, double *d, in
 }
 void CatsEye_SVM_layer_update(double eta, double *o, double *w, double *d, int u[])
 {
-	int in = u[SIZE-CATS_LPARAM]+1;
+	int in = u[SIZE-LPLEN]+1;
 	int out = u[SIZE];
 
 	// update the weights
@@ -417,76 +418,79 @@ void (*CatsEye_layer_update[])(double eta, double *s, double *w, double *d, int 
  * n_in:  number of input layer
  * n_hid: number of hidden layer
  * n_out: number of output layer */
-void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, char *filename)
+void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *param)
 {
-	int u[] = {
-		0, 0, 1, n_in,    0, 0, 0, 0,
-//		1, 0, 1, 25*25, 28, 28, 3, 1,
-		1, 2, 1, 25*25, 28, 28, 3, 1,
-		//1, 5, 1, 25*25, 28, 28, 3, 1,
-		//0, 5, 1, n_out,   0, 0, 0, 0,
+	if (!n_in && n_out>0 && param) {
+		this->layers = n_out;
+		this->u = malloc(sizeof(int)*LPLEN*this->layers);
+		memcpy(this->u, param, sizeof(int)*LPLEN*this->layers);
+		param = 0;
+	} else {
+		int u[] = {
+			0, 0, 1, n_in,    0, 0, 0, 0,
+//			1, 0, 1, 25*25, 28, 28, 3, 1,
+			1, 2, 1, 25*25, 28, 28, 3, 1,
+			//1, 2, 1, 23*23, 28, 28, 5, 1,
+			//1, 5, 1, 25*25, 28, 28, 3, 1,
+			//0, 5, 1, n_out,   0, 0, 0, 0,
 
-//		0, 2, 1, n_hid,   0, 0, 0, 0,
+//			0, 2, 1, n_hid,   0, 0, 0, 0,
 
-//		0, 2, 1, n_hid/2, 0, 0, 0, 0,
-		0, 2, 1, n_out,   0, 0, 0, 0,
-//		0, 0, 1, n_out,   0, 0, 0, 0,
-	};
-	this->layers = sizeof(u)/sizeof(int)/CATS_LPARAM;
-	this->u = malloc(sizeof(int)*CATS_LPARAM*this->layers);
-	memcpy(this->u, u, sizeof(int)*CATS_LPARAM*this->layers);
+//			0, 2, 1, n_hid/2, 0, 0, 0, 0,
+			0, 2, 1, n_out,   0, 0, 0, 0,
+//			0, 0, 1, n_out,   0, 0, 0, 0,
+		};
+		this->layers = sizeof(u)/sizeof(int)/LPLEN;
+		this->u = malloc(sizeof(int)*LPLEN*this->layers);
+		memcpy(this->u, u, sizeof(int)*LPLEN*this->layers);
+	}
 
 	FILE *fp;
-	if (filename) {
-		fp = fopen(filename, "r");
+	if (param) {
+		fp = fopen(param, "r");
 		if (fp==NULL) return;
-		fscanf(fp, "%d %d %d\n", &CATS_SIZE(0), &CATS_SIZE(1), &CATS_SIZE(2));
-	} else {
-//		CATS_SIZE(0) = n_in;
-//		CATS_SIZE(1) = n_hid;
-//		CATS_SIZE(2) = n_out;
-		for (int i=0; i<this->layers; i++) CATS_SIZE(i) = this->u[CATS_LPARAM*i+SIZE];
+		fscanf(fp, "%d %d %d\n", &SIZE(0), &SIZE(1), &SIZE(2));
 	}
 
 	// allocate inputs
 	this->z = malloc(sizeof(double*)*(this->layers-1));
 	for (int i=0; i<this->layers-1; i++) {
-		this->z[i] = malloc(sizeof(double)*(CATS_SIZE(i+1)+1));
+		this->z[i] = malloc(sizeof(double)*(SIZE(i+1)+1));
 	}
 
 	// allocate outputs
 	this->o = malloc(sizeof(double*)*(this->layers));
 	for (int i=0; i<this->layers; i++) {
-		this->o[i] = malloc(sizeof(double)*(CATS_SIZE(i)+1));
+		this->o[i] = malloc(sizeof(double)*(SIZE(i)+1));
 	}
 
 	// allocate errors
 	this->d = malloc(sizeof(double*)*(this->layers-1));
 	for (int i=0; i<this->layers-1; i++) {
-		this->d[i] = malloc(sizeof(double)*(CATS_SIZE(i+1)+1));
+		this->d[i] = malloc(sizeof(double)*(SIZE(i+1)+1));
 	}
 
 	// allocate gradient
-	this->e2 = calloc(1, sizeof(double)*(CATS_SIZE(1)+1));
-	this->e3 = calloc(1, sizeof(double)*CATS_SIZE(2));
-	this->m2 = calloc(1, sizeof(double)*(CATS_SIZE(1)+1));
-	this->m3 = calloc(1, sizeof(double)*CATS_SIZE(2));
-	this->v2 = calloc(1, sizeof(double)*(CATS_SIZE(1)+1));
-	this->v3 = calloc(1, sizeof(double)*CATS_SIZE(2));
-	this->dl1 = malloc(sizeof(double)*(CATS_SIZE(0)+1)*CATS_SIZE(1));
-	this->dl2 = malloc(sizeof(double)*(CATS_SIZE(1)+1)*CATS_SIZE(2));
+	this->e2 = calloc(1, sizeof(double)*(SIZE(1)+1));
+	this->e3 = calloc(1, sizeof(double)*SIZE(2));
+	this->m2 = calloc(1, sizeof(double)*(SIZE(1)+1));
+	this->m3 = calloc(1, sizeof(double)*SIZE(2));
+	this->v2 = calloc(1, sizeof(double)*(SIZE(1)+1));
+	this->v3 = calloc(1, sizeof(double)*SIZE(2));
+	this->dl1 = malloc(sizeof(double)*(SIZE(0)+1)*SIZE(1));
+	this->dl2 = malloc(sizeof(double)*(SIZE(1)+1)*SIZE(2));
 
 	// allocate memories
 	this->w = malloc(sizeof(double*)*(this->layers-1));
 	for (int i=0; i<this->layers-1; i++) {
-		this->w[i] = malloc(sizeof(double)*(CATS_SIZE(i)+1)*CATS_SIZE(i+1));
+		this->w[i] = malloc(sizeof(double)*(SIZE(i)+1)*SIZE(i+1));
 	}
 
-	if (filename) {
-		for (int i=0; i<(CATS_SIZE(0)+1)*CATS_SIZE(1); i++) {
+	if (param) {
+		for (int i=0; i<(SIZE(0)+1)*SIZE(1); i++) {
 			fscanf(fp, "%lf ", &this->w[0][i]);
 		}
-		for (int i=0; i<(CATS_SIZE(1)+1)*CATS_SIZE(2); i++) {
+		for (int i=0; i<(SIZE(1)+1)*SIZE(2); i++) {
 			fscanf(fp, "%lf ", &this->w[1][i]);
 		}
 		fclose(fp);
@@ -494,10 +498,10 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, char *fil
 		// initialize weights (http://aidiary.hatenablog.com/entry/20150618/1434628272)
 		// range depends on the research of Y. Bengio et al. (2010)
 		srand((unsigned)(time(0)));
-		double range = sqrt(6)/sqrt(CATS_SIZE(0)+CATS_SIZE(1)+2);
+		double range = sqrt(6)/sqrt(SIZE(0)+SIZE(1)+2);
 		srand((unsigned)(time(0)));
 		for (int i=0; i<this->layers-1; i++) {
-			for (int j=0; j<(CATS_SIZE(i)+1)*CATS_SIZE(i+1); j++) {
+			for (int j=0; j<(SIZE(i)+1)*SIZE(i+1); j++) {
 				this->w[i][j] = 2.0*range*rand()/RAND_MAX-range;
 			}
 		}
@@ -529,11 +533,11 @@ void CatsEye__destruct(CatsEye *this)
 void CatsEye_forward(CatsEye *this, double *x)
 {
 	// calculation of input layer
-	memcpy(this->o[0], x, CATS_SIZE(0)*sizeof(double));
-	this->o[0][CATS_SIZE(0)] = 1;	// for bias
+	memcpy(this->o[0], x, SIZE(0)*sizeof(double));
+	this->o[0][SIZE(0)] = 1;	// for bias
 #ifdef CATS_DENOISING_AUTOENCODER
 	// Denoising Autoencoder (http://kiyukuta.github.io/2013/08/20/hello_autoencoder.html)
-	for (int i=0; i<CATS_SIZE(0); i++) {
+	for (int i=0; i<SIZE(0); i++) {
 		this->o[0][i] *= binomial(/*0.7(30%)*/0.5);
 	}
 #endif
@@ -541,10 +545,10 @@ void CatsEye_forward(CatsEye *this, double *x)
 	// caluculation of hidden and output layer [z = wx, o = f(z)]
 	// z[hidden] += w[in * hidden] * o[0][in]
 	// o[1][hidden] = act(z[hidden])
-	CatsEye_layer_forward[CATS_TYPE(1)](this->o[0], this->w[0], this->z[0], this->o[1], &this->u[CATS_LPARAM*1]);
+	CatsEye_layer_forward[TYPE(1)](this->o[0], this->w[0], this->z[0], this->o[1], &this->u[LPLEN*1]);
 	for (int i=1; i<this->layers-1; i++) {
-		this->o[i][CATS_SIZE(i)] = 1;	// for bias
-		CatsEye_layer_forward[CATS_TYPE(i+1)](this->o[i], this->w[i], this->z[i], this->o[i+1], &this->u[CATS_LPARAM*(i+1)]);
+		this->o[i][SIZE(i)] = 1;	// for bias
+		CatsEye_layer_forward[TYPE(i+1)](this->o[i], this->w[i], this->z[i], this->o[i+1], &this->u[LPLEN*(i+1)]);
 	}
 }
 
@@ -559,8 +563,8 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 	for (int times=0; times<repeat; times++) {
 		double err = 0;
 #ifndef CATS_OPT_SGD
-		memset(this->e3, 0, sizeof(double)*CATS_SIZE(2));
-		memset(this->e2, 0, sizeof(double)*CATS_SIZE(1));
+		memset(this->e3, 0, sizeof(double)*SIZE(2));
+		memset(this->e2, 0, sizeof(double)*SIZE(1));
 #endif
 #ifndef CATS_RANDOM
 		for (int sample=0; sample<N; sample++) {
@@ -569,11 +573,11 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 			int sample = (rand()/(RAND_MAX+1.0)) * N;	// 0 <= rand < 1
 #endif
 			// forward propagation
-			CatsEye_forward(this, x+sample*CATS_SIZE(0));
+			CatsEye_forward(this, x+sample*SIZE(0));
 
 			// calculate the error of output layer
 			int a = this->layers-1;
-			for (int i=0; i<CATS_SIZE(a); i++) {
+			for (int i=0; i<SIZE(a); i++) {
 #ifndef CATS_LOSS_MSE
 				// http://d.hatena.ne.jp/echizen_tm/20110606/1307378609
 				// E = max(0, -twx), ∂E / ∂w = max(0, -tx)
@@ -585,8 +589,8 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 #else
 				// http://qiita.com/Ugo-Nama/items/04814a13c9ea84978a4c
 				// https://github.com/nyanp/tiny-cnn/wiki/%E5%AE%9F%E8%A3%85%E3%83%8E%E3%83%BC%E3%83%88
-				this->d[a-1][i] = this->o[a][i]-((double*)t)[sample*CATS_SIZE(a)+i];
-//				this->d[1][i] = (this->o[2][i]-((double*)t)[sample*CATS_SIZE(2)+i]) * DACT2(this->o[2][i]);
+				this->d[a-1][i] = this->o[a][i]-((double*)t)[sample*SIZE(a)+i];
+//				this->d[1][i] = (this->o[2][i]-((double*)t)[sample*SIZE(2)+i]) * DACT2(this->o[2][i]);
 #endif
 //				this->e3[i] += this->d[1][i]*this->d[1][i];
 				OPT_CALC1(3);
@@ -596,29 +600,29 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 				// calculate the error of hidden layer
 				// t[hidden] += w[1][hidden * out] * d[1][out]
 				// d[hidden] = t[hidden] * dact(o[hidden])
-				CatsEye_layer_backward[CATS_TYPE(i+1)](this->o[i], this->w[i], this->d[i-1], this->d[i], &this->u[CATS_LPARAM*i]);
+				CatsEye_layer_backward[TYPE(i+1)](this->o[i], this->w[i], this->d[i-1], this->d[i], &this->u[LPLEN*i]);
 //			}
 //			for (int i=this->layers-2; i>0; i--) {
 				// update the weights of hidden layer
 				// w[0][in] -= eta * o[0][in] * d[0][in * hidden]
-				CatsEye_layer_update[CATS_TYPE(i)](eta, this->o[i-1], this->w[i-1], this->d[i-1], &this->u[CATS_LPARAM*i]);
+				CatsEye_layer_update[TYPE(i)](eta, this->o[i-1], this->w[i-1], this->d[i-1], &this->u[LPLEN*i]);
 			}
 
 			// update the weights of output layer
-			CatsEye_layer_update[CATS_TYPE(a)](eta, this->o[a-1], this->w[a-1], this->d[a-1], &this->u[CATS_LPARAM*a]);
+			CatsEye_layer_update[TYPE(a)](eta, this->o[a-1], this->w[a-1], this->d[a-1], &this->u[LPLEN*a]);
 #ifdef CATS_AUTOENCODER
 			// tied weight
 			double *dst = this->w[1];
-			for (int i=0; i<CATS_SIZE(1); i++) {
-				for (int j=0; j<CATS_SIZE(0); j++) {
-					this->w[1][j + CATS_SIZE(1)*i] = this->w[0][CATS_SIZE(1)*j + i];
+			for (int i=0; i<SIZE(1); i++) {
+				for (int j=0; j<SIZE(0); j++) {
+					this->w[1][j + SIZE(1)*i] = this->w[0][SIZE(1)*j + i];
 				}
 			}
 #endif
 
 			// calculate the mean squared error
 			double mse = 0;
-			for (int i=0; i<CATS_SIZE(2); i++) {
+			for (int i=0; i<SIZE(2); i++) {
 				mse += 0.5 * (this->d[1][i] * this->d[1][i]);
 			}
 			err = 0.5 * (err + mse);
@@ -642,7 +646,7 @@ int CatsEye_predict(CatsEye *this, double *x)
 	int a = this->layers-1;
 	double max = this->o[a][0];
 	int ans = 0;
-	for (int i=1; i<CATS_SIZE(a); i++) {
+	for (int i=1; i<SIZE(a); i++) {
 		if (this->o[a][i] > max) {
 			max = this->o[a][i];
 			ans = i;
@@ -657,15 +661,15 @@ int CatsEye_save(CatsEye *this, char *filename)
 	FILE *fp = fopen(filename, "w");
 	if (fp==NULL) return -1;
 
-	fprintf(fp, "%d %d %d\n", CATS_SIZE(0), CATS_SIZE(1), CATS_SIZE(2));
+	fprintf(fp, "%d %d %d\n", SIZE(0), SIZE(1), SIZE(2));
 
 	int i;
-	for (i=0; i<(CATS_SIZE(0)+1)*CATS_SIZE(1)-1; i++) {
+	for (i=0; i<(SIZE(0)+1)*SIZE(1)-1; i++) {
 		fprintf(fp, "%lf ", this->w[0][i]);
 	}
 	fprintf(fp, "%lf\n", this->w[0][i]);
 
-	for (i=0; i<(CATS_SIZE(1)+1)*CATS_SIZE(2)-1; i++) {
+	for (i=0; i<(SIZE(1)+1)*SIZE(2)-1; i++) {
 		fprintf(fp, "%lf ", this->w[1][i]);
 	}
 	fprintf(fp, "%lf\n", this->w[1][i]);
@@ -680,17 +684,17 @@ int CatsEye_saveJson(CatsEye *this, char *filename)
 	FILE *fp = fopen(filename, "w");
 	if (fp==NULL) return -1;
 
-	fprintf(fp, "var config = [%d,%d,%d];\n", CATS_SIZE(0), CATS_SIZE(1), CATS_SIZE(2));
+	fprintf(fp, "var config = [%d,%d,%d];\n", SIZE(0), SIZE(1), SIZE(2));
 
 	int i;
 	fprintf(fp, "var w1 = [");
-	for (i=0; i<(CATS_SIZE(0)+1)*CATS_SIZE(1)-1; i++) {
+	for (i=0; i<(SIZE(0)+1)*SIZE(1)-1; i++) {
 		fprintf(fp, "%lf,", this->w[0][i]);
 	}
 	fprintf(fp, "%lf];\n", this->w[0][i]);
 
 	fprintf(fp, "var w2 = [");
-	for (i=0; i<(CATS_SIZE(1)+1)*CATS_SIZE(2)-1; i++) {
+	for (i=0; i<(SIZE(1)+1)*SIZE(2)-1; i++) {
 		fprintf(fp, "%lf,", this->w[1][i]);
 	}
 	fprintf(fp, "%lf];\n", this->w[1][i]);
@@ -705,17 +709,17 @@ int CatsEye_saveBin(CatsEye *this, char *filename)
 	FILE *fp = fopen(filename, "wb");
 	if (fp==NULL) return -1;
 
-	fwrite(&CATS_SIZE(0), sizeof(int), 1, fp);
-	fwrite(&CATS_SIZE(1), sizeof(int), 1, fp);
-	fwrite(&CATS_SIZE(2), sizeof(int), 1, fp);
+	fwrite(&SIZE(0), sizeof(int), 1, fp);
+	fwrite(&SIZE(1), sizeof(int), 1, fp);
+	fwrite(&SIZE(2), sizeof(int), 1, fp);
 
-	//fwrite(this->w[0], sizeof(double)*(CATS_SIZE(0)+1)*CATS_SIZE(1), 1, fp);
-	//fwrite(this->w[1], sizeof(double)*(CATS_SIZE(1)+1)*CATS_SIZE(2), 1, fp);
-	for (int i=0; i<(CATS_SIZE(0)+1)*CATS_SIZE(1); i++) {
+	//fwrite(this->w[0], sizeof(double)*(SIZE(0)+1)*SIZE(1), 1, fp);
+	//fwrite(this->w[1], sizeof(double)*(SIZE(1)+1)*SIZE(2), 1, fp);
+	for (int i=0; i<(SIZE(0)+1)*SIZE(1); i++) {
 		float a = this->w[0][i];
 		fwrite(&a, sizeof(float), 1, fp);
 	}
-	for (int i=0; i<(CATS_SIZE(1)+1)*CATS_SIZE(2); i++) {
+	for (int i=0; i<(SIZE(1)+1)*SIZE(2); i++) {
 		float a = this->w[1][i];
 		fwrite(&a, sizeof(float), 1, fp);
 	}
@@ -730,12 +734,12 @@ void CatsEye_visualizeWeights(CatsEye *this, int n, int size, unsigned char *p, 
 	double *w = &this->w[0][n];
 	double max = w[0];
 	double min = w[0];
-	for (int i=1; i<CATS_SIZE(0); i++) {
-		if (max < w[i * CATS_SIZE(1)]) max = w[i * CATS_SIZE(1)];
-		if (min > w[i * CATS_SIZE(1)]) min = w[i * CATS_SIZE(1)];
+	for (int i=1; i<SIZE(0); i++) {
+		if (max < w[i * SIZE(1)]) max = w[i * SIZE(1)];
+		if (min > w[i * SIZE(1)]) min = w[i * SIZE(1)];
 	}
-	for (int i=0; i<CATS_SIZE(0); i++) {
-		p[(i/size)*width + i%size] = ((w[i * CATS_SIZE(1)] - min) / (max - min)) * 255.0;
+	for (int i=0; i<SIZE(0); i++) {
+		p[(i/size)*width + i%size] = ((w[i * SIZE(1)] - min) / (max - min)) * 255.0;
 	}
 }
 
@@ -752,3 +756,6 @@ void CatsEye_visualize(double *o, int ch, int n, int size, unsigned char *p, int
 		p[(i/size)*width + i%size] = ((o[i] - min) / (max - min)) * 255.0;
 	}
 }
+
+#undef TYPE
+#undef SIZE
