@@ -17,12 +17,16 @@ int main()
 	int label = 10;	// 出力層ユニット(0-9)
 	int sample = 60000;
 
+	int k = 5;		// カーネルサイズ
+	int s = 28-k;		// 出力サイズ
+
 	int u[] = {
 		0, 0, 1, size,    0, 0, 0, 0,
 
 //		1, 2, 1, 25*25, 28, 28, 3, 1,
 //		1, 2, 5, 5*25*25, 28, 28, 3, 1,		// sigmoid, 5ch
-		1, 3, 5, 5*25*25, 28, 28, 3, 1,		// tanh, 5ch
+//		1, 3, 5, 5*25*25, 28, 28, 3, 1,		// tanh, 5ch, 3x3
+		1, 3, 5, 5*s*s, 28, 28, k, 1,		// tanh, 5ch
 //		1, 5, 5, 5*25*25, 28, 28, 3, 1,		// ReLU, 5ch
 
 //		0, 2, 1, hidden,  0, 0, 0, 0,
@@ -73,13 +77,20 @@ int main()
 	printf("Prediction accuracy on training data = %f%%\n", (float)r/sample*100.0);
 
 	unsigned char *pixels = calloc(1, size*100);
-	for (int i=0; i<50; i++) {
-		double mse = 0;
+	for (int i=0; i<10; i++) {
+		CatsEye_forward(&cat, x+size*i);
+		CatsEye_visualize(cat.o[1], s*s, s, &pixels[i*28], 28*10);
+		CatsEye_visualize(&cat.o[1][s*s], s*s, s, &pixels[28*28*10+i*28], 28*10);
+		CatsEye_visualize(&cat.o[1][s*s*2], s*s, s, &pixels[28*28*10*2+i*28], 28*10);
+		CatsEye_visualize(&cat.o[1][s*s*3], s*s, s, &pixels[28*28*10*3+i*28], 28*10);
+		CatsEye_visualize(&cat.o[1][s*s*4], s*s, s, &pixels[28*28*10*4+i*28], 28*10);
+	}
+/*	for (int i=0; i<50; i++) {
 		CatsEye_forward(&cat, x+size*i);
 //		CatsEye_visualize(cat.o[1], cat.u[LPLEN*1+SIZE], 28, &pixels[(i/10)*28*28*10 + (i%10)*28], 28*10);
-		CatsEye_visualize(cat.o[1], cat.u[LPLEN*1+SIZE], 25, &pixels[(i/10)*28*28*10 + (i%10)*28], 28*10);
-	}
-	CatsEye_visualize(cat.w[0], 5*3*3, 3, &pixels[28*10*28*9], 28*10);
+		CatsEye_visualize(cat.o[1], 25*25, 25, &pixels[(i/10)*28*28*10 + (i%10)*28], 28*10);
+	}*/
+	CatsEye_visualize(cat.w[0], 5*k*k, k, &pixels[28*10*28*9], 28*10);
 	stbi_write_png("mnist_cnn_train.png", 28*10, 28*10, 1, pixels, 28*10);
 	free(pixels);
 

@@ -67,7 +67,7 @@ for more information, see example/
   ![epoch=100](example/mnist_autoencoder_weights_u64da_s100.png "epoch=100")
 
 - Convolutional Neural Networks
-  ![Convolutional](example/mnist_cnn_train.png "Convolutional")
+  - ![96.4%](example/mnist_cnn_train.png "Convolutional")
 
 ## Refrence
 - Documents
