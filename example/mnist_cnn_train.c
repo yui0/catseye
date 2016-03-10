@@ -17,21 +17,23 @@ int main()
 	int label = 10;	// 出力層ユニット(0-9)
 	int sample = 60000;
 
-	int k = 5;		// カーネルサイズ
+	int k = 4;		// カーネルサイズ
 	int s = 28-k;		// 出力サイズ
 
 	int u[] = {
 		0, 0, 1, size,    0, 0, 0, 0,
 
 //		1, 2, 1, 25*25, 28, 28, 3, 1,
-//		1, 2, 5, 5*25*25, 28, 28, 3, 1,		// sigmoid, 5ch
-//		1, 3, 5, 5*25*25, 28, 28, 3, 1,		// tanh, 5ch, 3x3
-		1, 3, 5, 5*s*s, 28, 28, k, 1,		// tanh, 5ch
-//		1, 5, 5, 5*25*25, 28, 28, 3, 1,		// ReLU, 5ch
+//		1, 2, 5, 5*25*25, 28, 28, 3, 1,				// sigmoid, 5ch
+//		1, 3, 5, 5*25*25, 28, 28, 3, 1,				// tanh, 5ch, 3x3
+		CATS_CONV, CATS_ACT_TANH, 5, 5*s*s, 28, 28, k, 1,	// tanh, 5ch
+//		1, 5, 5, 5*25*25, 28, 28, 3, 1,				// ReLU, 5ch
+
+		CATS_MAXPOOL, 0, 5, 5*12*12, s, s, 2, 1,		// maxpooling
 
 //		0, 2, 1, hidden,  0, 0, 0, 0,
 
-		0, 2, 1, label,   0, 0, 0, 0,
+		CATS_LINEAR, CATS_ACT_SIGMOID, 1, label, 0, 0, 0, 0,
 	};
 	int layers = sizeof(u)/sizeof(int)/LPLEN;
 
@@ -84,6 +86,11 @@ int main()
 		CatsEye_visualize(&cat.o[1][s*s*2], s*s, s, &pixels[28*28*10*2+i*28], 28*10);
 		CatsEye_visualize(&cat.o[1][s*s*3], s*s, s, &pixels[28*28*10*3+i*28], 28*10);
 		CatsEye_visualize(&cat.o[1][s*s*4], s*s, s, &pixels[28*28*10*4+i*28], 28*10);
+
+		CatsEye_visualize(cat.o[2], 12*12, 12, &pixels[28*28*10*5+i*28], 28*10);
+		CatsEye_visualize(&cat.o[2][12*12], 12*12, 12, &pixels[28*28*10*6+i*28], 28*10);
+		CatsEye_visualize(&cat.o[2][12*12*2], 12*12, 12, &pixels[28*28*10*7+i*28], 28*10);
+		CatsEye_visualize(&cat.o[2][12*12*3], 12*12, 12, &pixels[28*28*10*8+i*28], 28*10);
 	}
 /*	for (int i=0; i<50; i++) {
 		CatsEye_forward(&cat, x+size*i);

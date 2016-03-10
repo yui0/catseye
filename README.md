@@ -18,6 +18,10 @@ Neural network library written in C and Javascript
     - cross-entropy, mean-squared-error
   - Optimization algorithms
     - stochastic gradient descent (with/without L2 normalization and momentum)
+  - Layer types
+    - linear layer
+    - convolutional layer
+    - max pooling layer
 
 ## Usage
 just include header files in your project
@@ -67,7 +71,9 @@ for more information, see example/
   ![epoch=100](example/mnist_autoencoder_weights_u64da_s100.png "epoch=100")
 
 - Convolutional Neural Networks
-  - ![96.4%](example/mnist_cnn_train.png "Convolutional")
+  - tanh, 5x5, 5ch
+
+  ![96.4%](example/mnist_cnn_train.png "Convolutional")
 
 ## Refrence
 - Documents

@@ -260,6 +260,15 @@ double (*CatsEye_dact[])(double *x, int n, int len) = {
 	CatsEye_dact_ReLU,
 	CatsEye_dact_abs
 };
+enum CATS_ACTIVATION_FUNCTION {
+	CATS_ACT_IDENTITY,
+	CATS_ACT_SOFTMAX,
+	CATS_ACT_SIGMOID,
+	CATS_ACT_TANH,
+	CATS_ACT_SCALED_TANH,
+	CATS_ACT_RELU,
+	CATS_ACT_ABS,
+};
 
 enum CATS_LP {
 	TYPE,		// MLP, Conv
@@ -289,7 +298,7 @@ void CatsEye_linear_layer_forward(double *x, double *w, double *z, double *o, in
 	}
 }
 // caluculate back propagation
-void CatsEye_linear_layer_backward(double *o, double *w, double *d, double *delta, int u[])
+void CatsEye_linear_layer_backward(double *s, double *o, double *w, double *d, double *delta, int u[])
 {
 	int in = u[SIZE];
 	int out = u[SIZE+LPLEN];
@@ -329,7 +338,7 @@ void CatsEye_SVM_layer_update(double eta, double *o, double *w, double *d, int u
 	}
 }
 
-// caluculate forward propagation of input x
+// caluculate forward propagation
 void CatsEye_convolutional_layer_forward(double *s, double *w, double *z, double *o, int u[])
 {
 	int sx = u[XSIZE] - u[KSIZE];
@@ -359,7 +368,7 @@ void CatsEye_convolutional_layer_forward(double *s, double *w, double *z, double
 	}
 }
 // caluculate back propagation
-void CatsEye_convolutional_layer_backward(double *o, double *w, double *d, double *delta, int u[])
+void CatsEye_convolutional_layer_backward(double *s, double *o, double *w, double *d, double *delta, int u[])
 {
 	int sx = u[XSIZE];
 	int sy = u[YSIZE];
@@ -378,7 +387,7 @@ void CatsEye_convolutional_layer_backward(double *o, double *w, double *d, doubl
 					a += delta[(y-wy)*sx+(x-wx)] * (*k++);
 				}
 			}
-			*d++ = CatsEye_dact[u[ACT]](&a, 0, 1);
+			*d++ = a * CatsEye_dact[u[ACT]](o++, 0, 1);
 		}
 	}
 
@@ -418,18 +427,81 @@ void CatsEye_convolutional_layer_update(double eta, double *s, double *w, double
 
 	}
 }
+
+// caluculate forward propagation
+void CatsEye_maxpooling_layer_forward(double *s, double *w, double *z, double *o, int u[])
+{
+	int sx = u[XSIZE];
+	int sy = u[YSIZE];
+
+	for (int c=0; c<u[CHANNEL]; c++) {
+//		double *p = &s[c*sx*sy];
+		for (int y=0; y<sy; y+=u[KSIZE]) {
+			for (int x=0; x<sx; x+=u[KSIZE]) {
+				double *p = &s[c*sx*sy + y*sx+x];
+				double a = *p;
+				for (int wy=0; wy<u[KSIZE]; wy++) {
+					for (int wx=0; wx<u[KSIZE]; wx++) {
+						if (a<*p) a = *p;
+						p++;
+					}
+					p += sx-u[KSIZE];
+				}
+				*o++ = a;
+			}
+		}
+	}
+}
+// caluculate back propagation
+void CatsEye_maxpooling_layer_backward(double *s, double *o, double *w, double *d, double *delta, int u[])
+{
+//	int sx = u[XSIZE+LPLEN];
+//	int sy = u[YSIZE+LPLEN];
+	int sx = u[XSIZE+LPLEN]/2;
+	int sy = u[YSIZE+LPLEN]/2;
+	int k = u[KSIZE+LPLEN];
+
+	for (int c=0; c<u[CHANNEL]; c++) {
+		for (int y=0; y<sy; y++) {
+			for (int x=0; x<sx; x++) {
+//				double *p = &s[y*sx+x];
+				double *p = &s[y*k*u[XSIZE]+x*k];
+				for (int wy=0; wy<k; wy++) {
+					for (int wx=0; wx<k; wx++) {
+						*d++ = *p++==*o ? *delta : 0;
+					}
+					p += u[XSIZE]-k;
+				}
+				o++;
+				delta++;
+			}
+		}
+	}
+}
+void CatsEye_maxpooling_layer_update(double eta, double *s, double *w, double *d, int u[])
+{
+}
+
 void (*CatsEye_layer_forward[])(double *s, double *w, double *z, double *o, int u[]) = {
 	CatsEye_linear_layer_forward,
 	CatsEye_convolutional_layer_forward,
+	CatsEye_maxpooling_layer_forward,
 };
-void (*CatsEye_layer_backward[])(double *o, double *w, double *d, double *delta, int u[]) = {
+void (*CatsEye_layer_backward[])(double *s, double *o, double *w, double *d, double *delta, int u[]) = {
 	CatsEye_linear_layer_backward,
 	CatsEye_convolutional_layer_backward,
+	CatsEye_maxpooling_layer_backward,
 };
 void (*CatsEye_layer_update[])(double eta, double *s, double *w, double *d, int u[]) = {
 //	CatsEye_linear_layer_update,
 	CatsEye_SVM_layer_update,
 	CatsEye_convolutional_layer_update,
+	CatsEye_maxpooling_layer_update,
+};
+enum CATS_LAYER_TYPE {
+	CATS_LINEAR,
+	CATS_CONV,
+	CATS_MAXPOOL,
 };
 
 /* constructor
@@ -609,7 +681,7 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 				// calculate the error of hidden layer
 				// t[hidden] += w[1][hidden * out] * d[1][out]
 				// d[hidden] = t[hidden] * dact(o[hidden])
-				CatsEye_layer_backward[TYPE(i+1)](this->o[i], this->w[i], this->d[i-1], this->d[i], &this->u[LPLEN*i]);
+				CatsEye_layer_backward[TYPE(i+1)](this->o[i-1], this->o[i], this->w[i], this->d[i-1], this->d[i], &this->u[LPLEN*i]);
 //			}
 //			for (int i=this->layers-2; i>0; i--) {
 				// update the weights of hidden layer
