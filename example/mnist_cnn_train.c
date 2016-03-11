@@ -28,9 +28,9 @@ int main()
 	};
 #else
 	int ch = 5;		// チャンネル
-	int k = 4;		// カーネルサイズ
+	int k = 5;		// カーネルサイズ
 	int s = 28-(k/2)*2;	// 出力サイズ
-	int u[] = {		// 91.2%[k:4]
+	int u[] = {		// 94.58%[k:4]
 		0, 0, 1, size,    0, 0, 0, 0,
 
 		CATS_CONV, CATS_ACT_TANH, ch, ch*s*s, 28, 28, k, 1,	// tanh, 5ch, stride 1
@@ -76,15 +76,24 @@ int main()
 //	CatsEye_saveBin(&cat, "mnist.bin");
 
 	// 結果の表示
+	unsigned char *pixels = calloc(1, size*100);
+	int c = 0;
 	int r = 0;
 	for (int i=0; i<sample; i++) {
 		int p = CatsEye_predict(&cat, x+size*i);
 		if (p==t[i]) r++;
+		else {
+			if (c<100) {
+				CatsEye_visualize(cat.o[0], 28*28, 28, &pixels[(c/10)*28*28*10+(c%10)*28], 28*10);
+			}
+			c++;
+		}
 //		printf("%d -> %d\n", p, t[i]);
 	}
 	printf("Prediction accuracy on training data = %f%%\n", (float)r/sample*100.0);
+	stbi_write_png("mnist_cnn_train_wrong.png", 28*10, 28*10, 1, pixels, 28*10);
+	memset(pixels, 0, size*100);
 
-	unsigned char *pixels = calloc(1, size*100);
 	for (int i=0; i<10; i++) {
 		CatsEye_forward(&cat, x+size*i);
 
