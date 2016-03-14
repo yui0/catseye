@@ -28,16 +28,22 @@ int main()
 	};
 #else
 	int ch = 5;		// チャンネル
-	int k = 5;		// カーネルサイズ
-	int s = 28-(k/2)*2;	// 出力サイズ
+	int k = 5;		// 1段目のカーネルサイズ
+	int s = 28-(k/2)*2;	// 1段目の出力サイズ
+	int k2 = 2;		// 2段目のカーネルサイズ
+	int s2 = s/k2;		// 2段目の出力サイズ
 	int u[] = {		// 94.58%[k:4]
 		0, 0, 1, size,    0, 0, 0, 0,
 
-		CATS_CONV, CATS_ACT_TANH, ch, ch*s*s, 28, 28, k, 1,	// tanh, 5ch, stride 1
+//		CATS_CONV, CATS_ACT_SIGMOID, ch, ch*s*s, 28, 28, k, 1,		// tanh, 5ch, stride 1
+		CATS_CONV, CATS_ACT_TANH, ch, ch*s*s, 28, 28, k, 1,		// tanh, 5ch, stride 1
+		//CATS_CONV, CATS_ACT_RELU, ch, ch*s*s, 28, 28, k, 1,		// ReLU, 5ch, stride 1
+		//CATS_CONV, CATS_ACT_LEAKY_RELU, ch, ch*s*s, 28, 28, k, 1,	// Leaky ReLU, 5ch, stride 1
+		CATS_MAXPOOL, 0, ch, ch*s2*s2, s, s, k2, 1,			// maxpooling
 
-		CATS_MAXPOOL, 0, ch, ch*13*13, s, s, 2, 1,		// maxpooling
-		CATS_LINEAR, CATS_ACT_SIGMOID, 1, 200, 0, 0, 0, 0,
+//		CATS_CONV, CATS_ACT_TANH, 16, 16*6*6, s2, s2, 3, 1,
 
+//		CATS_LINEAR, CATS_ACT_SIGMOID, 1, 200, 0, 0, 0, 0,
 		CATS_LINEAR, CATS_ACT_SIGMOID, 1, label, 0, 0, 0, 0,
 	};
 #endif
@@ -105,10 +111,10 @@ int main()
 		CatsEye_visualize(&cat.o[1][s*s*4], s*s, s, &pixels[28*28*10*4+i*28], 28*10);
 
 		// 2段目フィルタ出力
-		CatsEye_visualize(cat.o[2], 12*12, 12, &pixels[28*28*10*5+i*28], 28*10);
-		CatsEye_visualize(&cat.o[2][12*12], 12*12, 12, &pixels[28*28*10*6+i*28], 28*10);
-		CatsEye_visualize(&cat.o[2][12*12*2], 12*12, 12, &pixels[28*28*10*7+i*28], 28*10);
-		CatsEye_visualize(&cat.o[2][12*12*3], 12*12, 12, &pixels[28*28*10*8+i*28], 28*10);
+		CatsEye_visualize(cat.o[2], s2*s2, s2, &pixels[28*28*10*5+i*28], 28*10);
+		CatsEye_visualize(&cat.o[2][s2*s2], s2*s2, s2, &pixels[28*28*10*6+i*28], 28*10);
+		CatsEye_visualize(&cat.o[2][s2*s2*2], s2*s2, s2, &pixels[28*28*10*7+i*28], 28*10);
+		CatsEye_visualize(&cat.o[2][s2*s2*3], s2*s2, s2, &pixels[28*28*10*8+i*28], 28*10);
 	}
 	// フィルタ
 	for (int i=0; i<ch; i++) {

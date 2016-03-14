@@ -231,6 +231,16 @@ double CatsEye_dact_ReLU(double *x, int n, int len)
 {
 	return (x[n]>0 ? 1.0 : 0.0);
 }
+// leaky rectified linear unit function
+#define leaky_alpha	0.1	// 0 - 1
+double CatsEye_act_LeakyReLU(double *x, int n, int len)
+{
+	return (x[n]>0 ? x[n] : x[n]*leaky_alpha);
+}
+double CatsEye_dact_LeakyReLU(double *x, int n, int len)
+{
+	return (x[n]>0 ? 1.0 : (1.0-leaky_alpha));
+}
 // abs function
 double CatsEye_act_abs(double *x, int n, int len)
 {
@@ -249,6 +259,7 @@ double (*CatsEye_act[])(double *x, int n, int len) = {
 	CatsEye_act_tanh,
 	CatsEye_act_scaled_tanh,
 	CatsEye_act_ReLU,
+	CatsEye_act_LeakyReLU,
 	CatsEye_act_abs
 };
 double (*CatsEye_dact[])(double *x, int n, int len) = {
@@ -258,6 +269,7 @@ double (*CatsEye_dact[])(double *x, int n, int len) = {
 	CatsEye_dact_tanh,
 	CatsEye_dact_scaled_tanh,
 	CatsEye_dact_ReLU,
+	CatsEye_dact_LeakyReLU,
 	CatsEye_dact_abs
 };
 enum CATS_ACTIVATION_FUNCTION {
@@ -267,6 +279,7 @@ enum CATS_ACTIVATION_FUNCTION {
 	CATS_ACT_TANH,
 	CATS_ACT_SCALED_TANH,
 	CATS_ACT_RELU,
+	CATS_ACT_LEAKY_RELU,
 	CATS_ACT_ABS,
 };
 
@@ -351,13 +364,17 @@ void CatsEye_convolutional_layer_forward(double *s, double *w, double *z, double
 			for (int x=0; x<sx; x++) {
 //				double *p = &s[y*u[XSIZE]+x];	// in
 				double a = 0;
-				double *k = &w[c*(u[KSIZE]*u[KSIZE]+1)];
-				for (int wy=0; wy<u[KSIZE]; wy++) {
-					double *p = s + (y+wy)*u[XSIZE]+x;	// in
-					for (int wx=0; wx<u[KSIZE]; wx++) {
-						a += (*p++) * (*k++);
+				double *k;
+				for (int cc=0; cc<u[CHANNEL-LPLEN]; cc++) {
+					k = &w[c*(u[KSIZE]*u[KSIZE]+1)];
+					for (int wy=0; wy<u[KSIZE]; wy++) {
+//						double *p = s + (y+wy)*u[XSIZE]+x;	// in
+						double *p = s + (u[SIZE-LPLEN]/u[CHANNEL-LPLEN]*cc) + (y+wy)*u[XSIZE]+x;	// in
+						for (int wx=0; wx<u[KSIZE]; wx++) {
+							a += (*p++) * (*k++);
+						}
+//						p += sx;
 					}
-//					p += sx;
 				}
 				a += *k;	// bias
 				*o++ = CatsEye_act[u[ACT]](&a, 0, 1);
@@ -371,24 +388,27 @@ void CatsEye_convolutional_layer_backward(double *s, double *o, double *w, doubl
 	int sx = u[XSIZE];
 	int sy = u[YSIZE];
 
-	for (int c=0; c<u[CHANNEL]; c++) {
-
-	// calculate the error
-	for (int y=0; y<sy; y++) {
-		for (int x=0; x<sx; x++) {
-			double a = 0;
-//			double *k = w;
-			double *k = &w[c*(u[KSIZE]*u[KSIZE]+1)];
-			for (int wy=0; wy<u[KSIZE]; wy++) {
-				for (int wx=0; wx<u[KSIZE]; wx++) {
-					if (y-wy<0 || x-wx<0) continue;
-					a += delta[(y-wy)*sx+(x-wx)] * (*k++);
+	for (int c=0; c<u[CHANNEL+LPLEN]; c++) {
+		// calculate the error
+		for (int y=0; y<sy; y++) {
+			for (int x=0; x<sx; x++) {
+				double a = 0;
+				double *k = &w[c*(u[KSIZE+LPLEN]*u[KSIZE+LPLEN]+1)];
+				for (int wy=0; wy<u[KSIZE+LPLEN]; wy++) {
+					for (int wx=0; wx<u[KSIZE+LPLEN]; wx++) {
+						if (y-wy<0 || x-wx<0) continue;
+						a += delta[(y-wy)*sx+(x-wx)] * (*k++);
+					}
 				}
+				for (int cc=0; cc<u[CHANNEL-LPLEN]; cc++) {
+//					*d++ = a * CatsEye_dact[u[ACT]](o++, 0, 1);
+					int n = (u[SIZE]/u[CHANNEL]*cc);
+					d[n] = a * CatsEye_dact[u[ACT]](&o[n], 0, 1);
+				}
+				d++;
+				o++;
 			}
-			*d++ = a * CatsEye_dact[u[ACT]](o++, 0, 1);
 		}
-	}
-
 	}
 }
 void CatsEye_convolutional_layer_update(double eta, double *s, double *w, double *d, int u[])
@@ -402,11 +422,14 @@ void CatsEye_convolutional_layer_update(double eta, double *s, double *w, double
 		// update the weights
 		for (int wy=0; wy<u[KSIZE]; wy++) {
 			for (int wx=0; wx<u[KSIZE]; wx++) {
-				double *delta = &d[c*sx*sy];
-				for (int y=0; y<sy; y++) {
-					double *p = &s[y*u[XSIZE] + wy*u[XSIZE]+wx];
-					for (int x=0; x<sx; x++) {
-						*w -= eta * (*delta++) * (*p++);
+				for (int cc=0; cc<u[CHANNEL-LPLEN]; cc++) {
+					double *delta = &d[c*sx*sy];
+					for (int y=0; y<sy; y++) {
+//						double *p = &s[y*u[XSIZE] + wy*u[XSIZE]+wx];
+						double *p = s + (u[SIZE-LPLEN]/u[CHANNEL-LPLEN]*cc) + y*u[XSIZE] + wy*u[XSIZE]+wx;
+						for (int x=0; x<sx; x++) {
+							*w -= eta * (*delta++) * (*p++);
+						}
 					}
 				}
 				w++;
