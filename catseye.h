@@ -232,7 +232,7 @@ double CatsEye_dact_ReLU(double *x, int n, int len)
 	return (x[n]>0 ? 1.0 : 0.0);
 }
 // leaky rectified linear unit function
-#define leaky_alpha	0.1	// 0 - 1
+#define leaky_alpha	0.01	// 0 - 1
 double CatsEye_act_LeakyReLU(double *x, int n, int len)
 {
 	return (x[n]>0 ? x[n] : x[n]*leaky_alpha);
@@ -385,7 +385,7 @@ void CatsEye_convolutional_layer_forward(double *s, double *w, double *z, double
 // caluculate back propagation
 void CatsEye_convolutional_layer_backward(double *s, double *o, double *w, double *d, double *delta, int u[])
 {
-	int sx = u[XSIZE];
+/*	int sx = u[XSIZE];
 	int sy = u[YSIZE];
 
 	for (int c=0; c<u[CHANNEL+LPLEN]; c++) {
@@ -401,6 +401,59 @@ void CatsEye_convolutional_layer_backward(double *s, double *o, double *w, doubl
 					}
 				}
 				for (int cc=0; cc<u[CHANNEL-LPLEN]; cc++) {
+//					*d++ = a * CatsEye_dact[u[ACT]](o++, 0, 1);
+					int n = (u[SIZE]/u[CHANNEL]*cc);
+					d[n] = a * CatsEye_dact[u[ACT]](&o[n], 0, 1);
+				}
+				d++;
+				o++;
+			}
+		}
+	}*/
+
+/*	int sx = u[XSIZE] - (u[KSIZE]/2)*2;
+	int sy = u[YSIZE] - (u[KSIZE]/2)*2;
+
+	for (int c=0; c<u[CHANNEL]; c++) {
+		// calculate the error
+		for (int y=0; y<sy; y++) {
+			for (int x=0; x<sx; x++) {
+				double a = 0;
+				double *k = &w[c*(u[KSIZE]*u[KSIZE]+1)];
+				for (int wy=0; wy<u[KSIZE]; wy++) {
+					for (int wx=0; wx<u[KSIZE]; wx++) {
+						if (y-wy<0 || x-wx<0) continue;
+						a += delta[(y-wy)*sx+(x-wx)] * (*k++);
+					}
+				}
+//				for (int cc=0; cc<u[CHANNEL-LPLEN]; cc++) {
+					*d++ = a * CatsEye_dact[u[ACT]](o++, 0, 1);
+//					int n = (u[SIZE]/u[CHANNEL]*cc);
+//					d[n] = a * CatsEye_dact[u[ACT]](&o[n], 0, 1);
+//				}
+//				d++;
+//				o++;
+			}
+		}
+	}*/
+
+	int sx = u[XSIZE+LPLEN];
+	int sy = u[YSIZE+LPLEN];
+	int ks = u[KSIZE+LPLEN];
+
+	for (int c=0; c<u[CHANNEL+LPLEN]; c++) {
+		// calculate the error
+		for (int y=0; y<sy; y++) {
+			for (int x=0; x<sx; x++) {
+				double a = 0;
+				double *k = &w[c*(ks*ks+1)];
+				for (int wy=0; wy<ks; wy++) {
+					for (int wx=0; wx<ks; wx++) {
+						if (y-wy<0 || x-wx<0) continue;
+						a += delta[(y-wy)*sx+(x-wx)] * (*k++);
+					}
+				}
+				for (int cc=0; cc<u[CHANNEL]; cc++) {
 //					*d++ = a * CatsEye_dact[u[ACT]](o++, 0, 1);
 					int n = (u[SIZE]/u[CHANNEL]*cc);
 					d[n] = a * CatsEye_dact[u[ACT]](&o[n], 0, 1);
@@ -493,19 +546,23 @@ void CatsEye_maxpooling_layer_backward(double *s, double *o, double *w, double *
 		}
 	}*/
 
-	int sx = u[XSIZE+LPLEN];
+	int sx = u[XSIZE+LPLEN];	// input, left size
 	int sy = u[YSIZE+LPLEN];
-	int k = u[KSIZE+LPLEN];
+	int k = u[KSIZE+LPLEN];	// pooling size
 
 	for (int c=0; c<u[CHANNEL]; c++) {
 		for (int y=0; y<sy; y+=k) {
 			for (int x=0; x<sx; x+=k) {
-				double *p = &s[c*sx*sy + y*sx+x];
+//				double *p = &s[c*sx*sy + y*sx+x];	// left, x
 				for (int wy=0; wy<k; wy++) {
+					double *p = &s[c*sx*sy + (y+wy)*sx+x];	// input
+					double *dd = d + c*sx*sy + (y+wy)*sx+x;
 					for (int wx=0; wx<k; wx++) {
-						*d++ = *p++==*o ? *delta : 0;
+//						*d++ = *p++==*o ? *delta : 0;
+						*dd++ = *p++==*o ? *delta : 0;
+//						*dd++ = fabs(*p++ - *o)<__DBL_EPSILON__ ? *delta : 0;
 					}
-					p += sx-k;
+//					p += sx-k;
 				}
 				o++;
 				delta++;

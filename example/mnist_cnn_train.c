@@ -18,7 +18,7 @@ int main()
 	int sample = 60000;
 
 #if 0
-	int ch = 5;		// チャンネル
+	int ch = 5;		// チャネル
 	int k = 5;		// カーネルサイズ
 	int s = 28-k;		// 出力サイズ
 	int u[] = {		// 95.98%[k:5] 95.28%[k:3]
@@ -27,7 +27,7 @@ int main()
 		CATS_LINEAR, CATS_ACT_SIGMOID, 1, label, 0, 0, 0, 0,
 	};
 #else
-	int ch = 5;		// チャンネル
+	int ch = 1;		// チャネル
 	int k = 5;		// 1段目のカーネルサイズ
 	int s = 28-(k/2)*2;	// 1段目の出力サイズ
 	int k2 = 2;		// 2段目のカーネルサイズ
@@ -35,15 +35,19 @@ int main()
 	int u[] = {		// 94.58%[k:4]
 		0, 0, 1, size,    0, 0, 0, 0,
 
+//		CATS_CONV, CATS_ACT_TANH, 1, 26*26, 28, 28, 3, 1,
+//		CATS_CONV, CATS_ACT_TANH, 1, 24*24, 26, 26, 3, 1,
+
 //		CATS_CONV, CATS_ACT_SIGMOID, ch, ch*s*s, 28, 28, k, 1,		// tanh, 5ch, stride 1
-		CATS_CONV, CATS_ACT_TANH, ch, ch*s*s, 28, 28, k, 1,		// tanh, 5ch, stride 1
-		//CATS_CONV, CATS_ACT_RELU, ch, ch*s*s, 28, 28, k, 1,		// ReLU, 5ch, stride 1
-		//CATS_CONV, CATS_ACT_LEAKY_RELU, ch, ch*s*s, 28, 28, k, 1,	// Leaky ReLU, 5ch, stride 1
-		CATS_MAXPOOL, 0, ch, ch*s2*s2, s, s, k2, 1,			// maxpooling
+		CATS_CONV, CATS_ACT_TANH, ch, ch*s*s, 28, 28, k, 1,		// tanh, 5ch, stride 1 (pl:89%,k11:96%,97%)
+		//CATS_CONV, CATS_ACT_RELU, ch, ch*s*s, 28, 28, k, 1,		// ReLU, 5ch, stride 1 (pl:71%,92%)
+		//CATS_CONV, CATS_ACT_LEAKY_RELU, ch, ch*s*s, 28, 28, k, 1,	// Leaky ReLU, 5ch, stride 1 (pl:61%,k11:58%,71%)
+//		CATS_MAXPOOL, 0, ch, ch*s2*s2, s, s, k2, 1,			// maxpooling
 
 //		CATS_CONV, CATS_ACT_TANH, 16, 16*6*6, s2, s2, 3, 1,
 
 //		CATS_LINEAR, CATS_ACT_SIGMOID, 1, 200, 0, 0, 0, 0,
+//		CATS_LINEAR, CATS_ACT_SIGMOID, 1, 64, 0, 0, 0, 0,		// linear only:95.6%
 		CATS_LINEAR, CATS_ACT_SIGMOID, 1, label, 0, 0, 0, 0,
 	};
 #endif
@@ -78,7 +82,7 @@ int main()
 	CatsEye_train(&cat, x, t, sample, 100/*repeat*/, 0.01);
 	printf("Training complete\n");
 //	CatsEye_save(&cat, "mnist.weights");
-//	CatsEye_saveJson(&cat, "mnist.json");
+//	CatsEye_saveJson(&cat, "mnist_cnn_train.json");
 //	CatsEye_saveBin(&cat, "mnist.bin");
 
 	// 結果の表示

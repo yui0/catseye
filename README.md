@@ -73,7 +73,7 @@ for more information, see example/
 - Convolutional Neural Networks
   - tanh, 5x5, 5ch
 
-  ![96.4%](example/mnist_cnn_train_5ch_k5p2 "Convolutional")
+  ![96.4%](example/mnist_cnn_train_5ch_k5p2.png "Convolutional")
 
 ## Refrence
 - Documents
