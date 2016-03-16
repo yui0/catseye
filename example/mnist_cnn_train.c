@@ -27,7 +27,7 @@ int main()
 		CATS_LINEAR, CATS_ACT_SIGMOID, 1, label, 0, 0, 0, 0,
 	};
 #else
-	int ch = 1;		// チャネル
+	int ch = 5;		// チャネル
 	int k = 5;		// 1段目のカーネルサイズ
 	int s = 28-(k/2)*2;	// 1段目の出力サイズ
 	int k2 = 2;		// 2段目のカーネルサイズ
