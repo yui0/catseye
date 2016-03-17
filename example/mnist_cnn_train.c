@@ -30,7 +30,7 @@ int main()
 	int ch = 5;		// チャネル
 	int k = 5;		// 1段目のカーネルサイズ
 	int s = 28-(k/2)*2;	// 1段目の出力サイズ
-	int k2 = 2;		// 2段目のカーネルサイズ
+	int k2 = 3;		// 2段目のカーネルサイズ
 	int s2 = s/k2;		// 2段目の出力サイズ
 	int u[] = {		// 94.58%[k:4]
 		0, 0, 1, size,    0, 0, 0, 0,
@@ -42,8 +42,10 @@ int main()
 		CATS_CONV, CATS_ACT_TANH, ch, ch*s*s, 28, 28, k, 1,		// tanh, 5ch, stride 1 (pl:89%,k11:96%,97%)
 		//CATS_CONV, CATS_ACT_RELU, ch, ch*s*s, 28, 28, k, 1,		// ReLU, 5ch, stride 1 (pl:71%,92%)
 		//CATS_CONV, CATS_ACT_LEAKY_RELU, ch, ch*s*s, 28, 28, k, 1,	// Leaky ReLU, 5ch, stride 1 (pl:61%,k11:58%,71%)
-//		CATS_MAXPOOL, 0, ch, ch*s2*s2, s, s, k2, 1,			// maxpooling
+		CATS_MAXPOOL, 0, ch, ch*s2*s2, s, s, k2, 1,			// maxpooling (92%)
 
+//		CATS_CONV, CATS_ACT_TANH, 5, 5*6*6, s2, s2, 3, 1,
+//		CATS_CONV, CATS_ACT_TANH, 1, 1*6*6, s2, s2, 3, 1,
 //		CATS_CONV, CATS_ACT_TANH, 16, 16*6*6, s2, s2, 3, 1,
 
 //		CATS_LINEAR, CATS_ACT_SIGMOID, 1, 200, 0, 0, 0, 0,

@@ -35,7 +35,7 @@
 #endif
 
 // activation function and derivative of activation function
-#ifdef CATS_SIGMOID
+/*#ifdef CATS_SIGMOID
 // sigmoid function
 #define ACT1(x)			(1.0 / (1.0 + exp(-x * s_gain)))
 #define DACT1(x)		((1.0-x)*x * s_gain)	// ((1.0-sigmod(x))*sigmod(x))
@@ -59,7 +59,7 @@
 // identity function (output only)
 #define ACT1(x)			(x)
 #define DACT1(x)		(1.0)
-#endif
+#endif*/
 
 #ifdef CATS_OPT_ADAGRAD
 // AdaGrad (http://qiita.com/ak11/items/7f63a1198c345a138150)
@@ -114,12 +114,12 @@
 #define OPT_CALC2(n, x, y)	this->w[x-1][i*n+j] -= eta*this->o[x-1][i] *this->d[y-2][j] +this->w[x-1][i*n+j]*1e-8
 #endif
 
-void muladd(double *vec1, double *vec2, double a, int n)
+/*void muladd(double *vec1, double *vec2, double a, int n)
 {
 	for (int i=0; i<n; i++) {
 		vec1[i] += vec2[i] * a;
 	}
-}
+}*/
 double dot(double *vec1, double *vec2, int n)
 {
 	double s = 0.0;
@@ -354,8 +354,6 @@ void CatsEye_SVM_layer_update(double eta, double *o, double *w, double *d, int u
 // calculate forward propagation
 void CatsEye_convolutional_layer_forward(double *s, double *w, double *z, double *o, int u[])
 {
-//	int sx = u[XSIZE] - u[KSIZE];
-//	int sy = u[YSIZE] - u[KSIZE];
 	int sx = u[XSIZE] - (u[KSIZE]/2)*2;
 	int sy = u[YSIZE] - (u[KSIZE]/2)*2;
 
@@ -385,32 +383,6 @@ void CatsEye_convolutional_layer_forward(double *s, double *w, double *z, double
 // calculate back propagation
 void CatsEye_convolutional_layer_backward(double *s, double *o, double *w, double *d, double *delta, int u[])
 {
-/*	int sx = u[XSIZE];
-	int sy = u[YSIZE];
-
-	for (int c=0; c<u[CHANNEL+LPLEN]; c++) {
-		// calculate the error
-		for (int y=0; y<sy; y++) {
-			for (int x=0; x<sx; x++) {
-				double a = 0;
-				double *k = &w[c*(u[KSIZE+LPLEN]*u[KSIZE+LPLEN]+1)];
-				for (int wy=0; wy<u[KSIZE+LPLEN]; wy++) {
-					for (int wx=0; wx<u[KSIZE+LPLEN]; wx++) {
-						if (y-wy<0 || x-wx<0) continue;
-						a += delta[(y-wy)*sx+(x-wx)] * (*k++);
-					}
-				}
-				for (int cc=0; cc<u[CHANNEL-LPLEN]; cc++) {
-//					*d++ = a * CatsEye_dact[u[ACT]](o++, 0, 1);
-					int n = (u[SIZE]/u[CHANNEL]*cc);
-					d[n] = a * CatsEye_dact[u[ACT]](&o[n], 0, 1);
-				}
-				d++;
-				o++;
-			}
-		}
-	}*/
-
 /*	int sx = u[XSIZE] - (u[KSIZE]/2)*2;
 	int sy = u[YSIZE] - (u[KSIZE]/2)*2;
 
@@ -462,12 +434,11 @@ void CatsEye_convolutional_layer_backward(double *s, double *o, double *w, doubl
 				o++;
 			}
 		}
+//		d++;//bias??
 	}
 }
 void CatsEye_convolutional_layer_update(double eta, double *s, double *w, double *d, int u[])
 {
-//	int sx = u[XSIZE] - u[KSIZE];
-//	int sy = u[YSIZE] - u[KSIZE];
 	int sx = u[XSIZE] - (u[KSIZE]/2)*2;
 	int sy = u[YSIZE] - (u[KSIZE]/2)*2;
 
@@ -506,7 +477,7 @@ void CatsEye_maxpooling_layer_forward(double *s, double *w, double *z, double *o
 	int sy = u[YSIZE];
 	int *max = (int*)w;
 
-	for (int c=0; c<u[CHANNEL]; c++) {
+/*	for (int c=0; c<u[CHANNEL]; c++) {
 //		double *p = &s[c*sx*sy];
 		for (int y=0; y<sy; y+=u[KSIZE]) {
 			for (int x=0; x<sx; x+=u[KSIZE]) {
@@ -527,6 +498,39 @@ void CatsEye_maxpooling_layer_forward(double *s, double *w, double *z, double *o
 				*o++ = a;
 			}
 		}
+	}*/
+
+	for (int c=0; c<u[CHANNEL]; c++) {
+		for (int y=0; y<sy; y+=u[KSIZE]) {
+			for (int x=0; x<sx; x+=u[KSIZE]) {
+				int n = c*sx*sy + y*sx+x;
+				double a = s[n];
+				*max = n;
+				for (int wy=0; wy<u[KSIZE]; wy++) {
+					for (int wx=0; wx<u[KSIZE]; wx++) {
+						if (a<s[n]) {
+							a = s[n];
+							*max = n;
+						}
+						n++;
+					}
+					n += sx-u[KSIZE];
+				}
+				max++;
+				*o++ = a;
+			}
+		}
+
+/*		int i,n = sy/u[KSIZE]*sx/u[KSIZE];
+		double *oo = o-n;
+		for (i=0; i<n; i++) {
+			if (*oo++ >0) break;
+		}
+		if (i==n) {
+			printf("%d?",c);
+			double *oo = o-n;
+			for (i=0; i<n; i++) printf("%f ",*oo++);
+		}*/
 	}
 }
 // calculate back propagation
@@ -543,14 +547,16 @@ void CatsEye_maxpooling_layer_backward(double *s, double *o, double *w, double *
 				for (int wy=0; wy<k; wy++) {
 					int n = c*sx*sy + (y+wy)*sx+x;
 					for (int wx=0; wx<k; wx++) {
-						d[n] = n==*w ? *delta : 0;
+						d[n] = n==*max ? *delta : 0;
+//						d[n] = *delta;
 						n++;
 					}
 				}
-				w++;
+				max++;
 				delta++;
 			}
 		}
+//		delta++;//bias??
 	}
 
 /*	int sx = u[XSIZE+LPLEN]/2;
