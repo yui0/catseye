@@ -35,13 +35,16 @@ int main()
 	int u[] = {		// 94.58%[k:4]
 		0, 0, 1, size,    0, 0, 0, 0,
 
-//		CATS_CONV, CATS_ACT_TANH, 1, 26*26, 28, 28, 3, 1,
+//		CATS_CONV, CATS_ACT_TANH, 1, 26*26, 28, 28, 3, 1,		// tanh 28x28,26x26 90.3%
 //		CATS_CONV, CATS_ACT_TANH, 1, 24*24, 26, 26, 3, 1,
 
+//		CATS_CONV, CATS_ACT_TANH, 2, 2*26*26, 28, 28, 3, 1,		// tanh 28x28,26x26 94.5%
+//		CATS_CONV, CATS_ACT_TANH, 2, 2*24*24, 26, 26, 3, 1,
+
 //		CATS_CONV, CATS_ACT_SIGMOID, ch, ch*s*s, 28, 28, k, 1,		// tanh, 5ch, stride 1
-		CATS_CONV, CATS_ACT_TANH, ch, ch*s*s, 28, 28, k, 1,		// tanh, 5ch, stride 1 (pl:89%,k11:96%,97%)
-		//CATS_CONV, CATS_ACT_RELU, ch, ch*s*s, 28, 28, k, 1,		// ReLU, 5ch, stride 1 (pl:71%,92%)
-		//CATS_CONV, CATS_ACT_LEAKY_RELU, ch, ch*s*s, 28, 28, k, 1,	// Leaky ReLU, 5ch, stride 1 (pl:61%,k11:58%,71%)
+		CATS_CONV, CATS_ACT_TANH, ch, ch*s*s, 28, 28, k, 1,		// tanh, 5ch, stride 1 (pl:89%,k11:96%,97.8%)
+//		CATS_CONV, CATS_ACT_RELU, ch, ch*s*s, 28, 28, k, 1,		// ReLU, 5ch, stride 1 (pl:71%,98.3%)
+//		CATS_CONV, CATS_ACT_LEAKY_RELU, ch, ch*s*s, 28, 28, k, 1,	// Leaky ReLU, 5ch, stride 1 (pl:61%,k11:58%,95%)
 //		CATS_MAXPOOL, 0, ch, ch*s2*s2, s, s, k2, 1,			// maxpooling (92%)
 
 //		CATS_CONV, CATS_ACT_TANH, 5, 5*6*6, s2, s2, 3, 1,

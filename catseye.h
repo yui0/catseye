@@ -381,61 +381,38 @@ void CatsEye_convolutional_layer_forward(double *s, double *w, double *z, double
 	}
 }
 // calculate back propagation
-void CatsEye_convolutional_layer_backward(double *s, double *o, double *w, double *d, double *delta, int u[])
+void CatsEye_convolutional_layer_backward(double *s, double *prev_out, double *w, double *prev_delta, double *delta, int u[])
 {
-/*	int sx = u[XSIZE] - (u[KSIZE]/2)*2;
-	int sy = u[YSIZE] - (u[KSIZE]/2)*2;
-
-	for (int c=0; c<u[CHANNEL]; c++) {
-		// calculate the error
-		for (int y=0; y<sy; y++) {
-			for (int x=0; x<sx; x++) {
-				double a = 0;
-				double *k = &w[c*(u[KSIZE]*u[KSIZE]+1)];
-				for (int wy=0; wy<u[KSIZE]; wy++) {
-					for (int wx=0; wx<u[KSIZE]; wx++) {
-						if (y-wy<0 || x-wx<0) continue;
-						a += delta[(y-wy)*sx+(x-wx)] * (*k++);
-					}
-				}
-//				for (int cc=0; cc<u[CHANNEL-LPLEN]; cc++) {
-					*d++ = a * CatsEye_dact[u[ACT]](o++, 0, 1);
-//					int n = (u[SIZE]/u[CHANNEL]*cc);
-//					d[n] = a * CatsEye_dact[u[ACT]](&o[n], 0, 1);
-//				}
-//				d++;
-//				o++;
-			}
-		}
-	}*/
-
 	int sx = u[XSIZE+LPLEN];	// out
 	int sy = u[YSIZE+LPLEN];
 	int ks = u[KSIZE+LPLEN];
 
-	for (int c=0; c<u[CHANNEL+LPLEN]; c++) {	// out
-		// calculate the error
-		for (int y=0; y<sy; y++) {
-			for (int x=0; x<sx; x++) {
-				double a = 0;
-				double *k = &w[c*ks*ks];
-//!!!				double *k = &w[c*(ks*ks+1)];
-				for (int wy=0; wy<ks; wy++) {
-					for (int wx=0; wx<ks; wx++) {
-						if (y-wy<0 || x-wx<0) continue;
-						a += delta[(y-wy)*sx+(x-wx)] * (*k++);
+	for (int cc=0; cc<u[CHANNEL]; cc++) { // in
+		for (int c=0; c<u[CHANNEL+LPLEN]; c++) {	// out
+			// calculate the error
+			double *d = &prev_delta[cc*sx*sy];
+			double *o = &prev_out[cc*sx*sy];
+			for (int y=0; y<sy; y++) {
+				for (int x=0; x<sx; x++) {
+					double a = 0;
+					double *k = &w[cc*u[CHANNEL+LPLEN]*ks*ks + c*ks*ks];
+//!!!					double *k = &w[c*(ks*ks+1)];
+					for (int wy=0; wy<ks; wy++) {
+						for (int wx=0; wx<ks; wx++) {
+							if (y-wy<0 || x-wx<0) continue;
+//							a += delta[(y-wy)*sx+(x-wx)] * (*k++);
+							a += delta[c*sx*sy + (y-wy)*sx+(x-wx)] * (*k++);
+						}
 					}
-				}
-				for (int cc=0; cc<u[CHANNEL]; cc++) {
-//					*d++ = a * CatsEye_dact[u[ACT]](o++, 0, 1);
-					int n = (u[SIZE]/u[CHANNEL]*cc);
+					*d++ = a * CatsEye_dact[u[ACT]](o++, 0, 1);
+					/*int n = (u[SIZE]/u[CHANNEL]*cc);
 					d[n] = a * CatsEye_dact[u[ACT]](&o[n], 0, 1);
+					d++;
+					o++;*/
 				}
-				d++;
-				o++;
 			}
+//			d++;//bias??
 		}
-//		d++;//bias??
 	}
 }
 void CatsEye_convolutional_layer_update(double eta, double *prev_out, double *w, double *curr_delta, int u[])
