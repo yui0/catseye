@@ -356,25 +356,25 @@ void CatsEye_convolutional_layer_forward(double *s, double *w, double *z, double
 {
 	int sx = u[XSIZE] - (u[KSIZE]/2)*2;
 	int sy = u[YSIZE] - (u[KSIZE]/2)*2;
+	int nw = u[CHANNEL] * u[KSIZE]*u[KSIZE];
 
-	for (int c=0; c<u[CHANNEL]; c++) {
+	for (int c=0; c<u[CHANNEL]; c++) {	// out
 		for (int y=0; y<sy; y++) {
 			for (int x=0; x<sx; x++) {
-//				double *p = &s[y*u[XSIZE]+x];	// in
 				double a = 0;
 				double *k;
-				for (int cc=0; cc<u[CHANNEL-LPLEN]; cc++) {
-					k = &w[c*(u[KSIZE]*u[KSIZE]+1)];
+				for (int cc=0; cc<u[CHANNEL-LPLEN]; cc++) {	// in
+					k = &w[c*(u[KSIZE]*u[KSIZE]) + cc*nw];
+//!!!					k = &w[c*(u[KSIZE]*u[KSIZE]+1)];
 					for (int wy=0; wy<u[KSIZE]; wy++) {
 //						double *p = s + (y+wy)*u[XSIZE]+x;	// in
 						double *p = s + (u[SIZE-LPLEN]/u[CHANNEL-LPLEN]*cc) + (y+wy)*u[XSIZE]+x;	// in
 						for (int wx=0; wx<u[KSIZE]; wx++) {
 							a += (*p++) * (*k++);
 						}
-//						p += sx;
 					}
 				}
-				a += *k;	// bias
+//!!!				a += *k;	// bias
 				*o++ = CatsEye_act[u[ACT]](&a, 0, 1);
 			}
 		}
@@ -409,16 +409,17 @@ void CatsEye_convolutional_layer_backward(double *s, double *o, double *w, doubl
 		}
 	}*/
 
-	int sx = u[XSIZE+LPLEN];
+	int sx = u[XSIZE+LPLEN];	// out
 	int sy = u[YSIZE+LPLEN];
 	int ks = u[KSIZE+LPLEN];
 
-	for (int c=0; c<u[CHANNEL+LPLEN]; c++) {
+	for (int c=0; c<u[CHANNEL+LPLEN]; c++) {	// out
 		// calculate the error
 		for (int y=0; y<sy; y++) {
 			for (int x=0; x<sx; x++) {
 				double a = 0;
-				double *k = &w[c*(ks*ks+1)];
+				double *k = &w[c*ks*ks];
+//!!!				double *k = &w[c*(ks*ks+1)];
 				for (int wy=0; wy<ks; wy++) {
 					for (int wx=0; wx<ks; wx++) {
 						if (y-wy<0 || x-wx<0) continue;
@@ -437,35 +438,35 @@ void CatsEye_convolutional_layer_backward(double *s, double *o, double *w, doubl
 //		d++;//bias??
 	}
 }
-void CatsEye_convolutional_layer_update(double eta, double *s, double *w, double *d, int u[])
+void CatsEye_convolutional_layer_update(double eta, double *prev_out, double *w, double *curr_delta, int u[])
 {
 	int sx = u[XSIZE] - (u[KSIZE]/2)*2;
 	int sy = u[YSIZE] - (u[KSIZE]/2)*2;
 
-	for (int c=0; c<u[CHANNEL]; c++) {
-		// update the weights
-		for (int wy=0; wy<u[KSIZE]; wy++) {
-			for (int wx=0; wx<u[KSIZE]; wx++) {
-				for (int cc=0; cc<u[CHANNEL-LPLEN]; cc++) {
-					double *delta = &d[c*sx*sy];
-					for (int y=0; y<sy; y++) {
-//						double *p = &s[y*u[XSIZE] + wy*u[XSIZE]+wx];
-						double *p = s + (u[SIZE-LPLEN]/u[CHANNEL-LPLEN]*cc) + y*u[XSIZE] + wy*u[XSIZE]+wx;
-						for (int x=0; x<sx; x++) {
-							*w -= eta * (*delta++) * (*p++);
+	for (int cc=0; cc<u[CHANNEL-LPLEN]; cc++) {	// in
+		for (int c=0; c<u[CHANNEL]; c++) {	// out
+			// update the weights
+			for (int wy=0; wy<u[KSIZE]; wy++) {
+				for (int wx=0; wx<u[KSIZE]; wx++) {
+						double *d = &curr_delta[c*sx*sy];
+						for (int y=0; y<sy; y++) {
+//							double *p = &prev_out[(y+wy)*u[XSIZE]+wx];
+							double *p = &prev_out[(u[SIZE-LPLEN]/u[CHANNEL-LPLEN]*cc) + (y+wy)*u[XSIZE]+wx];
+							for (int x=0; x<sx; x++) {
+								*w -= eta * (*d++) * (*p++);
+							}
 						}
-					}
+					w++;
 				}
-				w++;
 			}
-		}
 
-		// bias
-		double *delta = &d[c*sx*sy];
-		for (int y=0; y<sy; y++) {
-			for (int x=0; x<sx; x++) {
-				*w -= eta * (*delta++);
-			}
+			// bias
+/*			double *d = &curr_delta[c*sx*sy];
+			for (int y=0; y<sy; y++) {
+				for (int x=0; x<sx; x++) {
+					*w -= eta * (*d++);
+				}
+			}*/
 		}
 	}
 }
