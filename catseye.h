@@ -400,18 +400,12 @@ void CatsEye_convolutional_layer_backward(double *s, double *prev_out, double *w
 					for (int wy=0; wy<ks; wy++) {
 						for (int wx=0; wx<ks; wx++) {
 							if (y-wy<0 || x-wx<0) continue;
-//							a += delta[(y-wy)*sx+(x-wx)] * (*k++);
 							a += delta[c*sx*sy + (y-wy)*sx+(x-wx)] * (*k++);
 						}
 					}
 					*d++ = a * CatsEye_dact[u[ACT]](o++, 0, 1);
-					/*int n = (u[SIZE]/u[CHANNEL]*cc);
-					d[n] = a * CatsEye_dact[u[ACT]](&o[n], 0, 1);
-					d++;
-					o++;*/
 				}
 			}
-//			d++;//bias??
 		}
 	}
 }
@@ -454,29 +448,6 @@ void CatsEye_maxpooling_layer_forward(double *s, double *w, double *z, double *o
 	int sx = u[XSIZE];
 	int sy = u[YSIZE];
 	int *max = (int*)w;
-
-/*	for (int c=0; c<u[CHANNEL]; c++) {
-//		double *p = &s[c*sx*sy];
-		for (int y=0; y<sy; y+=u[KSIZE]) {
-			for (int x=0; x<sx; x+=u[KSIZE]) {
-				double *p = &s[c*sx*sy + y*sx+x];
-				double a = *p;
-				*max = s + c*sx*sy - p;
-				for (int wy=0; wy<u[KSIZE]; wy++) {
-					for (int wx=0; wx<u[KSIZE]; wx++) {
-						if (a<*p) {
-							a = *p;
-							*max = s + c*sx*sy - p;
-						}
-						p++;
-					}
-					p += sx-u[KSIZE];
-				}
-				max++;
-				*o++ = a;
-			}
-		}
-	}*/
 
 	for (int c=0; c<u[CHANNEL]; c++) {
 		for (int y=0; y<sy; y+=u[KSIZE]) {
@@ -526,6 +497,7 @@ void CatsEye_maxpooling_layer_backward(double *s, double *o, double *w, double *
 					int n = c*sx*sy + (y+wy)*sx+x;
 					for (int wx=0; wx<k; wx++) {
 						d[n] = n==*max ? *delta : 0;
+//						d[n] = n==*max ? (*delta) * CatsEye_dact[u[ACT]](o++, 0, 1) : 0;
 //						d[n] = *delta;
 						n++;
 					}
@@ -534,51 +506,12 @@ void CatsEye_maxpooling_layer_backward(double *s, double *o, double *w, double *
 				delta++;
 			}
 		}
-//		delta++;//bias??
 	}
 
-/*	int sx = u[XSIZE+LPLEN]/2;
-	int sy = u[YSIZE+LPLEN]/2;
-	int k = u[KSIZE+LPLEN];
-
-	for (int c=0; c<u[CHANNEL]; c++) {
-		for (int y=0; y<sy; y++) {
-			for (int x=0; x<sx; x++) {
-				double *p = &s[c*sx*2*sy*2 + y*k*u[XSIZE]+x*k];
-				for (int wy=0; wy<k; wy++) {
-					for (int wx=0; wx<k; wx++) {
-						*d++ = *p++==*o ? *delta : 0;
-					}
-					p += u[XSIZE]-k;
-				}
-				o++;
-				delta++;
-			}
-		}
-	}*/
-
-/*	int sx = u[XSIZE+LPLEN];	// input, left size
-	int sy = u[YSIZE+LPLEN];
-	int k = u[KSIZE+LPLEN];	// pooling size
-
-	for (int c=0; c<u[CHANNEL]; c++) {
-		for (int y=0; y<sy; y+=k) {
-			for (int x=0; x<sx; x+=k) {
-//				double *p = &s[c*sx*sy + y*sx+x];	// left, x
-				for (int wy=0; wy<k; wy++) {
-					double *p = &s[c*sx*sy + (y+wy)*sx+x];	// input
-					double *dd = d + c*sx*sy + (y+wy)*sx+x;
-					for (int wx=0; wx<k; wx++) {
-//						*d++ = *p++==*o ? *delta : 0;
-						*dd++ = *p++==*o ? *delta : 0;
-//						*dd++ = fabs(*p++ - *o)<__DBL_EPSILON__ ? *delta : 0;
-					}
-//					p += sx-k;
-				}
-				o++;
-				delta++;
-			}
-		}
+/*	int *max = (int*)w;
+	memset(d, 0, sizeof(double)*u[SIZE+LPLEN]);
+	for (int i=0; i<u[SIZE+LPLEN]; i++) {
+		d[*max++] = *delta++;
 	}*/
 }
 void CatsEye_maxpooling_layer_update(double eta, double *s, double *w, double *d, int u[])
