@@ -20,11 +20,24 @@ int main()
 #if 0
 	int ch = 5;		// チャネル
 	int k = 5;		// カーネルサイズ
-	int s = 28-k;		// 出力サイズ
+	int s = 28-(k/2)*2;	// 出力サイズ
 	int u[] = {		// 95.98%[k:5] 95.28%[k:3]
 		0, 0, 1, size, 0, 0, 0, 0,
 		CATS_CONV, CATS_ACT_TANH, 5, 5*s*s, 28, 28, k, 1,	// tanh, 5ch, stride 1
 		CATS_LINEAR, CATS_ACT_SIGMOID, 1, label, 0, 0, 0, 0,
+	};
+#endif
+#if 0
+	int ch = 5;		// チャネル
+	int k = 3;		// カーネルサイズ
+	int s = 28-(k/2)*2;	// 出力サイズ
+	int k2 = 3;		//!!
+	int s2 = s/k2;		//!!
+	int u[] = {		//
+		0, 0, 1, size, 0, 0, 0, 0,
+		CATS_CONV, CATS_ACT_TANH, 5, 5*s*s, 28, 28, k, 1,	// tanh, 5ch, stride 1
+		CATS_LINEAR, CATS_ACT_SIGMOID, 1, label, 0, 0, 0, 0,	// 97.3%
+//		CATS_LINEAR, CATS_ACT_SOFTMAX, 1, label, 0, 0, 0, 0,	// 86.8%
 	};
 #else
 	int ch = 5;		// チャネル
@@ -32,20 +45,52 @@ int main()
 	int s = 28-(k/2)*2;	// 1段目の出力サイズ
 	int k2 = 3;		// 2段目のカーネルサイズ
 	int s2 = s/k2;		// 2段目の出力サイズ
-	int u[] = {		// 94.58%[k:4]
+	int u[] = {
 		0, 0, 1, size,    0, 0, 0, 0,
 
-//		CATS_CONV, CATS_ACT_TANH, 1, 26*26, 28, 28, 3, 1,		// tanh 28x28,26x26 90.3%
+//		CATS_CONV, CATS_ACT_TANH, 1, 26*26, 28, 28, 3, 1,		// 1ch tanh 28x28,26x26 90.3%
 //		CATS_CONV, CATS_ACT_TANH, 1, 24*24, 26, 26, 3, 1,
 
-//		CATS_CONV, CATS_ACT_TANH, 2, 2*26*26, 28, 28, 3, 1,		// tanh 28x28,26x26 94.5%
+//		CATS_CONV, CATS_ACT_TANH, 2, 2*26*26, 28, 28, 3, 1,		// 2ch tanh 28x28,26x26 94.5%
 //		CATS_CONV, CATS_ACT_TANH, 2, 2*24*24, 26, 26, 3, 1,
+
+//		CATS_CONV, CATS_ACT_TANH, 5, 5*26*26, 28, 28, 3, 1,		// 5ch tanh 28x28,26x26 95.9%
+//		CATS_CONV, CATS_ACT_TANH, 5, 5*24*24, 26, 26, 3, 1,
+
+//		CATS_CONV, CATS_ACT_TANH, 5, 5*24*24, 28, 28, 5, 1,		// 98.1%
+//		CATS_CONV, CATS_ACT_TANH, 5, 5*22*22, 24, 24, 3, 1,
+		//CATS_LINEAR, CATS_ACT_SIGMOID, 1, 200, 0, 0, 0, 0,		// 97.6%
+
+//		CATS_CONV, CATS_ACT_TANH, 5, 5*24*24, 28, 28, 5, 1,		// 95.9%
+//		CATS_MAXPOOL, 0, 5, 5*12*12, 24, 24, 2, 1,
+		//CATS_MAXPOOL, 0, 5, 5*8*8, 24, 24, 3, 1,			// 91.9%
+
+		// http://www.kanadas.com/weblog/2015/06/1_1_2.html
+//		CATS_CONV, CATS_ACT_TANH, 5, 5*24*24, 28, 28, 5, 1,		// 95.0%
+//		CATS_MAXPOOL, 0, 5, 5*8*8, 24, 24, 3, 1,
+//		CATS_CONV, CATS_ACT_TANH, 16, 16*6*6, 8, 8, 3, 1,
+		//CATS_LINEAR, CATS_ACT_SIGMOID, 1, 200, 0, 0, 0, 0,
+
+//		CATS_CONV, CATS_ACT_TANH, 6, 6*24*24, 28, 28, 5, 1,		// 95.3%
+//		CATS_MAXPOOL, 0, 6, 6*12*12, 24, 24, 2, 1,
+//		CATS_CONV, CATS_ACT_TANH, 16, 16*10*10, 12, 12, 3, 1,
+//		CATS_MAXPOOL, 0, 16, 16*5*5, 10, 10, 2, 1,
+		//CATS_LINEAR, CATS_ACT_SIGMOID, 1, 200, 0, 0, 0, 0,
+
+//		CATS_CONV, CATS_ACT_RELU, 5, 5*24*24, 28, 28, 5, 1,		// 96.6%
+		//CATS_CONV, CATS_ACT_RELU, 5, 5*24*24, 24, 24, 1, 1,		// Cascaded 1x1 Convolution [a small network]
+//		CATS_CONV, CATS_ACT_RELU, 5, 5*22*22, 24, 24, 3, 1,
+
+		CATS_CONV, CATS_ACT_RELU, 5, 5*26*26, 28, 28, 3, 1,		// 97.5%
+		CATS_MAXPOOL, 0, 5, 5*13*13, 26, 26, 2, 1,
+		CATS_CONV, CATS_ACT_RELU, 5, 5*11*11, 13, 13, 3, 1,
+		CATS_LINEAR, CATS_ACT_SIGMOID, 1, 200, 0, 0, 0, 0,
 
 //		CATS_CONV, CATS_ACT_SIGMOID, ch, ch*s*s, 28, 28, k, 1,		// tanh, 5ch, stride 1
 //		CATS_CONV, CATS_ACT_TANH, ch, ch*s*s, 28, 28, k, 1,		// tanh, 5ch, stride 1 (pl:89%,k11:96%,97.8%)
-		CATS_CONV, CATS_ACT_RELU, ch, ch*s*s, 28, 28, k, 1,		// ReLU, 5ch, stride 1 (pl:71%,98.3%)
+//		CATS_CONV, CATS_ACT_RELU, ch, ch*s*s, 28, 28, k, 1,		// ReLU, 5ch, stride 1 (pl:71%,98.3%)
 //		CATS_CONV, CATS_ACT_LEAKY_RELU, ch, ch*s*s, 28, 28, k, 1,	// Leaky ReLU, 5ch, stride 1 (pl:61%,k11:58%,95%)
-		CATS_MAXPOOL, 0, ch, ch*s2*s2, s, s, k2, 1,			// maxpooling (93.2%)
+//		CATS_MAXPOOL, 0, ch, ch*s2*s2, s, s, k2, 1,			// maxpooling (93.2%)
 
 //		CATS_CONV, CATS_ACT_TANH, 5, 5*6*6, s2, s2, 3, 1,
 //		CATS_CONV, CATS_ACT_TANH, 1, 1*6*6, s2, s2, 3, 1,
