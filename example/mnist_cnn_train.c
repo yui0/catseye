@@ -48,20 +48,20 @@ int main()
 	int u[] = {
 		0, 0, 1, size,    0, 0, 0, 0,
 
-//		CATS_CONV, CATS_ACT_TANH, 1, 26*26, 28, 28, 3, 1,		// 1ch tanh 28x28,26x26 90.3%
+//		CATS_CONV, CATS_ACT_TANH, 1, 26*26, 28, 28, 3, 1,		// 1ch tanh 28x28,26x26 92.0%
 //		CATS_CONV, CATS_ACT_TANH, 1, 24*24, 26, 26, 3, 1,
 
-//		CATS_CONV, CATS_ACT_TANH, 2, 2*26*26, 28, 28, 3, 1,		// 2ch tanh 28x28,26x26 94.5%
+//		CATS_CONV, CATS_ACT_TANH, 2, 2*26*26, 28, 28, 3, 1,		// 2ch tanh 28x28,26x26 96.0%
 //		CATS_CONV, CATS_ACT_TANH, 2, 2*24*24, 26, 26, 3, 1,
 
-//		CATS_CONV, CATS_ACT_TANH, 5, 5*26*26, 28, 28, 3, 1,		// 5ch tanh 28x28,26x26 95.9%
+//		CATS_CONV, CATS_ACT_TANH, 5, 5*26*26, 28, 28, 3, 1,		// 5ch tanh 28x28,26x26 97.9%
 //		CATS_CONV, CATS_ACT_TANH, 5, 5*24*24, 26, 26, 3, 1,
 
 //		CATS_CONV, CATS_ACT_TANH, 5, 5*24*24, 28, 28, 5, 1,		// 98.1%
 //		CATS_CONV, CATS_ACT_TANH, 5, 5*22*22, 24, 24, 3, 1,
 		//CATS_LINEAR, CATS_ACT_SIGMOID, 1, 200, 0, 0, 0, 0,		// 97.6%
 
-//		CATS_CONV, CATS_ACT_TANH, 5, 5*24*24, 28, 28, 5, 1,		// 95.9%
+//		CATS_CONV, CATS_ACT_TANH, 5, 5*24*24, 28, 28, 5, 1,		// 96.5%
 //		CATS_MAXPOOL, 0, 5, 5*12*12, 24, 24, 2, 2,
 		//CATS_MAXPOOL, 0, 5, 5*8*8, 24, 24, 3, 3,			// 91.9%
 
@@ -72,7 +72,7 @@ int main()
 		//CATS_LINEAR, CATS_ACT_SIGMOID, 1, 200, 0, 0, 0, 0,
 
 		// https://cs.stanford.edu/people/karpathy/convnetjs/demo/mnist.html
-		CATS_CONV, CATS_ACT_RELU, 8, 8*24*24, 28, 28, 5, 1,		// 97.1%
+		CATS_CONV, CATS_ACT_RELU, 8, 8*24*24, 28, 28, 5, 1,		// 98.1%
 		CATS_MAXPOOL, 0, 8, 8*12*12, 24, 24, 2, 2,
 		CATS_CONV, CATS_ACT_RELU, 16, 16*8*8, 12, 12, 5, 1,
 		//CATS_MAXPOOL, 0, 16, 16*4*4, 8, 8, 2, 2,
@@ -84,7 +84,7 @@ int main()
 		//CATS_LINEAR, CATS_ACT_SIGMOID, 1, 200, 0, 0, 0, 0,
 
 //		CATS_CONV, CATS_ACT_RELU, 5, 5*24*24, 28, 28, 5, 1,		// 96.6%
-//		CATS_CONV, CATS_ACT_RELU, 5, 5*24*24, 24, 24, 1, 1,		// 96.8% Cascaded 1x1 Convolution [Network in Network]
+//		CATS_CONV, CATS_ACT_RELU, 5, 5*24*24, 24, 24, 1, 1,		// 97.4% Cascaded 1x1 Convolution [Network in Network]
 		//CATS_CONV, CATS_ACT_RELU, 5, 5*24*24, 24, 24, 1, 1,		// CCCP layer
 //		CATS_CONV, CATS_ACT_RELU, 5, 5*22*22, 24, 24, 3, 1,
 
