@@ -72,10 +72,10 @@ int main()
 		//CATS_LINEAR, CATS_ACT_SIGMOID, 1, 200, 0, 0, 0, 0,
 
 		// https://cs.stanford.edu/people/karpathy/convnetjs/demo/mnist.html
-		CATS_CONV, CATS_ACT_RELU, 8, 8*24*24, 28, 28, 5, 1,		// 98.1%
+		CATS_CONV, CATS_ACT_RELU, 8, 8*24*24, 28, 28, 5, 1,		// 98.7%
 		CATS_MAXPOOL, 0, 8, 8*12*12, 24, 24, 2, 2,
 		CATS_CONV, CATS_ACT_RELU, 16, 16*8*8, 12, 12, 5, 1,
-		//CATS_MAXPOOL, 0, 16, 16*4*4, 8, 8, 2, 2,
+		CATS_MAXPOOL, 0, 16, 16*4*4, 8, 8, 2, 2,
 
 //		CATS_CONV, CATS_ACT_TANH, 6, 6*24*24, 28, 28, 5, 1,		// 95.3%
 //		CATS_MAXPOOL, 0, 6, 6*12*12, 24, 24, 2, 2,
