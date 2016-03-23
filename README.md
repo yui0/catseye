@@ -9,11 +9,11 @@ Neural network library written in C and Javascript
 - Support Deep Learning
   - Multilayer perceptron
   - Deep Neural Networks (DNN)
-  - Deep Belief Networks (DBN)
   - Convolutional Neural Networks (CNN)
+  - Network in Network
 - Supported networks
   - Activation functions
-    - sigmoid, tanh, scaled tanh, ReLU, abs, identity function
+    - sigmoid, tanh, scaled tanh, ReLU, Leaky ReLU, abs, identity function
   - Loss functions
     - cross-entropy, mean-squared-error
   - Optimization algorithms
@@ -21,6 +21,7 @@ Neural network library written in C and Javascript
   - Layer types
     - linear layer
     - convolutional layer
+    - CCCP, Cascaded Cross Channel Parametric Pooling layer
     - max pooling layer
 
 ## Usage

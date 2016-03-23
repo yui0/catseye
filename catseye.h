@@ -230,7 +230,7 @@ double CatsEye_dact_ReLU(double *x, int n, int len)
 	return (x[n]>0 ? 1.0 : 0.0);
 }
 // leaky rectified linear unit function
-#define leaky_alpha	0.01	// 0 - 1
+#define leaky_alpha	0.1	// 0 - 1
 double CatsEye_act_LeakyReLU(double *x, int n, int len)
 {
 	return (x[n]>0 ? x[n] : x[n]*leaky_alpha);
@@ -365,7 +365,6 @@ void CatsEye_convolutional_layer_forward(double *s, double *w, double *z, double
 					k = &w[c*(u[KSIZE]*u[KSIZE]) + cc*nw];
 //!!!					k = &w[c*(u[KSIZE]*u[KSIZE]+1)];
 					for (int wy=0; wy<u[KSIZE]; wy++) {
-//						double *p = s + (y+wy)*u[XSIZE]+x;	// in
 						double *p = s + (u[SIZE-LPLEN]/u[CHANNEL-LPLEN]*cc) + (y+wy)*u[XSIZE]+x;	// in
 						for (int wx=0; wx<u[KSIZE]; wx++) {
 							a += (*p++) * (*k++);
@@ -425,7 +424,6 @@ void CatsEye_convolutional_layer_update(double eta, double *prev_out, double *w,
 				for (int wx=0; wx<u[KSIZE]; wx++) {
 						double *d = &curr_delta[c*sx*sy];
 						for (int y=0; y<sy; y++) {
-//							double *p = &prev_out[(y+wy)*u[XSIZE]+wx];
 							double *p = &prev_out[(u[SIZE-LPLEN]/u[CHANNEL-LPLEN]*cc) + (y+wy)*u[XSIZE]+wx];
 							for (int x=0; x<sx; x++) {
 								*w -= eta * (*d++) * (*p++);
@@ -473,23 +471,13 @@ void CatsEye_maxpooling_layer_forward(double *s, double *w, double *z, double *o
 				*o++ = a;
 			}
 		}
-
-/*		int i,n = sy/u[KSIZE]*sx/u[KSIZE];
-		double *oo = o-n;
-		for (i=0; i<n; i++) {
-			if (*oo++ >0) break;
-		}
-		if (i==n) {
-			printf("%d?",c);
-			double *oo = o-n;
-			for (i=0; i<n; i++) printf("%f ",*oo++);
-		}*/
 	}
 }
 // calculate back propagation
 void CatsEye_maxpooling_layer_backward(double *o, double *w, double *d, double *delta, int u[])
 {
-/*	int sx = u[XSIZE];	// input size
+#if 0
+	int sx = u[XSIZE];	// input size
 	int sy = u[YSIZE];
 	int k = u[KSIZE];	// pooling size
 	int *max = (int*)w;
@@ -510,16 +498,15 @@ void CatsEye_maxpooling_layer_backward(double *o, double *w, double *d, double *
 				delta++;
 			}
 		}
-	}*/
-
+	}
+#else
 	int *max = (int*)w;
 	memset(d, 0, sizeof(double)*u[SIZE-LPLEN]);
 	for (int i=0; i<u[SIZE]; i++) {
-//		d[*max++] = *delta++;
-		//d[*max++] = (*delta++) * CatsEye_dact[u[ACT-LPLEN]](o++, 0, 1);
 		d[*max] = (*delta++) * CatsEye_dact[u[ACT-LPLEN]](&o[*max], 0, 1);
 		max++;
 	}
+#endif
 }
 void CatsEye_maxpooling_layer_update(double eta, double *s, double *w, double *d, int u[])
 {
@@ -530,7 +517,7 @@ void (*CatsEye_layer_forward[])(double *s, double *w, double *z, double *o, int 
 	CatsEye_convolutional_layer_forward,
 	CatsEye_maxpooling_layer_forward,
 };
-void (*CatsEye_layer_backward[])(/*double *s, */double *o, double *w, double *d, double *delta, int u[]) = {
+void (*CatsEye_layer_backward[])(double *o, double *w, double *d, double *delta, int u[]) = {
 	CatsEye_linear_layer_backward,
 	CatsEye_convolutional_layer_backward,
 	CatsEye_maxpooling_layer_backward,

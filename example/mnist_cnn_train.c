@@ -61,15 +61,15 @@ int main()
 //		CATS_CONV, CATS_ACT_TANH, 5, 5*22*22, 24, 24, 3, 1,
 		//CATS_LINEAR, CATS_ACT_SIGMOID, 1, 200, 0, 0, 0, 0,		// 97.6%
 
-//		CATS_CONV, CATS_ACT_TANH, 5, 5*24*24, 28, 28, 5, 1,		// 96.5%
+//		CATS_CONV, CATS_ACT_TANH, 5, 5*24*24, 28, 28, 5, 1,		// 97.9%
 //		CATS_MAXPOOL, 0, 5, 5*12*12, 24, 24, 2, 2,
 		//CATS_MAXPOOL, 0, 5, 5*8*8, 24, 24, 3, 3,			// 91.9%
 
 		// http://www.kanadas.com/weblog/2015/06/1_1_2.html
-//		CATS_CONV, CATS_ACT_TANH, 5, 5*24*24, 28, 28, 5, 1,		// 95.0%
+//		CATS_CONV, CATS_ACT_TANH, 5, 5*24*24, 28, 28, 5, 1,		// 98.2%
 //		CATS_MAXPOOL, 0, 5, 5*8*8, 24, 24, 3, 3,
 //		CATS_CONV, CATS_ACT_TANH, 16, 16*6*6, 8, 8, 3, 1,
-		//CATS_LINEAR, CATS_ACT_SIGMOID, 1, 200, 0, 0, 0, 0,
+		//CATS_LINEAR, CATS_ACT_SIGMOID, 1, 200, 0, 0, 0, 0,		// 98.1%
 
 		// https://cs.stanford.edu/people/karpathy/convnetjs/demo/mnist.html
 		CATS_CONV, CATS_ACT_RELU, 8, 8*24*24, 28, 28, 5, 1,		// 98.7%
@@ -77,15 +77,15 @@ int main()
 		CATS_CONV, CATS_ACT_RELU, 16, 16*8*8, 12, 12, 5, 1,
 		CATS_MAXPOOL, 0, 16, 16*4*4, 8, 8, 2, 2,
 
-//		CATS_CONV, CATS_ACT_TANH, 6, 6*24*24, 28, 28, 5, 1,		// 95.3%
+//		CATS_CONV, CATS_ACT_TANH, 6, 6*24*24, 28, 28, 5, 1,		// 98.3%
 //		CATS_MAXPOOL, 0, 6, 6*12*12, 24, 24, 2, 2,
 //		CATS_CONV, CATS_ACT_TANH, 16, 16*10*10, 12, 12, 3, 1,
 //		CATS_MAXPOOL, 0, 16, 16*5*5, 10, 10, 2, 2,
 		//CATS_LINEAR, CATS_ACT_SIGMOID, 1, 200, 0, 0, 0, 0,
 
-//		CATS_CONV, CATS_ACT_RELU, 5, 5*24*24, 28, 28, 5, 1,		// 96.6%
-//		CATS_CONV, CATS_ACT_RELU, 5, 5*24*24, 24, 24, 1, 1,		// 97.4% Cascaded 1x1 Convolution [Network in Network]
-		//CATS_CONV, CATS_ACT_RELU, 5, 5*24*24, 24, 24, 1, 1,		// CCCP layer
+//		CATS_CONV, CATS_ACT_RELU, 5, 5*24*24, 28, 28, 5, 1,		// 98.2%
+		//CATS_CONV, CATS_ACT_RELU, 5, 5*24*24, 24, 24, 1, 1,		// 97.4% Cascaded 1x1 Convolution [Network in Network]
+		//CATS_CONV, CATS_ACT_RELU, 5, 5*24*24, 24, 24, 1, 1,		// Cascaded Cross Channel Parametric Pooling
 //		CATS_CONV, CATS_ACT_RELU, 5, 5*22*22, 24, 24, 3, 1,
 
 //		CATS_CONV, CATS_ACT_RELU, 5, 5*26*26, 28, 28, 3, 1,		// 97.5%
@@ -93,11 +93,11 @@ int main()
 //		CATS_CONV, CATS_ACT_RELU, 5, 5*11*11, 13, 13, 3, 1,
 //		CATS_LINEAR, CATS_ACT_SIGMOID, 1, 200, 0, 0, 0, 0,
 
-//		CATS_CONV, CATS_ACT_SIGMOID, ch, ch*s*s, 28, 28, k, 1,		// tanh, 5ch, stride 1
+//		CATS_CONV, CATS_ACT_SIGMOID, ch, ch*s*s, 28, 28, k, 1,		// sigmoid, 5ch, stride 1 (95.1%)
 //		CATS_CONV, CATS_ACT_TANH, ch, ch*s*s, 28, 28, k, 1,		// tanh, 5ch, stride 1 (pl:89%,k11:96%,97.8%)
 //		CATS_CONV, CATS_ACT_RELU, ch, ch*s*s, 28, 28, k, 1,		// ReLU, 5ch, stride 1 (pl:71%,98.3%)
-//		CATS_CONV, CATS_ACT_LEAKY_RELU, ch, ch*s*s, 28, 28, k, 1,	// Leaky ReLU, 5ch, stride 1 (pl:61%,k11:58%,95%)
-//		CATS_MAXPOOL, 0, ch, ch*s2*s2, s, s, k2, k2,			// maxpooling (93.2%)
+//		CATS_CONV, CATS_ACT_LEAKY_RELU, ch, ch*s*s, 28, 28, k, 1,	// Leaky ReLU, 5ch, stride 1 (pl:96.7%,95%)
+//		CATS_MAXPOOL, 0, ch, ch*s2*s2, s, s, k2, k2,			// maxpooling
 
 //		CATS_CONV, CATS_ACT_TANH, 5, 5*6*6, s2, s2, 3, 1,
 //		CATS_CONV, CATS_ACT_TANH, 1, 1*6*6, s2, s2, 3, 1,
