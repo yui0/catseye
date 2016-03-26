@@ -78,7 +78,7 @@ Main.prototype = {
     drawInput: function() {
         var ctx = this.input.getContext('2d');
         var img = new Image();
-        img.onload = () => {
+        img.onload = function() {
             var inputs = [];
             var small = document.createElement('canvas').getContext('2d');
             small.drawImage(img, 0, 0, img.width, img.height, 0, 0, 28, 28);
