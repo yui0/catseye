@@ -4,7 +4,7 @@
 //		©2016 Yuichiro Nakada
 //---------------------------------------------------------
 
-// gcc mnist_train.c -o mnist_cnn_train -lm -fopenmp -lgomp
+// gcc mnist_train.c -o mnist_cnn_train -lm -Ofast -fopenmp -lgomp
 // clang mnist_cnn_train.c -o mnist_cnn_train -lm -Ofast
 #include "../catseye.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION

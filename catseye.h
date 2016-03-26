@@ -163,11 +163,16 @@ typedef struct {
 	double **z, **o;
 	// error value
 	double **d;
+	// weights
+	double **w;
+
 	// gradient value
 	double *e2, *e3, *m2, *v2, *m3, *v3;
 	double *dl1, *dl2;
-	// weights
-	double **w;
+
+	// deprecated!
+	int in;
+	double *o3;
 } CatsEye;
 
 // identity function (output only)
@@ -300,7 +305,7 @@ enum CATS_LP {
 // f(x) = h(scale*x+bias)
 void CatsEye_linear_layer_forward(double *x, double *w, double *z, double *o, int u[])
 {
-	int in = u[SIZE-LPLEN]+1;
+	int in = u[SIZE-LPLEN]+1;	// +1 -> for bias
 	int out = u[SIZE];
 
 	for (int i=0; i<out; i++) {
@@ -323,7 +328,7 @@ void CatsEye_linear_layer_backward(double *o, double *w, double *d, double *delt
 }
 void CatsEye_linear_layer_update(double eta, double *o, double *w, double *d, int u[])
 {
-	int in = u[SIZE-LPLEN]+1;
+	int in = u[SIZE-LPLEN]+1;	// +1 -> for bias
 	int out = u[SIZE];
 
 	// update the weights
@@ -561,6 +566,7 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 		fp = fopen(param, "r");
 		if (fp==NULL) return;
 		fscanf(fp, "%d %d %d\n", &SIZE(0), &SIZE(1), &SIZE(2));
+		this->in = SIZE(0);	// deprecated!
 	}
 
 	// allocate inputs
@@ -574,6 +580,7 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 	for (int i=0; i<this->layers; i++) {
 		this->o[i] = malloc(sizeof(double)*(SIZE(i)+1));
 	}
+	this->o3 = this->o[2];	// deprecated!
 
 	// allocate errors
 	this->d = malloc(sizeof(double*)*(this->layers-1));
@@ -640,6 +647,13 @@ void CatsEye__destruct(CatsEye *this)
 	free(this->u);
 }
 
+void CatsEye_propagate(CatsEye *this, int n)
+{
+	for (int i=n; i<this->layers-1; i++) {
+		this->o[i][SIZE(i)] = 1;	// for bias
+		CatsEye_layer_forward[TYPE(i+1)](this->o[i], this->w[i], this->z[i], this->o[i+1], &this->u[LPLEN*(i+1)]);
+	}
+}
 // calculate forward propagation of input x
 void CatsEye_forward(CatsEye *this, double *x)
 {
@@ -701,6 +715,7 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 				// http://qiita.com/Ugo-Nama/items/04814a13c9ea84978a4c
 				// https://github.com/nyanp/tiny-cnn/wiki/%E5%AE%9F%E8%A3%85%E3%83%8E%E3%83%BC%E3%83%88
 				this->d[a-1][i] = this->o[a][i]-((double*)t)[sample*SIZE(a)+i];
+//				this->d[a-1][i] = this->o[a][i]-((double*)t)[sample*SIZE(a)+i] +fabs(this->o[a-1][i])*0.01;
 //				this->d[1][i] = (this->o[2][i]-((double*)t)[sample*SIZE(2)+i]) * DACT2(this->o[2][i]);
 #endif
 //				this->e3[i] += this->d[1][i]*this->d[1][i];

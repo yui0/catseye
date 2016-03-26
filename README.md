@@ -31,7 +31,7 @@ for more information, see example/
 
 ## Demo
 - Recognizing handwritten digits by MNIST training
-  - http://yui0.github.io/catseye/example/html/index.html
+  - http://yui0.github.io/catseye/example/html/mnist.html
 
 - Function approximation
 
@@ -90,3 +90,4 @@ for more information, see example/
   - Weather example [http://arakilab.media.eng.hokudai.ac.jp/~t_ogawa/wiki/index.php?LibSVM]
   - Recognizing handwritten digits [http://aidiary.hatenablog.com/entry/20140201/1391218771]
   - Recognizing handwritten digits on Web [http://d.hatena.ne.jp/sugyan/20151124/1448292129]
+  - Denoising Autoencoder [http://joisino.hatenablog.com/entry/2015/09/09/224157]
