@@ -4,15 +4,16 @@
 //		©2016 Yuichiro Nakada
 //---------------------------------------------------------
 
-// gcc mnist_train.c -o mnist_train -lm -fopenmp -lgomp
-// clang mnist_train.c -o mnist_train -lm
+// gcc mnist_train.c -o mnist_train -lm -Ofast -fopenmp -lgomp
+// clang mnist_train.c -o mnist_train -lm -Ofast
 #include "../catseye.h"
 
 int main()
 {
 	int size = 784;	// 入力層ユニット(28x28)
+	int hidden = 200;	// 隠れ層ユニット
 	//int hidden = 100;	// 隠れ層ユニット
-	int hidden = 64;	// 隠れ層ユニット
+	//int hidden = 64;	// 隠れ層ユニット
 	int label = 10;	// 出力層ユニット(0-9)
 	int sample = 60000;
 
@@ -52,7 +53,7 @@ int main()
 	for (int i=0; i<sample; i++) {
 		int p = CatsEye_predict(&cat, x+size*i);
 		if (p==t[i]) r++;
-		printf("%d -> %d\n", p, t[i]);
+//		printf("%d -> %d\n", p, t[i]);
 	}
 	printf("Prediction accuracy on training data = %f%%\n", (float)r/sample*100.0);
 

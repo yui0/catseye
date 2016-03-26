@@ -1,45 +1,39 @@
 var cat;
 
 function Main() {
-        var xmlhttp = new XMLHttpRequest();
-
-        xmlhttp.onreadystatechange = function() {
-            if (xmlhttp.readyState == 4 && xmlhttp.status == 200) {
-                var data = JSON.parse(xmlhttp.responseText);
-
-                cat = new CatsEye(data.config[0], data.config[1], data.config[2], data.w1, data.w2);
-            }
-        }
-        xmlhttp.open("GET", "mnist.json");
-        xmlhttp.send();
+        cat = new CatsEye(config[0], config[1], config[2], w1, w2);
 
         this.canvas = document.getElementById('main');
         this.input = document.getElementById('input');
-        this.canvas.width  = 449; // 16 * 28 + 1
-        this.canvas.height = 449; // 16 * 28 + 1
+        this.canvas.width  = 225; // 8 * 28 + 1
+        this.canvas.height = 225; // 8 * 28 + 1
         this.ctx = this.canvas.getContext('2d');
         this.canvas.addEventListener('mousedown', this.onMouseDown.bind(this));
         this.canvas.addEventListener('mouseup',   this.onMouseUp.bind(this));
         this.canvas.addEventListener('mousemove', this.onMouseMove.bind(this));
+
+        this.canvas.addEventListener('touchstart', this.onMouseDown.bind(this));
+        this.canvas.addEventListener('touchup',   this.onMouseUp.bind(this));
+        this.canvas.addEventListener('touchend', this.onMouseMove.bind(this));
         this.initialize();
     };
 Main.prototype = {
     initialize: function() {
         this.ctx.fillStyle = '#FFFFFF';
-        this.ctx.fillRect(0, 0, 449, 449);
+        this.ctx.fillRect(0, 0, 225, 225);
         this.ctx.lineWidth = 1;
-        this.ctx.strokeRect(0, 0, 449, 449);
+        this.ctx.strokeRect(0, 0, 225, 225);
         this.ctx.lineWidth = 0.05;
         for (var i = 0; i < 27; i++) {
             this.ctx.beginPath();
-            this.ctx.moveTo((i + 1) * 16,   0);
-            this.ctx.lineTo((i + 1) * 16, 449);
+            this.ctx.moveTo((i + 1) * 8,   0);
+            this.ctx.lineTo((i + 1) * 8, 225);
             this.ctx.closePath();
             this.ctx.stroke();
 
             this.ctx.beginPath();
-            this.ctx.moveTo(  0, (i + 1) * 16);
-            this.ctx.lineTo(449, (i + 1) * 16);
+            this.ctx.moveTo(  0, (i + 1) * 8);
+            this.ctx.lineTo(225, (i + 1) * 8);
             this.ctx.closePath();
             this.ctx.stroke();
         }
@@ -91,9 +85,9 @@ Main.prototype = {
                     ctx.fillRect(j * 5, i * 5, 5, 5);
                 }
             }
-            if (Math.min(...inputs) === 255) {
+            /*if (Math.min(...inputs) === 255) {
                 return;
-            }
+            }*/
             for (i=0; i<28*28; i++) inputs[i] = 255-inputs[i];
             for (i=0; i<28*28; i++) inputs[i] /= 255;
             a = cat.predict(inputs);
@@ -111,15 +105,9 @@ Main.prototype = {
     }
 }
 
-/*window.onload = function() {
+$(document).ready(function() {
     var main = new Main();
-    $('#clear').click = function() {
-        main.initialize();
-    }
-}*/
-$(() => {
-    var main = new Main();
-    $('#clear').click(() => {
+    $('#clear').click(function() {
         main.initialize();
     });
 });

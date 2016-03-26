@@ -7,10 +7,10 @@ Neural network library written in C and Javascript
   - Just include catseye.h and write your model in c. There is nothing to install.
   - Small dependency & simple implementation
 - Support Deep Learning
-  - Multilayer perceptron
+  - Multilayer perceptron (MLP)
   - Deep Neural Networks (DNN)
   - Convolutional Neural Networks (CNN)
-  - Network in Network
+  - Network in Network (NIN)
 - Supported networks
   - Activation functions
     - sigmoid, tanh, scaled tanh, ReLU, Leaky ReLU, abs, identity function
@@ -90,4 +90,4 @@ for more information, see example/
   - Weather example [http://arakilab.media.eng.hokudai.ac.jp/~t_ogawa/wiki/index.php?LibSVM]
   - Recognizing handwritten digits [http://aidiary.hatenablog.com/entry/20140201/1391218771]
   - Recognizing handwritten digits on Web [http://d.hatena.ne.jp/sugyan/20151124/1448292129]
-  - Denoising Autoencoder [http://joisino.hatenablog.com/entry/2015/09/09/224157]
+  - Image generator by Denoising Autoencoder [http://joisino.hatenablog.com/entry/2015/09/09/224157]

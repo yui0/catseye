@@ -702,6 +702,11 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 
 			// calculate the error of output layer
 			int a = this->layers-1;
+/*			double avg = 0;
+			for (int i=0; i<SIZE(a-1); i++) {
+				avg += this->o[a-1][i];
+			}
+			avg = avg / SIZE(a-1) *0.001;*/
 			for (int i=0; i<SIZE(a); i++) {
 #ifndef CATS_LOSS_MSE
 				// http://d.hatena.ne.jp/echizen_tm/20110606/1307378609
@@ -715,12 +720,11 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 				// http://qiita.com/Ugo-Nama/items/04814a13c9ea84978a4c
 				// https://github.com/nyanp/tiny-cnn/wiki/%E5%AE%9F%E8%A3%85%E3%83%8E%E3%83%BC%E3%83%88
 				this->d[a-1][i] = this->o[a][i]-((double*)t)[sample*SIZE(a)+i];
+//				this->d[a-1][i] = this->o[a][i]-((double*)t)[sample*SIZE(a)+i] +avg;
 //				this->d[a-1][i] = this->o[a][i]-((double*)t)[sample*SIZE(a)+i] +fabs(this->o[a-1][i])*0.01;
-//				this->d[1][i] = (this->o[2][i]-((double*)t)[sample*SIZE(2)+i]) * DACT2(this->o[2][i]);
 #endif
 //				this->e3[i] += this->d[1][i]*this->d[1][i];
 				OPT_CALC1(3);
-				//this->d[a-1][i] *= CatsEye_dact[this->u[LPLEN*a]](&this->o[a][i], 0, 1);
 			}
 
 			// calculate the error of hidden layer
