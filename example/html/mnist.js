@@ -91,9 +91,9 @@ Main.prototype = {
                     ctx.fillRect(j * 5, i * 5, 5, 5);
                 }
             }
-            if (Math.min(...inputs) === 255) {
+            /*if (Math.min(...inputs) === 255) {
                 return;
-            }
+            }*/
             for (i=0; i<28*28; i++) inputs[i] = 255-inputs[i];
             for (i=0; i<28*28; i++) inputs[i] /= 255;
             a = cat.predict(inputs);
