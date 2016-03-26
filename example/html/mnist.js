@@ -1,16 +1,25 @@
 function Main() {
-        CatsEye_load("mnist.json");
-        this.cat = new CatsEye(data.config[0], data.config[1], data.config[2], data.w1, data.w2);
+        var xmlhttp = new XMLHttpRequest();
 
-        this.canvas = document.getElementById('main');
-        this.input = document.getElementById('input');
-        this.canvas.width  = 449; // 16 * 28 + 1
-        this.canvas.height = 449; // 16 * 28 + 1
-        this.ctx = this.canvas.getContext('2d');
-        this.canvas.addEventListener('mousedown', this.onMouseDown.bind(this));
-        this.canvas.addEventListener('mouseup',   this.onMouseUp.bind(this));
-        this.canvas.addEventListener('mousemove', this.onMouseMove.bind(this));
-        this.initialize();
+        xmlhttp.onreadystatechange = function() {
+            if (xmlhttp.readyState == 4 && xmlhttp.status == 200) {
+                var data = JSON.parse(xmlhttp.responseText);
+
+                this.cat = new CatsEye(data.config[0], data.config[1], data.config[2], data.w1, data.w2);
+
+                this.canvas = document.getElementById('main');
+                this.input = document.getElementById('input');
+                this.canvas.width  = 449; // 16 * 28 + 1
+                this.canvas.height = 449; // 16 * 28 + 1
+                this.ctx = this.canvas.getContext('2d');
+                this.canvas.addEventListener('mousedown', this.onMouseDown.bind(this));
+                this.canvas.addEventListener('mouseup',   this.onMouseUp.bind(this));
+                this.canvas.addEventListener('mousemove', this.onMouseMove.bind(this));
+                this.initialize();
+            }
+        }
+        xmlhttp.open("GET", "mnist.json");
+        xmlhttp.send();
     };
 Main.prototype = {
     initialize: function() {
