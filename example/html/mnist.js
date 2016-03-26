@@ -1,6 +1,6 @@
 function Main() {
-	CatsEye_load("mnist.json");
-        this.cat = new CatsEye(config[0], config[1], config[2], data.w1, data.w2);
+        CatsEye_load("mnist.json");
+        this.cat = new CatsEye(data.config[0], data.config[1], data.config[2], data.w1, data.w2);
 
         this.canvas = document.getElementById('main');
         this.input = document.getElementById('input');
