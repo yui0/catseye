@@ -111,9 +111,15 @@ Main.prototype = {
     }
 }
 
-$(() => {
+window.onload = function() {
+    var main = new Main();
+    $('#clear').click = function() {
+        main.initialize();
+    }
+}
+/*$(() => {
     var main = new Main();
     $('#clear').click(() => {
         main.initialize();
     });
-});
+});*/
