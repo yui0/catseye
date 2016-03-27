@@ -39,6 +39,26 @@ int main()
 		CATS_LINEAR, CATS_ACT_SIGMOID, 1, label, 0, 0, 0, 0,	// 97.5%
 //		CATS_LINEAR, CATS_ACT_SOFTMAX, 1, label, 0, 0, 0, 0,	// 86.8%
 	};
+#endif
+#if 1
+	int ch = 5;		// チャネル
+	int k = 5;		// カーネルサイズ
+	int s = 28-(k/2)*2;	// 出力サイズ
+	int k2 = 3;		//!!
+	int s2 = s/k2;		//!!
+	int u[] = {		//
+		0, 0, 1, size, 0, 0, 0, 0,
+		CATS_CONV, CATS_ACT_RELU, 8, 8*24*24, 28, 28, 5, 1,
+
+//		CATS_MAXPOOL, 0, 8, 8*12*12, 24, 24, 3, 2,
+
+//		CATS_CONV, CATS_ACT_RELU, 5, 5*s*s, 28, 28, k, 1,	// tanh, 5ch, stride 1
+
+//		CATS_CONV, CATS_ACT_RELU, 16, 16*s*s, s, s, 1, 1,
+//		CATS_CONV, CATS_ACT_TANH, 64, 64*s*s, s, s, 1, 1,
+
+		CATS_LINEAR, CATS_ACT_SIGMOID, 1, label, 0, 0, 0, 0,
+	};
 #else
 	int ch = 5;		// チャネル
 	int k = 5;		// 1段目のカーネルサイズ

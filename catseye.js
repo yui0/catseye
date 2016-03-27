@@ -53,7 +53,8 @@ CatsEye.prototype = {
 			for (i=0; i<this.hid+1; i++) {
 				this.xi3[j] += this.w2[i*this.out+j]*this.o2[i];
 			}
-			this.o3[j] = this.sigmoid(this.xi3[j]);
+			this.o3[j] = this.xi3[j];
+			//this.o3[j] = this.sigmoid(this.xi3[j]);
 		}
 	},
 

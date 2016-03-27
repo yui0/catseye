@@ -322,7 +322,6 @@ void CatsEye_linear_layer_backward(double *o, double *w, double *d, double *delt
 	// calculate the error
 	for (int i=0; i<in; i++) {
 		d[i] = dot(&w[i*out], delta, out) * CatsEye_dact[u[ACT-LPLEN]](o, i, in);
-		//OPT_CALC1(2);
 	}
 	d[in] = dot(&w[in*out], delta, out) * CatsEye_dact[u[ACT-LPLEN]](o, in, in);
 }
@@ -335,7 +334,6 @@ void CatsEye_linear_layer_update(double eta, double *o, double *w, double *d, in
 	for (int i=0; i<in; i++) {
 		for (int j=0; j<out; j++) {
 			w[i*out+j] -= eta*o[i]*d[j];
-			//OPT_CALC2(out, 1, 2);
 		}
 	}
 }
@@ -427,13 +425,13 @@ void CatsEye_convolutional_layer_update(double eta, double *prev_out, double *w,
 			// update the weights
 			for (int wy=0; wy<u[KSIZE]; wy++) {
 				for (int wx=0; wx<u[KSIZE]; wx++) {
-						double *d = &curr_delta[c*sx*sy];
-						for (int y=0; y<sy; y++) {
-							double *p = &prev_out[(u[SIZE-LPLEN]/u[CHANNEL-LPLEN]*cc) + (y+wy)*u[XSIZE]+wx];
-							for (int x=0; x<sx; x++) {
-								*w -= eta * (*d++) * (*p++);
-							}
+					double *d = &curr_delta[c*sx*sy];
+					for (int y=0; y<sy; y++) {
+						double *p = &prev_out[(u[SIZE-LPLEN]/u[CHANNEL-LPLEN]*cc) + (y+wy)*u[XSIZE]+wx];
+						for (int x=0; x<sx; x++) {
+							*w -= eta * (*d++) * (*p++);
 						}
+					}
 					w++;
 				}
 			}
