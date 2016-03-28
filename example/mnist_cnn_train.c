@@ -47,8 +47,10 @@ int main()
 	int k2 = 3;		//!!
 	int s2 = s/k2;		//!!
 	int u[] = {		//
-		0, 0, 1, size, 0, 0, 0, 0,
-		CATS_CONV, CATS_ACT_RELU, 8, 8*24*24, 28, 28, 5, 1,
+		0, 0, 1, size, 28, 28, 0, 1500,				// input 28x28, mini batch size 1500 by random
+		CATS_CONV, CATS_ACT_RELU, 32, 32*22*22, 28, 28, 7, 1,	// 99.1%
+//		CATS_CONV, CATS_ACT_RELU, 5, 5*22*22, 22, 22, 1, 1,
+//		CATS_CONV, CATS_ACT_RELU, 21, 21*22*22, 22, 22, 1, 1,
 
 //		CATS_MAXPOOL, 0, 8, 8*12*12, 24, 24, 3, 2,
 

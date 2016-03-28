@@ -10,8 +10,6 @@
 #include <time.h>
 #include <math.h>
 
-#define CATS_RANDOM
-
 #define CATS_SIGMOID
 //#define CATS_TANH
 //#define CATS_SCALEDTANH
@@ -300,6 +298,7 @@ enum CATS_LP {
 #define TYPE(i)		this->u[LPLEN*(i)+TYPE]
 #define SIZE(i)		this->u[LPLEN*(i)+SIZE]
 #define CH(i)		this->u[LPLEN*(i)+CH]
+#define RANDOM		this->u[STRIDE]
 
 // calculate forward propagation of input x
 // f(x) = h(scale*x+bias)
@@ -543,12 +542,20 @@ enum CATS_LAYER_TYPE {
  * n_out: number of output layer */
 void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *param)
 {
-	if (!n_in && n_out>0 && param) {
+	FILE *fp;
+	if (!n_out && param) {
+		// load
+		fp = fopen(param, "r");
+		if (fp==NULL) return;
+		fscanf(fp, "%d %d %d\n", &SIZE(0), &SIZE(1), &SIZE(2));
+	} else if (!n_in && n_out>0 && param) {
+		// deep neural network
 		this->layers = n_out;
 		this->u = malloc(sizeof(int)*LPLEN*this->layers);
 		memcpy(this->u, param, sizeof(int)*LPLEN*this->layers);
 		param = 0;
 	} else {
+		// multilayer perceptron
 		int u[] = {
 			0, 0, 1, n_in,    0, 0, 0, 0,
 			0, 2, 1, n_hid,   0, 0, 0, 0,
@@ -558,14 +565,7 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 		this->u = malloc(sizeof(int)*LPLEN*this->layers);
 		memcpy(this->u, u, sizeof(int)*LPLEN*this->layers);
 	}
-
-	FILE *fp;
-	if (param) {
-		fp = fopen(param, "r");
-		if (fp==NULL) return;
-		fscanf(fp, "%d %d %d\n", &SIZE(0), &SIZE(1), &SIZE(2));
-		this->in = SIZE(0);	// deprecated!
-	}
+	this->in = SIZE(0);	// deprecated!
 
 	// allocate inputs
 	this->z = malloc(sizeof(double*)*(this->layers-1));
@@ -675,6 +675,35 @@ void CatsEye_forward(CatsEye *this, double *x)
 	}
 }
 
+// calculate the error of output layer
+void CatsEye_loss_0_1(double *d, double *o, void *t, int n, int size)
+{
+	int a = ((int*)t)[n];
+	for (int i=0; i<size; i++) {
+		// 0-1 loss function
+		d[i] = a==i ? o[i]-1 : o[i];	// 1-of-K
+	}
+	// Ref.
+	// http://d.hatena.ne.jp/echizen_tm/20110606/1307378609
+	// E = max(0, -twx), ∂E / ∂w = max(0, -tx)
+}
+void CatsEye_loss_mse(double *d, double *o, void *t, int n, int size)
+{
+	double *a = &((double*)t)[n*size];
+	for (int i=0; i<size; i++) {
+		// http://qiita.com/Ugo-Nama/items/04814a13c9ea84978a4c
+		// https://github.com/nyanp/tiny-cnn/wiki/%E5%AE%9F%E8%A3%85%E3%83%8E%E3%83%BC%E3%83%88
+		d[i] = o[i] - a[i];
+//		this->d[a-1][i] = this->o[a][i]-((double*)t)[sample*SIZE(a)+i] +avg;
+//		this->d[a-1][i] = this->o[a][i]-((double*)t)[sample*SIZE(a)+i] +fabs(this->o[a-1][i])*0.01;
+//		this->e3[i] += this->d[1][i]*this->d[1][i];
+//		OPT_CALC1(3);
+	}
+}
+void (*CatsEye_loss[])(double *d, double *o, void *t, int n, int size) = {
+	CatsEye_loss_0_1,
+	CatsEye_loss_mse,
+};
 /* train: multi layer perceptron
  * x: train data (number of elements is in*N)
  * t: correct label (number of elements is N)
@@ -683,18 +712,21 @@ void CatsEye_forward(CatsEye *this, double *x)
  * eta: learning rate (1e-6 to 1) */
 void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double eta)
 {
+	// for random
+	int batch = N;
+	if (RANDOM) batch = RANDOM;
+
+	int loss = this->u[(this->layers-1)*LPLEN+STRIDE];
+
 	for (int times=0; times<repeat; times++) {
 		double err = 0;
 #ifndef CATS_OPT_SGD
 		memset(this->e3, 0, sizeof(double)*SIZE(2));
 		memset(this->e2, 0, sizeof(double)*SIZE(1));
 #endif
-#ifndef CATS_RANDOM
-		for (int sample=0; sample<N; sample++) {
-#else
-		for (int n=0; n<1500/*N*/; n++) {
-			int sample = (rand()/(RAND_MAX+1.0)) * N;	// 0 <= rand < 1
-#endif
+		for (int n=0; n<batch; n++) {
+			int sample = RANDOM ? (rand()/(RAND_MAX+1.0)) * N : n;
+
 			// forward propagation
 			CatsEye_forward(this, x+sample*SIZE(0));
 
@@ -705,25 +737,7 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 				avg += this->o[a-1][i];
 			}
 			avg = avg / SIZE(a-1) *0.001;*/
-			for (int i=0; i<SIZE(a); i++) {
-#ifndef CATS_LOSS_MSE
-				// http://d.hatena.ne.jp/echizen_tm/20110606/1307378609
-				// E = max(0, -twx), ∂E / ∂w = max(0, -tx)
-				if (((int*)t)[sample] == i) {	// 1-of-K
-					this->d[a-1][i] = this->o[a][i]-1;
-				} else {
-					this->d[a-1][i] = this->o[a][i];
-				}
-#else
-				// http://qiita.com/Ugo-Nama/items/04814a13c9ea84978a4c
-				// https://github.com/nyanp/tiny-cnn/wiki/%E5%AE%9F%E8%A3%85%E3%83%8E%E3%83%BC%E3%83%88
-				this->d[a-1][i] = this->o[a][i]-((double*)t)[sample*SIZE(a)+i];
-//				this->d[a-1][i] = this->o[a][i]-((double*)t)[sample*SIZE(a)+i] +avg;
-//				this->d[a-1][i] = this->o[a][i]-((double*)t)[sample*SIZE(a)+i] +fabs(this->o[a-1][i])*0.01;
-#endif
-//				this->e3[i] += this->d[1][i]*this->d[1][i];
-				OPT_CALC1(3);
-			}
+			CatsEye_loss[loss](this->d[a-1], this->o[a], t, sample, SIZE(a));
 
 			// calculate the error of hidden layer
 			// t[hidden] += w[1][hidden * out] * d[1][out]
@@ -755,11 +769,6 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 				mse += 0.5 * (this->d[1][i] * this->d[1][i]);
 			}
 			err = 0.5 * (err + mse);
-
-/*			if (isnan(this->d[1][0])) {
-				printf("epochs %d, samples %d, mse %f\n", times, sample, err);
-				break;
-			}*/
 		}
 		printf("epochs %d, mse %f\n", times, err);
 	}
@@ -889,3 +898,4 @@ void CatsEye_visualize(double *o, int n, int size, unsigned char *p, int width)
 #undef TYPE
 #undef SIZE
 #undef CH
+#undef RANDOM
