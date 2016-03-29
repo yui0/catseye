@@ -13,62 +13,53 @@
 int main()
 {
 	int size = 784;	// 入力層ユニット(28x28)
-	int hidden = 64;	// 隠れ層ユニット
 	int label = 10;	// 出力層ユニット(0-9)
 	int sample = 60000;
 
 #if 0
-	int ch = 5;		// チャネル
-	int k = 5;		// カーネルサイズ
-	int s = 28-(k/2)*2;	// 出力サイズ
 	int u[] = {		// 95.98%[k:5] 95.28%[k:3]
-		0, 0, 1, size, 0, 0, 0, 0,
+		0, 0, 1, size, 0, 0, 0, 1500,				// input 28x28, mini batch size is 1500 by random
 		CATS_CONV, CATS_ACT_TANH, 5, 5*s*s, 28, 28, k, 1,	// tanh, 5ch, stride 1
 		CATS_LINEAR, CATS_ACT_SIGMOID, 1, label, 0, 0, 0, 0,
 	};
 #endif
 #if 0
-	int ch = 5;		// チャネル
-	int k = 3;		// カーネルサイズ
-	int s = 28-(k/2)*2;	// 出力サイズ
-	int k2 = 3;		//!!
-	int s2 = s/k2;		//!!
-	int u[] = {		//
-		0, 0, 1, size, 0, 0, 0, 0,
+	int u[] = {
+		0, 0, 1, size, 0, 0, 0, 1500,				// input 28x28, mini batch size is 1500 by random
 		CATS_CONV, CATS_ACT_TANH, 5, 5*s*s, 28, 28, k, 1,	// tanh, 5ch, stride 1
 		CATS_LINEAR, CATS_ACT_SIGMOID, 1, label, 0, 0, 0, 0,	// 97.5%
 //		CATS_LINEAR, CATS_ACT_SOFTMAX, 1, label, 0, 0, 0, 0,	// 86.8%
 	};
 #endif
 #if 1
-	int ch = 5;		// チャネル
-	int k = 5;		// カーネルサイズ
-	int s = 28-(k/2)*2;	// 出力サイズ
-	int k2 = 3;		//!!
-	int s2 = s/k2;		//!!
-	int u[] = {		//
-		0, 0, 1, size, 28, 28, 0, 1500,				// input 28x28, mini batch size 1500 by random
-		CATS_CONV, CATS_ACT_RELU, 32, 32*22*22, 28, 28, 7, 1,	// 99.1%
-//		CATS_CONV, CATS_ACT_RELU, 5, 5*22*22, 22, 22, 1, 1,
-//		CATS_CONV, CATS_ACT_RELU, 21, 21*22*22, 22, 22, 1, 1,
+	int u[] = {
+		0, 0, 1, size, 0, 0, 0, 1500,			// input 28x28, mini batch size is 1500 by random
 
-//		CATS_MAXPOOL, 0, 8, 8*12*12, 24, 24, 3, 2,
+//		CATS_CONV, CATS_ACT_RELU, 32, 0, 0, 0, 7, 1,	// CONV1 32ch, only 99.1%
+//		CATS_CONV, CATS_ACT_RELU, 5, 0, 0, 0, 1, 1,	// CCCP1 5ch
+//		CATS_CONV, CATS_ACT_RELU, 21, 0, 0, 0, 1, 1,	// CCCP1 21ch
 
-//		CATS_CONV, CATS_ACT_RELU, 5, 5*s*s, 28, 28, k, 1,	// tanh, 5ch, stride 1
+//		CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 3, 1,	// CONV1 8ch k3
+//		CATS_MAXPOOL, 0, 8, 0, 0, 0, 2, 2,
+//		CATS_CONV, CATS_ACT_RELU, 16, 0, 0, 0, 3, 1,	// CONV2 16ch k3
+//		CATS_MAXPOOL, 0, 16, 0, 0, 0, 2, 2,
 
-//		CATS_CONV, CATS_ACT_RELU, 16, 16*s*s, s, s, 1, 1,
-//		CATS_CONV, CATS_ACT_TANH, 64, 64*s*s, s, s, 1, 1,
+//		CATS_CONV, CATS_ACT_RELU, 32, 0, 0, 0, 7, 1,	// CONV1 32ch k7
+//		CATS_MAXPOOL, 0, 32, 0, 0, 0, 2, 2,
+//		CATS_CONV, CATS_ACT_RELU, 64, 0, 0, 0, 3, 1,	// CONV2 64ch k3
+		//CATS_MAXPOOL, 0, 64, 0, 0, 0, 2, 2,
+
+//		CATS_CONV, CATS_ACT_TANH, 32, 0, 0, 0, 7, 1,	// CONV1 32ch k7
+//		CATS_MAXPOOL, 0, 32, 0, 0, 0, 2, 2,
+
+		CATS_CONV, CATS_ACT_RELU, 32, 0, 0, 0, 7, 1,	// CONV1 32ch k7
+		CATS_MAXPOOL, 0, 32, 0, 0, 0, 2, 2,
 
 		CATS_LINEAR, CATS_ACT_SIGMOID, 1, label, 0, 0, 0, 0,
 	};
 #else
-	int ch = 5;		// チャネル
-	int k = 5;		// 1段目のカーネルサイズ
-	int s = 28-(k/2)*2;	// 1段目の出力サイズ
-	int k2 = 3;		// 2段目のカーネルサイズ
-	int s2 = s/k2;		// 2段目の出力サイズ
 	int u[] = {
-		0, 0, 1, size,    0, 0, 0, 0,
+		0, 0, 1, size,    0, 0, 0, 1500,				// input 28x28, mini batch size is 1500 by random
 
 //		CATS_CONV, CATS_ACT_TANH, 1, 26*26, 28, 28, 3, 1,		// 1ch tanh 28x28,26x26 92.0%
 //		CATS_CONV, CATS_ACT_TANH, 1, 24*24, 26, 26, 3, 1,
@@ -187,21 +178,22 @@ int main()
 		CatsEye_forward(&cat, x+size*i);
 
 		// 初段フィルタ出力
-		CatsEye_visualize(cat.o[1], s*s, s, &pixels[i*28], 28*10);
-		CatsEye_visualize(&cat.o[1][s*s], s*s, s, &pixels[28*28*10+i*28], 28*10);
-		CatsEye_visualize(&cat.o[1][s*s*2], s*s, s, &pixels[28*28*10*2+i*28], 28*10);
-		CatsEye_visualize(&cat.o[1][s*s*3], s*s, s, &pixels[28*28*10*3+i*28], 28*10);
-		CatsEye_visualize(&cat.o[1][s*s*4], s*s, s, &pixels[28*28*10*4+i*28], 28*10);
+		CatsEye_visualizeUnits(&cat, 0, 1, 0, &pixels[i*28], 28*10);
+		CatsEye_visualizeUnits(&cat, 0, 1, 1, &pixels[28*28*10+i*28], 28*10);
+		CatsEye_visualizeUnits(&cat, 0, 1, 2, &pixels[28*28*10*2+i*28], 28*10);
+		CatsEye_visualizeUnits(&cat, 0, 1, 3, &pixels[28*28*10*3+i*28], 28*10);
+		CatsEye_visualizeUnits(&cat, 0, 1, 4, &pixels[28*28*10*4+i*28], 28*10);
 
 		// 2段目フィルタ出力
-		CatsEye_visualize(cat.o[2], s2*s2, s2, &pixels[28*28*10*5+i*28], 28*10);
-		CatsEye_visualize(&cat.o[2][s2*s2], s2*s2, s2, &pixels[28*28*10*6+i*28], 28*10);
-		CatsEye_visualize(&cat.o[2][s2*s2*2], s2*s2, s2, &pixels[28*28*10*7+i*28], 28*10);
-		CatsEye_visualize(&cat.o[2][s2*s2*3], s2*s2, s2, &pixels[28*28*10*8+i*28], 28*10);
+		CatsEye_visualizeUnits(&cat, 0, 2, 0, &pixels[28*28*10*5+i*28], 28*10);
+		CatsEye_visualizeUnits(&cat, 0, 2, 1, &pixels[28*28*10*6+i*28], 28*10);
+		CatsEye_visualizeUnits(&cat, 0, 2, 2, &pixels[28*28*10*7+i*28], 28*10);
+		CatsEye_visualizeUnits(&cat, 0, 2, 3, &pixels[28*28*10*8+i*28], 28*10);
 	}
 	// フィルタ
-	for (int i=0; i<ch; i++) {
-		CatsEye_visualize(&cat.w[0][(k*k+1)*i], k*k, k, &pixels[28*10*28*9 + i*(k+2)], 28*10);
+	for (int i=0; i<u[CHANNEL+LPLEN]; i++) {
+		int n = (u[KSIZE+LPLEN]+2);
+		CatsEye_visualizeUnits(&cat, 1, 0, i, &pixels[28*28*10*(9+(i*n)/(28*10))+(i*n)%(28*10)], 28*10);
 	}
 	stbi_write_png("mnist_cnn_train.png", 28*10, 28*10, 1, pixels, 28*10);
 	free(pixels);

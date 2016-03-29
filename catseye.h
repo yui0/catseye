@@ -356,7 +356,8 @@ void CatsEye_convolutional_layer_forward(double *s, double *w, double *z, double
 {
 	int sx = u[XSIZE] - (u[KSIZE]/2)*2;
 	int sy = u[YSIZE] - (u[KSIZE]/2)*2;
-	int nw = u[CHANNEL] * u[KSIZE]*u[KSIZE];
+	int n = u[CHANNEL] * u[KSIZE]*u[KSIZE];
+	int size = u[SIZE-LPLEN]/u[CHANNEL-LPLEN];
 
 	for (int c=0; c<u[CHANNEL]; c++) {	// out
 		for (int y=0; y<sy; y++) {
@@ -364,10 +365,10 @@ void CatsEye_convolutional_layer_forward(double *s, double *w, double *z, double
 				double a = 0;
 				double *k;
 				for (int cc=0; cc<u[CHANNEL-LPLEN]; cc++) {	// in
-					k = &w[c*(u[KSIZE]*u[KSIZE]) + cc*nw];
+					k = &w[c*(u[KSIZE]*u[KSIZE]) + cc*n];
 //!!!					k = &w[c*(u[KSIZE]*u[KSIZE]+1)];
 					for (int wy=0; wy<u[KSIZE]; wy++) {
-						double *p = s + (u[SIZE-LPLEN]/u[CHANNEL-LPLEN]*cc) + (y+wy)*u[XSIZE]+x;	// in
+						double *p = s + (size*cc) + (y+wy)*u[XSIZE]+x;	// in
 						for (int wx=0; wx<u[KSIZE]; wx++) {
 							a += (*p++) * (*k++);
 						}
@@ -391,7 +392,7 @@ void CatsEye_convolutional_layer_backward(double *prev_out, double *w, double *p
 	memset(prev_delta, 0, sizeof(double)*u[CHANNEL-LPLEN]*ix*iy);
 
 	// calculate the error
-	for (int cc=0; cc<u[CHANNEL-LPLEN]; cc++) { // in
+	for (int cc=0; cc<u[CHANNEL-LPLEN]; cc++) {	// in
 		double *d = &prev_delta[cc*ix*iy];
 		for (int c=0; c<u[CHANNEL]; c++) {	// out
 			for (int y=0; y<oy; y++) {
@@ -454,8 +455,8 @@ void CatsEye_maxpooling_layer_forward(double *s, double *w, double *z, double *o
 	int *max = (int*)w;
 
 	for (int c=0; c<u[CHANNEL]; c++) {
-		for (int y=0; y<sy; y+=u[STRIDE]) {
-			for (int x=0; x<sx; x+=u[STRIDE]) {
+		for (int y=0; y<sy-1; y+=u[STRIDE]) {
+			for (int x=0; x<sx-1; x+=u[STRIDE]) {
 				int n = c*sx*sy + y*sx+x;
 				double a = s[n];
 				*max = n;
@@ -554,6 +555,28 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 		this->u = malloc(sizeof(int)*LPLEN*this->layers);
 		memcpy(this->u, param, sizeof(int)*LPLEN*this->layers);
 		param = 0;
+
+		// calculate parameters
+		for (int i=1; i<this->layers; i++) {
+			int *u = &this->u[LPLEN*i];
+			if (!u[XSIZE]) {
+				u[XSIZE] = u[YSIZE] = sqrt(u[SIZE-LPLEN]/u[CHANNEL-LPLEN]);
+				printf("in:[%dx%d] ", u[XSIZE], u[YSIZE]);
+			}
+			switch (u[TYPE]) {
+			case CATS_CONV:
+				if (!u[SIZE]) {
+					u[SIZE] = u[CHANNEL] * (u[XSIZE]-u[KSIZE]/2*2) * (u[YSIZE]-u[KSIZE]/2*2);
+					printf("out:[%d]\n", u[SIZE]);
+				}
+				break;
+			case CATS_MAXPOOL:
+				if (!u[SIZE]) {
+					u[SIZE] = u[CHANNEL] * (u[XSIZE]/u[KSIZE]) * (u[YSIZE]/u[KSIZE]);
+					printf("out:[%d]\n", u[SIZE]);
+				}
+			}
+		}
 	} else {
 		// multilayer perceptron
 		int u[] = {
@@ -893,6 +916,27 @@ void CatsEye_visualize(double *o, int n, int size, unsigned char *p, int width)
 	for (int i=0; i<n; i++) {
 		p[(i/size)*width + i%size] = ((o[i] - min) / (max - min)) * 255.0;
 	}
+}
+
+// visualizeUnits
+void CatsEye_visualizeUnits(CatsEye *this, int n, int l, int ch, unsigned char *p, int width)
+{
+	int *u = &this->u[(l+1)*LPLEN];
+	double *s;
+	int size, w;
+	switch (n) {
+	case 0:
+		size = u[XSIZE]*u[YSIZE];
+		w = u[XSIZE];
+		s = &this->o[l][ch * size];
+		break;
+	case 1:
+		size = u[KSIZE]*u[KSIZE];
+		w = u[KSIZE];
+		s = &this->w[l][ch * size];
+//		s = &this->w[l][ch * (u[KSIZE]*u[KSIZE]+1)];	// bias
+	}
+	CatsEye_visualize(s, size, w, p, width);
 }
 
 #undef TYPE

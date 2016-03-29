@@ -72,9 +72,9 @@ for more information, see example/
   ![epoch=100](example/mnist_autoencoder_weights_u64da_s100.png "epoch=100")
 
 - Convolutional Neural Networks
-  - tanh, 5x5, 5ch
+  - tanh, 7x7, 32ch
 
-  ![96.4%](example/mnist_cnn_train_5ch_k5p2.png "Convolutional")
+  ![99.1%](example/mnist_cnn_train_32ch_k7.png "Convolutional")
 
 ## Refrence
 - Documents
