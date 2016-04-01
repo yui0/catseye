@@ -157,6 +157,7 @@ int binomial(/*int n, */double p)
 typedef struct {
 	// number of each layer
 	int layers, *u;
+
 	// output layers [o = f(z)]
 	double **z, **o;
 	// error value
@@ -331,8 +332,10 @@ void CatsEye_linear_layer_update(double eta, double *o, double *w, double *d, in
 
 	// update the weights
 	for (int i=0; i<in; i++) {
+		double a = eta * (*o++);
 		for (int j=0; j<out; j++) {
-			w[i*out+j] -= eta*o[i]*d[j];
+//			w[i*out+j] -= eta*o[i]*d[j];
+			w[i*out+j] -= a*d[j];
 		}
 	}
 }
@@ -343,10 +346,12 @@ void CatsEye_SVM_layer_update(double eta, double *o, double *w, double *d, int u
 
 	// update the weights
 	for (int i=0; i<in; i++) {
+		double a = eta * (*o++);
 		for (int j=0; j<out; j++) {
 			// SVM (http://d.hatena.ne.jp/echizen_tm/20110627/1309188711)
 			// ∂loss(w, x, t) / ∂w = ∂(λ - twx + α * w^2 / 2) / ∂w = - tx + αw
-			w[i*out+j] -= eta*o[i]*d[j] + w[i*out+j]*1e-8;
+//			w[i*out+j] -= eta*o[i]*d[j] + w[i*out+j]*1e-8;
+			w[i*out+j] -= a*d[j] + w[i*out+j]*1e-8;
 		}
 	}
 }
@@ -354,7 +359,7 @@ void CatsEye_SVM_layer_update(double eta, double *o, double *w, double *d, int u
 // calculate forward propagation
 void CatsEye_convolutional_layer_forward(double *s, double *w, double *z, double *o, int u[])
 {
-	int sx = u[XSIZE] - (u[KSIZE]/2)*2;
+	int sx = u[XSIZE] - (u[KSIZE]/2)*2;	// out
 	int sy = u[YSIZE] - (u[KSIZE]/2)*2;
 	int n = u[CHANNEL] * u[KSIZE]*u[KSIZE];
 	int size = u[SIZE-LPLEN]/u[CHANNEL-LPLEN];
@@ -367,11 +372,13 @@ void CatsEye_convolutional_layer_forward(double *s, double *w, double *z, double
 				for (int cc=0; cc<u[CHANNEL-LPLEN]; cc++) {	// in
 					k = &w[c*(u[KSIZE]*u[KSIZE]) + cc*n];
 //!!!					k = &w[c*(u[KSIZE]*u[KSIZE]+1)];
+					double *p = s + (size*cc) + y*u[XSIZE]+x;	// in
 					for (int wy=0; wy<u[KSIZE]; wy++) {
-						double *p = s + (size*cc) + (y+wy)*u[XSIZE]+x;	// in
+//						double *p = s + (size*cc) + (y+wy)*u[XSIZE]+x;	// in
 						for (int wx=0; wx<u[KSIZE]; wx++) {
 							a += (*p++) * (*k++);
 						}
+						p += u[XSIZE]-u[KSIZE];
 					}
 				}
 //!!!				a += *k;	// bias
@@ -559,28 +566,25 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 		// calculate parameters
 		for (int i=1; i<this->layers; i++) {
 			int *u = &this->u[LPLEN*i];
-			if (!u[XSIZE]) {
+			if (/*u[TYPE]!=CATS_LINEAR &&*/ !u[XSIZE]) {
 				u[XSIZE] = u[YSIZE] = sqrt(u[SIZE-LPLEN]/u[CHANNEL-LPLEN]);
-				printf("in:[%dx%d] ", u[XSIZE], u[YSIZE]);
 			}
-			switch (u[TYPE]) {
-			case CATS_CONV:
-				if (!u[SIZE]) {
+
+			if (!u[SIZE]) {
+				switch (u[TYPE]) {
+				case CATS_CONV:
 					u[SIZE] = u[CHANNEL] * (u[XSIZE]-u[KSIZE]/2*2) * (u[YSIZE]-u[KSIZE]/2*2);
-					printf("out:[%d]\n", u[SIZE]);
-				}
-				break;
-			case CATS_MAXPOOL:
-				if (!u[SIZE]) {
+					break;
+				case CATS_MAXPOOL:
 					u[SIZE] = u[CHANNEL] * (u[XSIZE]/u[KSIZE]) * (u[YSIZE]/u[KSIZE]);
-					printf("out:[%d]\n", u[SIZE]);
 				}
 			}
+			printf("L%02d in:[%dx%dx%d] out:[%d]\n", i, u[CHANNEL-LPLEN], u[XSIZE], u[YSIZE], u[SIZE]);
 		}
 	} else {
 		// multilayer perceptron
 		int u[] = {
-			0, 0, 1, n_in,    0, 0, 0, 0,
+			0, 0, 1, n_in,    0, 0, 0, n_in>1500?1500:n_in,
 			0, 2, 1, n_hid,   0, 0, 0, 0,
 			0, 0, 1, n_out,   0, 0, 0, 0,
 		};
@@ -619,10 +623,33 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 	this->dl1 = malloc(sizeof(double)*(SIZE(0)+1)*SIZE(1));
 	this->dl2 = malloc(sizeof(double)*(SIZE(1)+1)*SIZE(2));
 
-	// allocate memories
+	// allocate weights
 	this->w = malloc(sizeof(double*)*(this->layers-1));
 	for (int i=0; i<this->layers-1; i++) {
-		this->w[i] = malloc(sizeof(double)*(SIZE(i)+1)*SIZE(i+1));
+		int n, m;
+		int *u = &this->u[LPLEN*(i+1)]; 
+		switch (u[TYPE]) {
+		case CATS_CONV:
+			n = u[KSIZE] * u[KSIZE];		// kernel size
+			m = u[CHANNEL] * u[CHANNEL-LPLEN];	// channel
+			break;
+		default:
+			n = SIZE(i);
+			m = SIZE(i+1);
+		}
+		printf("L%02d %d %d\n", i+1, n, m);
+		m+=10;
+
+		this->w[i] = malloc(sizeof(double)*(n+1)*m);
+
+		// initialize weights (http://aidiary.hatenablog.com/entry/20150618/1434628272)
+		// range depends on the research of Y. Bengio et al. (2010)
+		srand((unsigned)(time(0)));
+		double range = sqrt(6)/sqrt(n+m+2);
+		srand((unsigned)(time(0)));
+		for (int j=0; j<(n+1)*m; j++) {
+			this->w[i][j] = 2.0*range*rand()/RAND_MAX-range;
+		}
 	}
 
 	if (param) {
@@ -633,7 +660,7 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 			fscanf(fp, "%lf ", &this->w[1][i]);
 		}
 		fclose(fp);
-	} else {
+	/*} else {
 		// initialize weights (http://aidiary.hatenablog.com/entry/20150618/1434628272)
 		// range depends on the research of Y. Bengio et al. (2010)
 		srand((unsigned)(time(0)));
@@ -643,7 +670,7 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 			for (int j=0; j<(SIZE(i)+1)*SIZE(i+1); j++) {
 				this->w[i][j] = 2.0*range*rand()/RAND_MAX-range;
 			}
-		}
+		}*/
 	}
 }
 
@@ -740,6 +767,7 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 	if (RANDOM) batch = RANDOM;
 
 	int loss = this->u[(this->layers-1)*LPLEN+STRIDE];
+	if (!loss && x==t) loss = 1;
 
 	for (int times=0; times<repeat; times++) {
 		double err = 0;

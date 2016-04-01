@@ -53,7 +53,7 @@ int main()
 //		CATS_MAXPOOL, 0, 32, 0, 0, 0, 2, 2,
 
 		CATS_CONV, CATS_ACT_RELU, 32, 0, 0, 0, 7, 1,	// CONV1 32ch k7
-		CATS_MAXPOOL, 0, 32, 0, 0, 0, 2, 2,
+		CATS_MAXPOOL, 0, 32, 0, 0, 0, 2, 2,		// 99%
 
 		CATS_LINEAR, CATS_ACT_SIGMOID, 1, label, 0, 0, 0, 0,
 	};
@@ -164,7 +164,8 @@ int main()
 		if (p==t[i]) r++;
 		else {
 			if (c<100) {
-				CatsEye_visualize(cat.o[0], 28*28, 28, &pixels[(c/10)*28*28*10+(c%10)*28], 28*10);
+				//CatsEye_visualize(cat.o[0], 28*28, 28, &pixels[(c/10)*28*28*10+(c%10)*28], 28*10);
+				CatsEye_visualizeUnits(&cat, 0, 0, 0, &pixels[(c/10)*28*28*10+(c%10)*28], 28*10);
 			}
 			c++;
 		}
