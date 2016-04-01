@@ -234,14 +234,15 @@ double CatsEye_dact_ReLU(double *x, int n, int len)
 	return (x[n]>0 ? 1.0 : 0.0);
 }
 // leaky rectified linear unit function
-#define leaky_alpha	0.1	// 0 - 1
+#define leaky_alpha	0.01	// 0 - 1
 double CatsEye_act_LeakyReLU(double *x, int n, int len)
 {
 	return (x[n]>0 ? x[n] : x[n]*leaky_alpha);
 }
 double CatsEye_dact_LeakyReLU(double *x, int n, int len)
 {
-	return (x[n]>0 ? 1.0 : (1.0-leaky_alpha));
+	return (x[n]>0 ? 1.0 : leaky_alpha);
+//	return (x[n]>0 ? 1.0 : (1.0-leaky_alpha));
 }
 // abs function
 double CatsEye_act_abs(double *x, int n, int len)

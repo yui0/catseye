@@ -30,15 +30,15 @@ just include header files in your project
 for more information, see example/
 
 ## Demo
-- Recognizing handwritten digits by MNIST training
+- Recognizing handwritten digits by MNIST training (example/mnist_train.c)
   - http://yui0.github.io/catseye/example/html/mnist.html
 
-- Function approximation
+- Function approximation (example/sin.c)
 
   ![sin](example/sin.png)
   ![quadratic function](example/quadratic.png)
 
-- Autoencoder
+- Autoencoder (example/mnist_autoencoder.c)
   - Unit 64 [tied weight]
 
   ![epoch=100](example/mnist_autoencoder_u64ae_s100.png "epoch=100")
@@ -71,7 +71,7 @@ for more information, see example/
   ![epoch=100](example/mnist_autoencoder_u64da_s100.png "epoch=100")
   ![epoch=100](example/mnist_autoencoder_weights_u64da_s100.png "epoch=100")
 
-- Convolutional Neural Networks [example/mnist_cnn_train.c]
+- Convolutional Neural Networks (example/mnist_cnn_train.c)
   - tanh, 7x7, 32ch, 99.2%
 
   ![99.2%](example/mnist_cnn_train_32ch_k7.png "Convolutional")

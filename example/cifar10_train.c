@@ -12,20 +12,53 @@
 
 int main()
 {
+	int k = 32;
 	int size = 32*32*3;	// 入力層
 	int label = 10;	// 出力層
 	int sample = 1000;//10000;
 
-	int u[] = {
-//		0, 0, 3, size, 0, 0, 0, 100,			// input 32x32x3, mini batch size is 1500 by random
-		0, 0, 1, 32*32, 0, 0, 0, 100,			// input 32x32x3, mini batch size is 1500 by random
+#if 0
+	int u[] = {	// 67.7% (http://aidiary.hatenablog.com/entry/20151108/1446952402)
+//		0, 0, 3, size, 0, 0, 0, 100,			// input 32x32x3, mini batch size is 100 by random
+		0, 0, 1, 32*32, 0, 0, 0, 100,			// input 32x32x3, mini batch size is 100 by random
 
-		CATS_CONV, CATS_ACT_RELU, 32, 0, 0, 0, 5, 1,	// CONV1 32ch k5
+		CATS_CONV, CATS_ACT_RELU, 32, 0, 0, 0, 5/*3*/, 1,	// CONV1 32ch k3
 		CATS_MAXPOOL, 0, 32, 0, 0, 0, 2, 2,
+
+//		CATS_LINEAR, CATS_ACT_SIGMOID, 1, 7200, 0, 0, 0, 0,
+		CATS_LINEAR, CATS_ACT_SIGMOID, 1, label, 0, 0, 0, 0,
+	};
+#endif
+#if 1
+	int u[] = {	//
+//		0, 0, 3, size, 0, 0, 0, 100,			// input 32x32x3, mini batch size is 100 by random
+		0, 0, 1, 32*32, 0, 0, 0, 100,			// input 32x32x3, mini batch size is 100 by random
+
+		CATS_CONV, CATS_ACT_LEAKY_RELU, 32, 0, 0, 0, 5, 1,	// CONV1 32ch k3
+		CATS_MAXPOOL, 0, 32, 0, 0, 0, 2, 2,
+		CATS_CONV, CATS_ACT_LEAKY_RELU, 64, 0, 0, 0, 3, 1,	// CONV1 32ch k3
+		CATS_MAXPOOL, 0, 64, 0, 0, 0, 2, 2,
+		CATS_CONV, CATS_ACT_LEAKY_RELU, 128, 0, 0, 0, 3, 1,	// CONV1 32ch k3
+		CATS_MAXPOOL, 0, 128, 0, 0, 0, 2, 2,
+
+		CATS_LINEAR, CATS_ACT_SIGMOID, 1, 256, 0, 0, 0, 0,
+		CATS_LINEAR, CATS_ACT_SIGMOID, 1, label, 0, 0, 0, 0,
+	};
+#else
+	int u[] = {
+		0, 0, 1, 32*32, 0, 0, 0, 100,			// input 32x32x3, mini batch size is 100 by random
+
+//		CATS_CONV, CATS_ACT_RELU, 32, 0, 0, 0, 5, 1,	// CONV1 32ch k5
+		CATS_CONV, CATS_ACT_TANH, 32, 0, 0, 0, 5, 1,	// CONV1 32ch k5
+		CATS_MAXPOOL, 0, 32, 0, 0, 0, 2, 2,
+//		CATS_CONV, CATS_ACT_RELU, 64, 0, 0, 0, 3, 1,	// CONV2 64ch k3
+//		CATS_CONV, CATS_ACT_TANH, 64, 0, 0, 0, 3, 1,	// CONV2 64ch k3
+//		CATS_MAXPOOL, 0, 64, 0, 0, 0, 2, 2,
 
 		CATS_LINEAR, CATS_ACT_SIGMOID, 1, 512, 0, 0, 0, 0,
 		CATS_LINEAR, CATS_ACT_SIGMOID, 1, label, 0, 0, 0, 0,
 	};
+#endif
 	int layers = sizeof(u)/sizeof(int)/LPLEN;
 
 	CatsEye cat;
@@ -73,39 +106,39 @@ int main()
 		if (p==t[i]) r++;
 		else {
 			if (c<100) {
-				//CatsEye_visualize(cat.o[0], 28*28, 28, &pixels[(c/10)*28*28*10+(c%10)*28], 28*10);
-				CatsEye_visualizeUnits(&cat, 0, 0, 0, &pixels[(c/10)*28*28*10+(c%10)*28], 28*10);
+				//CatsEye_visualize(cat.o[0], 28*28, 28, &pixels[(c/10)*k*k*10+(c%10)*28], k*10);
+				CatsEye_visualizeUnits(&cat, 0, 0, 0, &pixels[(c/10)*k*k*10+(c%10)*k], k*10);
 			}
 			c++;
 		}
 //		printf("%d -> %d\n", p, t[i]);
 	}
 	printf("Prediction accuracy on training data = %f%%\n", (float)r/sample*100.0);
-	stbi_write_png("cifar10_train_wrong.png", 28*10, 28*10, 1, pixels, 28*10);
+	stbi_write_png("cifar10_train_wrong.png", k*10, k*10, 1, pixels, k*10);
 	memset(pixels, 0, size*100);
 
 	for (int i=0; i<10; i++) {
 		CatsEye_forward(&cat, x+size*i);
 
 		// 初段フィルタ出力
-		CatsEye_visualizeUnits(&cat, 0, 1, 0, &pixels[i*28], 28*10);
-		CatsEye_visualizeUnits(&cat, 0, 1, 1, &pixels[28*28*10+i*28], 28*10);
-		CatsEye_visualizeUnits(&cat, 0, 1, 2, &pixels[28*28*10*2+i*28], 28*10);
-		CatsEye_visualizeUnits(&cat, 0, 1, 3, &pixels[28*28*10*3+i*28], 28*10);
-		CatsEye_visualizeUnits(&cat, 0, 1, 4, &pixels[28*28*10*4+i*28], 28*10);
+		CatsEye_visualizeUnits(&cat, 0, 1, 0, &pixels[i*k], k*10);
+		CatsEye_visualizeUnits(&cat, 0, 1, 1, &pixels[k*k*10+i*k], k*10);
+		CatsEye_visualizeUnits(&cat, 0, 1, 2, &pixels[k*k*10*2+i*k], k*10);
+		CatsEye_visualizeUnits(&cat, 0, 1, 3, &pixels[k*k*10*3+i*k], k*10);
+		CatsEye_visualizeUnits(&cat, 0, 1, 4, &pixels[k*k*10*4+i*k], k*10);
 
 		// 2段目フィルタ出力
-		CatsEye_visualizeUnits(&cat, 0, 2, 0, &pixels[28*28*10*5+i*28], 28*10);
-		CatsEye_visualizeUnits(&cat, 0, 2, 1, &pixels[28*28*10*6+i*28], 28*10);
-		CatsEye_visualizeUnits(&cat, 0, 2, 2, &pixels[28*28*10*7+i*28], 28*10);
-		CatsEye_visualizeUnits(&cat, 0, 2, 3, &pixels[28*28*10*8+i*28], 28*10);
+		CatsEye_visualizeUnits(&cat, 0, 2, 0, &pixels[k*k*10*5+i*k], k*10);
+		CatsEye_visualizeUnits(&cat, 0, 2, 1, &pixels[k*k*10*6+i*k], k*10);
+		CatsEye_visualizeUnits(&cat, 0, 2, 2, &pixels[k*k*10*7+i*k], k*10);
+		CatsEye_visualizeUnits(&cat, 0, 2, 3, &pixels[k*k*10*8+i*k], k*10);
 	}
 	// フィルタ
 	for (int i=0; i<u[CHANNEL+LPLEN]; i++) {
 		int n = (u[KSIZE+LPLEN]+2);
-		CatsEye_visualizeUnits(&cat, 1, 0, i, &pixels[28*28*10*(9+(i*n)/(28*10))+(i*n)%(28*10)], 28*10);
+		CatsEye_visualizeUnits(&cat, 1, 0, i, &pixels[k*k*10*(9+(i*n)/(k*10))+(i*n)%(k*10)], k*10);
 	}
-	stbi_write_png("cifar10_train.png", 28*10, 28*10, 1, pixels, 28*10);
+	stbi_write_png("cifar10_train.png", k*10, k*10, 1, pixels, k*10);
 	free(pixels);
 
 	free(x);

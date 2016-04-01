@@ -53,7 +53,10 @@ int main()
 //		CATS_MAXPOOL, 0, 32, 0, 0, 0, 2, 2,
 
 		CATS_CONV, CATS_ACT_RELU, 32, 0, 0, 0, 7, 1,	// CONV1 32ch k7
-		CATS_MAXPOOL, 0, 32, 0, 0, 0, 2, 2,		// 99%
+		CATS_MAXPOOL, 0, 32, 0, 0, 0, 2, 2,		// 99.2%
+
+//		CATS_CONV, CATS_ACT_LEAKY_RELU, 32, 0, 0, 0, 7, 1,
+//		CATS_MAXPOOL, 0, 32, 0, 0, 0, 2, 2,		// 99.17%
 
 		CATS_LINEAR, CATS_ACT_SIGMOID, 1, label, 0, 0, 0, 0,
 	};
