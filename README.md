@@ -13,7 +13,7 @@ Neural network library written in C and Javascript
   - Network in Network (NIN)
 - Supported networks
   - Activation functions
-    - sigmoid, tanh, scaled tanh, ReLU, Leaky ReLU, abs, identity function
+    - sigmoid, tanh, scaled tanh, ReLU, Leaky ReLU, ELU, abs, identity function
   - Loss functions
     - cross-entropy, mean-squared-error
   - Optimization algorithms

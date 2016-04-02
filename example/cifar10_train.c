@@ -31,15 +31,15 @@ int main()
 #endif
 #if 1
 	int u[] = {	//
-//		0, 0, 3, size, 0, 0, 0, 100,			// input 32x32x3, mini batch size is 100 by random
-		0, 0, 1, 32*32, 0, 0, 0, 100,			// input 32x32x3, mini batch size is 100 by random
+		0, 0, 3, size, 0, 0, 0, 100,			// input 32x32x3, mini batch size is 100 by random
+//		0, 0, 1, 32*32, 0, 0, 0, 100,			// input 32x32x3, mini batch size is 100 by random
 
-		CATS_CONV, CATS_ACT_LEAKY_RELU, 32, 0, 0, 0, 5, 1,	// CONV1 32ch k3
-		CATS_MAXPOOL, 0, 32, 0, 0, 0, 2, 2,
-		CATS_CONV, CATS_ACT_LEAKY_RELU, 64, 0, 0, 0, 3, 1,	// CONV1 32ch k3
-		CATS_MAXPOOL, 0, 64, 0, 0, 0, 2, 2,
-		CATS_CONV, CATS_ACT_LEAKY_RELU, 128, 0, 0, 0, 3, 1,	// CONV1 32ch k3
-		CATS_MAXPOOL, 0, 128, 0, 0, 0, 2, 2,
+		CATS_CONV, CATS_ACT_LEAKY_RELU, 32, 0, 0, 0, 5, 1,	// CONV1 32ch k3, only 96.9%
+//		CATS_MAXPOOL, 0, 32, 0, 0, 0, 2, 2,
+		CATS_CONV, CATS_ACT_LEAKY_RELU, 64, 0, 0, 0, 3, 1,	// CONV2 32ch k3, only 98.2%
+//		CATS_MAXPOOL, 0, 64, 0, 0, 0, 2, 2,			// 96.1%
+//		CATS_CONV, CATS_ACT_LEAKY_RELU, 128, 0, 0, 0, 3, 1,	// CONV1 32ch k3
+//		CATS_MAXPOOL, 0, 128, 0, 0, 0, 2, 2,
 
 		CATS_LINEAR, CATS_ACT_SIGMOID, 1, 256, 0, 0, 0, 0,
 		CATS_LINEAR, CATS_ACT_SIGMOID, 1, label, 0, 0, 0, 0,

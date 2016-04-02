@@ -207,9 +207,20 @@ double CatsEye_dact_sigmoid(double *x, int n, int len)
 	return ((1.0-x[n])*x[n] * s_gain);	// ((1.0-sigmod(x))*sigmod(x))
 }
 // tanh function
+// https://github.com/nyanp/tiny-cnn/blob/master/tiny_cnn/activations/activation_function.h
 double CatsEye_act_tanh(double *x, int n, int len)
 {
 	return (tanh(x[n]));
+
+/*	double ep = exp(x[n]);
+	double em = exp(-x[n]);
+	return (ep-em) / (ep+em);*/
+
+	// fast approximation of tanh (improve 2-3% speed in LeNet-5)
+/*	double x1 = x[n];
+	double x2 = x1 * x1;
+	x1 *= 1.0 + x2 * (0.1653 + x2 * 0.0097);
+	return x1 / sqrt(1.0 + x2);*/
 }
 double CatsEye_dact_tanh(double *x, int n, int len)
 {
@@ -242,7 +253,16 @@ double CatsEye_act_LeakyReLU(double *x, int n, int len)
 double CatsEye_dact_LeakyReLU(double *x, int n, int len)
 {
 	return (x[n]>0 ? 1.0 : leaky_alpha);
-//	return (x[n]>0 ? 1.0 : (1.0-leaky_alpha));
+}
+// exponential rectified linear unit function
+// http://docs.chainer.org/en/stable/_modules/chainer/functions/activation/elu.html
+double CatsEye_act_ELU(double *x, int n, int len)
+{
+	return (x[n]>0 ? x[n] : exp(x[n]-1.0));
+}
+double CatsEye_dact_ELU(double *x, int n, int len)
+{
+	return (x[n]>0 ? 1.0 : 1.0+x[n]);
 }
 // abs function
 double CatsEye_act_abs(double *x, int n, int len)
@@ -263,6 +283,7 @@ double (*CatsEye_act[])(double *x, int n, int len) = {
 	CatsEye_act_scaled_tanh,
 	CatsEye_act_ReLU,
 	CatsEye_act_LeakyReLU,
+	CatsEye_act_ELU,
 	CatsEye_act_abs
 };
 double (*CatsEye_dact[])(double *x, int n, int len) = {
@@ -273,6 +294,7 @@ double (*CatsEye_dact[])(double *x, int n, int len) = {
 	CatsEye_dact_scaled_tanh,
 	CatsEye_dact_ReLU,
 	CatsEye_dact_LeakyReLU,
+	CatsEye_dact_ELU,
 	CatsEye_dact_abs
 };
 enum CATS_ACTIVATION_FUNCTION {
@@ -634,14 +656,18 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 			n = u[KSIZE] * u[KSIZE];		// kernel size
 			m = u[CHANNEL] * u[CHANNEL-LPLEN];	// channel
 			break;
+		case CATS_MAXPOOL:
+			n = SIZE(i);
+			m = 1;
+			break;
 		default:
 			n = SIZE(i);
 			m = SIZE(i+1);
 		}
 		printf("L%02d %d %d\n", i+1, n, m);
-		m+=10;
 
 		this->w[i] = malloc(sizeof(double)*(n+1)*m);
+		if (!this->w[i]) printf("memory error!!\n");
 
 		// initialize weights (http://aidiary.hatenablog.com/entry/20150618/1434628272)
 		// range depends on the research of Y. Bengio et al. (2010)
