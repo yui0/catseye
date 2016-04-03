@@ -34,10 +34,13 @@ int main()
 		0, 0, 3, size, 0, 0, 0, 100,			// input 32x32x3, mini batch size is 100 by random
 //		0, 0, 1, 32*32, 0, 0, 0, 100,			// input 32x32x3, mini batch size is 100 by random
 
+//		CATS_CONV, CATS_ACT_ELU, 32, 0, 0, 0, 5, 1,	// CONV1 32ch k3, only 96.9%
+//		CATS_CONV, CATS_ACT_ELU, 64, 0, 0, 0, 3, 1,	// CONV2 32ch k3, only 98.5%
+
 		CATS_CONV, CATS_ACT_LEAKY_RELU, 32, 0, 0, 0, 5, 1,	// CONV1 32ch k3, only 96.9%
-//		CATS_MAXPOOL, 0, 32, 0, 0, 0, 2, 2,
-		CATS_CONV, CATS_ACT_LEAKY_RELU, 64, 0, 0, 0, 3, 1,	// CONV2 32ch k3, only 98.2%
-//		CATS_MAXPOOL, 0, 64, 0, 0, 0, 2, 2,			// 96.1%
+		//CATS_MAXPOOL, 0, 32, 0, 0, 0, 2, 2,
+//		CATS_CONV, CATS_ACT_LEAKY_RELU, 64, 0, 0, 0, 3, 1,	// CONV2 32ch k3, only 99.1%
+		//CATS_MAXPOOL, 0, 64, 0, 0, 0, 2, 2,			// 96.1%
 //		CATS_CONV, CATS_ACT_LEAKY_RELU, 128, 0, 0, 0, 3, 1,	// CONV1 32ch k3
 //		CATS_MAXPOOL, 0, 128, 0, 0, 0, 2, 2,
 
@@ -115,8 +118,21 @@ int main()
 	}
 	printf("Prediction accuracy on training data = %f%%\n", (float)r/sample*100.0);
 	stbi_write_png("cifar10_train_wrong.png", k*10, k*10, 1, pixels, k*10);
-	memset(pixels, 0, size*100);
 
+	int n[10];
+	memset(n, 0, sizeof(int)*10);
+	memset(pixels, 0, size*100);
+	for (int i=0; i<10*10; i++) {
+		int p = CatsEye_predict(&cat, x+size*i);
+		if (p==t[i]) {
+			p--;
+			CatsEye_visualizeUnits(&cat, 0, 0, 0, &pixels[p*k*k*10+(n[p]%10)*k], k*10);
+			n[p]++;
+		}
+	}
+	stbi_write_png("cifar10_classify.png", k*10, k*10, 1, pixels, k*10);
+
+	memset(pixels, 0, size*100);
 	for (int i=0; i<10; i++) {
 		CatsEye_forward(&cat, x+size*i);
 
@@ -139,6 +155,16 @@ int main()
 		CatsEye_visualizeUnits(&cat, 1, 0, i, &pixels[k*k*10*(9+(i*n)/(k*10))+(i*n)%(k*10)], k*10);
 	}
 	stbi_write_png("cifar10_train.png", k*10, k*10, 1, pixels, k*10);
+
+	memset(pixels, 0, size*100);
+	for (int i=0; i<10; i++) {
+		memset(cat.o[layers-1], 0, label);
+		cat.o[layers-1][i] = 1;
+		CatsEye_backpropagate(&cat, layers-2);
+
+		CatsEye_visualizeUnits(&cat, 0, 0, 0, &pixels[i*k], k*10);
+	}
+	stbi_write_png("cifar10_gen.png", k*10, k*10, 1, pixels, k*10);
 	free(pixels);
 
 	free(x);

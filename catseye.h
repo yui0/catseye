@@ -305,6 +305,7 @@ enum CATS_ACTIVATION_FUNCTION {
 	CATS_ACT_SCALED_TANH,
 	CATS_ACT_RELU,
 	CATS_ACT_LEAKY_RELU,
+	CATS_ACT_ELU,
 	CATS_ACT_ABS,
 };
 
@@ -687,17 +688,6 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 			fscanf(fp, "%lf ", &this->w[1][i]);
 		}
 		fclose(fp);
-	/*} else {
-		// initialize weights (http://aidiary.hatenablog.com/entry/20150618/1434628272)
-		// range depends on the research of Y. Bengio et al. (2010)
-		srand((unsigned)(time(0)));
-		double range = sqrt(6)/sqrt(SIZE(0)+SIZE(1)+2);
-		srand((unsigned)(time(0)));
-		for (int i=0; i<this->layers-1; i++) {
-			for (int j=0; j<(SIZE(i)+1)*SIZE(i+1); j++) {
-				this->w[i][j] = 2.0*range*rand()/RAND_MAX-range;
-			}
-		}*/
 	}
 }
 
@@ -722,6 +712,13 @@ void CatsEye__destruct(CatsEye *this)
 	free(this->u);
 }
 
+void CatsEye_backpropagate(CatsEye *this, int n)
+{
+	for (int i=/*this->layers-2*/n; i>=0; i--) {
+//		CatsEye_layer_backward[TYPE(i+1)](this->d[i], this->w[i], this->o[i-1], this->o[i], &this->u[LPLEN*(i+1)]);
+		CatsEye_layer_backward[TYPE(i+1)](this->d[i-1], this->w[i], this->o[i], this->o[i+1], &this->u[LPLEN*(i+1)]);
+	}
+}
 void CatsEye_propagate(CatsEye *this, int n)
 {
 	for (int i=n; i<this->layers-1; i++) {
