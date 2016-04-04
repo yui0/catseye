@@ -37,7 +37,10 @@ int main()
 //		CATS_CONV, CATS_ACT_ELU, 32, 0, 0, 0, 5, 1,	// CONV1 32ch k3, only 96.9%
 //		CATS_CONV, CATS_ACT_ELU, 64, 0, 0, 0, 3, 1,	// CONV2 32ch k3, only 98.5%
 
-		CATS_CONV, CATS_ACT_LEAKY_RELU, 32, 0, 0, 0, 5, 1,	// CONV1 32ch k3, only 96.9%
+		CATS_CONV, CATS_ACT_LEAKY_RELU, 16, 0, 0, 0, 3, 1,	// CONV1 32ch k3 97.7%
+//		CATS_CONV, CATS_ACT_LEAKY_RELU, 16, 0, 0, 0, 3, 1,	// CONV2 32ch k3
+
+//		CATS_CONV, CATS_ACT_LEAKY_RELU, 32, 0, 0, 0, 5, 1,	// CONV1 32ch k5, only 97.3%
 		//CATS_MAXPOOL, 0, 32, 0, 0, 0, 2, 2,
 //		CATS_CONV, CATS_ACT_LEAKY_RELU, 64, 0, 0, 0, 3, 1,	// CONV2 32ch k3, only 99.1%
 		//CATS_MAXPOOL, 0, 64, 0, 0, 0, 2, 2,			// 96.1%
@@ -124,11 +127,12 @@ int main()
 	memset(pixels, 0, size*100);
 	for (int i=0; i<10*10; i++) {
 		int p = CatsEye_predict(&cat, x+size*i);
-		if (p==t[i]) {
-			p--;
+//		if (p==t[i]) {
+//			p--;
 			CatsEye_visualizeUnits(&cat, 0, 0, 0, &pixels[p*k*k*10+(n[p]%10)*k], k*10);
+			//CatsEye_visualize(x+size*i, 28*28, 28, &pixels[(c/10)*k*k*10+(c%10)*28], k*10);
 			n[p]++;
-		}
+//		}
 	}
 	stbi_write_png("cifar10_classify.png", k*10, k*10, 1, pixels, k*10);
 
