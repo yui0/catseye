@@ -6,7 +6,7 @@
 
 // gcc dae-illust.c -o dae-illust -lm -Ofast -fopenmp -lgomp
 // clang dae-illust.c -o dae-illust -lm -Ofast
-#define CATS_AUTOENCODER
+//#define CATS_AUTOENCODER
 #define CATS_DENOISING_AUTOENCODER
 #include "../catseye.h"
 #define STB_IMAGE_IMPLEMENTATION
@@ -60,24 +60,24 @@ double *load(char *path, int w, int h, int *c)
 
 int main()
 {
-	int w = 110;
-	int h = 110;
+	int w = 120;
+	int h = 120;
 	int size = 1*w*h;	// 入出力層
-//	int hidden = 128;
-	int hidden = 64;
+	int hidden = 128;
+//	int hidden = 64;
 	int sample;
 
 	// データの読み込み
 	double *x = load("./illust/", w, h, &sample);
-	sample = 10;
+//	sample = 30;
 
 	int u[] = {
 //		0, 0, 1, size, 0, 0, 0, 0,				// mini batch size is 100 by random
 		0, 0, 1, size, 0, 0, 0, sample,				// mini batch size is 100 by random
 //		0, 0, 1, size, 0, 0, 0, sample/10,			// mini batch size is 100 by random
 		CATS_LINEAR, CATS_ACT_SIGMOID, 1, hidden, 0, 0, 0, 0,
-//		CATS_LINEAR, CATS_ACT_SIGMOID, 1, size, 0, 0, 0, 1,	// use mse
-		CATS_LINEAR, 0, 1, size, 0, 0, 0, 1,	// use mse
+		CATS_LINEAR, CATS_ACT_SIGMOID, 1, size, 0, 0, 0, 1,	// use mse
+//		CATS_LINEAR, 0, 1, size, 0, 0, 0, 1,	// use mse
 	};
 	int layers = sizeof(u)/sizeof(int)/LPLEN;
 
@@ -86,7 +86,7 @@ int main()
 
 	// 訓練
 	printf("Starting training using (stochastic) gradient descent\n");
-	CatsEye_train(&cat, x, x, sample, 1000/*repeat*/, 0.001);
+	CatsEye_train(&cat, x, x, sample, 3000/*repeat*/, 0.001);
 	printf("Training complete\n");
 //	CatsEye_save(&cat, "dae-illust.weights");
 //	CatsEye_saveJson(&cat, "dae-illust.json");
@@ -97,12 +97,14 @@ int main()
 		double mse = 0;
 		CatsEye_forward(&cat, x+size*i);
 
-		unsigned char *p = &pixels[(i/10)*size*10 + (i%10)*w];
+		CatsEye_visualize(cat.o[2], w*h, w, &pixels[(i/10)*w*h*10+(i%10)*w], w*10);
+		CatsEye_visualize(&x[size*i], w*h, w, &pixels[5*w*h*10+(i/10)*w*h*10+(i%10)*w], w*10);
+//		unsigned char *p = &pixels[(i/10)*size*10 + (i%10)*w];
 		for (int j=0; j<size; j++) {
-			p[(j/w)*w*10+(j%w)] = cat.o[2][j] * 255.0;
+//			p[(j/w)*w*10+(j%w)] = cat.o[2][j] * 255.0;
 			mse += (x[size*i+j]-cat.o[2][j])*(x[size*i+j]-cat.o[2][j]);
 
-			p[5*size*10+(j/w)*w*10+(j%w)] = x[size*i+j] * 255.0;
+//			p[5*size*10+(j/w)*w*10+(j%w)] = x[size*i+j] * 255.0;
 		}
 		printf("mse %lf\n", mse/size);
 	}

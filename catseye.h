@@ -751,7 +751,6 @@ void CatsEye_forward(CatsEye *this, double *x)
 }
 
 // calculate the error of output layer
-//void CatsEye_loss_0_1(double *d, double *o, void *t, int n, int size)
 void CatsEye_loss_0_1(CatsEye *this, int c, void *t, int n)
 {
 	double *d = this->d[c-1];
@@ -767,7 +766,7 @@ void CatsEye_loss_0_1(CatsEye *this, int c, void *t, int n)
 	// http://d.hatena.ne.jp/echizen_tm/20110606/1307378609
 	// E = max(0, -twx), ∂E / ∂w = max(0, -tx)
 }
-//void CatsEye_loss_mse(double *d, double *o, void *t, int n, int size)
+// loss function for mse with identity and cross entropy with sigmoid
 void CatsEye_loss_mse(CatsEye *this, int c, void *t, int n)
 {
 	double *d = this->d[c-1];
@@ -794,7 +793,7 @@ void CatsEye_loss_mse_with_sparse(CatsEye *this, int c, void *t, int n)
 	// http://www.vision.is.tohoku.ac.jp/files/9313/6601/7876/CVIM_tutorial_deep_learning.pdf P40
 	// http://www.slideshare.net/at_grandpa/chapter5-50042838 P105
 	// http://www.slideshare.net/takashiabe338/auto-encoder20140526up P11
-	double avg = 0;
+/*	double avg = 0;
 	for (int i=0; i<SIZE(c-1); i++) {
 		avg += this->o[c-1][i];
 	}
@@ -803,10 +802,25 @@ void CatsEye_loss_mse_with_sparse(CatsEye *this, int c, void *t, int n)
 	double *a = &((double*)t)[n*size];
 	for (int i=0; i<size; i++) {
 //		this->d[a-1][i] = this->o[a][i]-a[i] +avg;
-		d[i] = o[i]-a[i] +avg;
+		d[i] = o[i]-a[i] + avg;
+	}*/
+
+	// http://qiita.com/Ugo-Nama/items/04814a13c9ea84978a4c
+	// http://www.slideshare.net/YumaMatsuoka/auto-encoder P15
+/*	double l1 = 0;
+	for (int l=1; l<this->layers-1; l++) {
+		for (int i=0; i<SIZE(l); i++) {
+			l1 += fabs(this->o[l][i]);
+		}
+	}
+	l1 *= 0.001;*/
+
+	double *a = &((double*)t)[n*size];
+	for (int i=0; i<size; i++) {
+//		d[i] = o[i]-a[i] - l1;
+		d[i] = o[i]-a[i] - (o[i]>0 ? 1.0 : o[i]<0 ? -1.0 : 0.0)*0.1;
 	}
 }
-//void (*CatsEye_loss[])(double *d, double *o, void *t, int n, int size) = {
 void (*CatsEye_loss[])(CatsEye *this, int c, void *t, int n) = {
 	CatsEye_loss_0_1,
 	CatsEye_loss_mse,
@@ -841,7 +855,6 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 
 			// calculate the error of output layer
 			int a = this->layers-1;
-//			CatsEye_loss[loss](this->d[a-1], this->o[a], t, sample, SIZE(a));
 			CatsEye_loss[loss](this, a, t, sample);
 
 			// calculate the error of hidden layer
