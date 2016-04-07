@@ -63,17 +63,19 @@ int main()
 	int w = 120;
 	int h = 120;
 	int size = 1*w*h;	// 入出力層
-	int hidden = 128;
+	int hidden = 256;
+//	int hidden = 128;	// 40
 //	int hidden = 64;	// ×
 	int sample;
 
 	// データの読み込み
 	double *x = load("./illust/", w, h, &sample);
-//	sample = 30;
+	sample = 100;
 
 	int u[] = {
-//		0, 0, 1, size, 0, 0, 0, 0,				// mini batch size is 100 by random
-		0, 0, 1, size, 0, 0, 0, sample,				// mini batch size is 100 by random
+//		0, 0, 1, size, 0, 0, 0, 0,
+//		0, 0, 1, size, 0, 0, 0, sample<40?sample:40,		// mini batch size is 40 by random
+		0, 0, 1, size, 0, 0, 0, sample,				// mini batch size is 40 by random
 
 		CATS_LINEAR, CATS_ACT_SIGMOID, 1, hidden, 0, 0, 0, 0,
 //		CATS_CONV, CATS_ACT_LEAKY_RELU, 4, 0, 0, 0, 3, 1,
@@ -81,8 +83,8 @@ int main()
 //		CATS_CONV, CATS_ACT_LEAKY_RELU, 2, 0, 0, 0, 3, 1,
 		//CATS_MAXPOOL, 0, 2, 0, 0, 0, 2, 2,
 
-		CATS_LINEAR, CATS_ACT_SIGMOID, 1, size, 0, 0, 0, 1,	// use mse
-//		CATS_LINEAR, 0, 1, size, 0, 0, 0, 1,	// use mse
+//		CATS_LINEAR, CATS_ACT_SIGMOID, 1, size, 0, 0, 0, 1,	// use mse
+		CATS_LINEAR, 0, 1, size, 0, 0, 0, 1,			// use mse (sakura)
 	};
 	int layers = sizeof(u)/sizeof(int)/LPLEN;
 
@@ -91,7 +93,8 @@ int main()
 
 	// 訓練
 	printf("Starting training using (stochastic) gradient descent\n");
-	CatsEye_train(&cat, x, x, sample, 1000/*repeat*/, 0.001);
+//	CatsEye_train(&cat, x, x, sample, 1000/*repeat*/, 0.001);
+	CatsEye_train(&cat, x, x, sample, 200/*repeat*/, 0.001);
 	printf("Training complete\n");
 //	CatsEye_save(&cat, "dae-illust.weights");
 //	CatsEye_saveJson(&cat, "dae-illust.json");

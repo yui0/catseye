@@ -112,7 +112,41 @@
 #define OPT_CALC2(n, x, y)	this->w[x-1][i*n+j] -= eta*this->o[x-1][i] *this->d[y-2][j] +this->w[x-1][i*n+j]*1e-8
 #endif
 
+#if 0
+// http://xorshift.di.unimi.it/xorshift128plus.c
+unsigned long long seed[2];
+unsigned long long xor128()
+{
+	unsigned long long s1 = seed[0];
+	unsigned long long s0 = seed[1];
+	seed[0] = s0;
+	s1 ^= s1 << 23; // a
+	seed[1] = s1 ^ s0 ^ (s1 >> 18) ^ (s0 >> 5); // b, c
+	return seed[1] + s0; 
+}
+void xor128_init()
+{
+	static unsigned long long JUMP[] = { 0x8a5cd789635d2dff, 0x121fd2155c472f96 };
+
+	unsigned long long s0 = 0;
+	unsigned long long s1 = 0;
+	for(int i=0; i < sizeof(JUMP) / sizeof(*JUMP); i++) {
+		for (int b=0; b < 64; b++) {
+			if (JUMP[i] & 1ULL << b) {
+				s0 ^= seed[0];
+				s1 ^= seed[1];
+			}
+			xor128();
+		}
+	}
+
+	seed[0] = s0;
+	seed[1] = s1;
+}
+#else
 // http://www.jstatsoft.org/v08/i14/
+// http://qiita.com/zarchis/items/fbbe569afc641ee50049
+#define XOR128_MAX	4294967295.0
 static unsigned long seed = 521288629;
 void xor128_init(unsigned long s)
 {
@@ -127,8 +161,9 @@ unsigned long xor128()
 	x = y;
 	y = seed;//z;
 	seed/*z*/ = w;
-	return (w = (w^(w>>19))^(t^(t>>8))); 
-} 
+	return (w = (w^(w>>19))^(t^(t>>8)));
+}
+#endif
 /*void muladd(double *vec1, double *vec2, double a, int n)
 {
 	for (int i=0; i<n; i++) {
@@ -165,8 +200,8 @@ int binomial(/*int n, */double p)
 //	if (p<0 || p>1) return 0;
 	int c = 0;
 //	for (int i=0; i<n; i++) {
-		double r = rand() / (RAND_MAX + 1.0);
-//		double r = xor128() / (RAND_MAX + 1.0);
+//		double r = rand() / (RAND_MAX + 1.0);
+		double r = xor128() / XOR128_MAX;
 		if (r < p) c++;
 //	}
 	return c;
