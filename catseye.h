@@ -112,6 +112,23 @@
 #define OPT_CALC2(n, x, y)	this->w[x-1][i*n+j] -= eta*this->o[x-1][i] *this->d[y-2][j] +this->w[x-1][i*n+j]*1e-8
 #endif
 
+// http://www.jstatsoft.org/v08/i14/
+static unsigned long seed = 521288629;
+void xor128_init(unsigned long s)
+{
+	seed ^= s;
+//	seed ^= seed >> 21; seed ^= seed << 35; seed ^= seed >> 4;
+	seed *= 2685821657736338717LL;
+}
+unsigned long xor128()
+{
+	static unsigned long x=123456789, y=362436069, /*z=521288629, */w=88675123;
+	unsigned long t = (x^(x<<11));
+	x = y;
+	y = seed;//z;
+	seed/*z*/ = w;
+	return (w = (w^(w>>19))^(t^(t>>8))); 
+} 
 /*void muladd(double *vec1, double *vec2, double a, int n)
 {
 	for (int i=0; i<n; i++) {
@@ -149,6 +166,7 @@ int binomial(/*int n, */double p)
 	int c = 0;
 //	for (int i=0; i<n; i++) {
 		double r = rand() / (RAND_MAX + 1.0);
+//		double r = xor128() / (RAND_MAX + 1.0);
 		if (r < p) c++;
 //	}
 	return c;
@@ -848,7 +866,8 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 		memset(this->e2, 0, sizeof(double)*SIZE(1));
 #endif
 		for (int n=0; n<batch; n++) {
-			int sample = RANDOM ? (rand()/(RAND_MAX+1.0)) * N : n;
+//			int sample = RANDOM ? (rand()/(RAND_MAX+1.0)) * N : n;
+			int sample = RANDOM ? (xor128()%N) : n;
 
 			// forward propagation
 			CatsEye_forward(this, x+sample*SIZE(0));

@@ -64,7 +64,7 @@ int main()
 	int h = 120;
 	int size = 1*w*h;	// 入出力層
 	int hidden = 128;
-//	int hidden = 64;
+//	int hidden = 64;	// ×
 	int sample;
 
 	// データの読み込み
@@ -74,8 +74,13 @@ int main()
 	int u[] = {
 //		0, 0, 1, size, 0, 0, 0, 0,				// mini batch size is 100 by random
 		0, 0, 1, size, 0, 0, 0, sample,				// mini batch size is 100 by random
-//		0, 0, 1, size, 0, 0, 0, sample/10,			// mini batch size is 100 by random
+
 		CATS_LINEAR, CATS_ACT_SIGMOID, 1, hidden, 0, 0, 0, 0,
+//		CATS_CONV, CATS_ACT_LEAKY_RELU, 4, 0, 0, 0, 3, 1,
+//		CATS_MAXPOOL, 0, 4, 0, 0, 0, 2, 2,
+//		CATS_CONV, CATS_ACT_LEAKY_RELU, 2, 0, 0, 0, 3, 1,
+		//CATS_MAXPOOL, 0, 2, 0, 0, 0, 2, 2,
+
 		CATS_LINEAR, CATS_ACT_SIGMOID, 1, size, 0, 0, 0, 1,	// use mse
 //		CATS_LINEAR, 0, 1, size, 0, 0, 0, 1,	// use mse
 	};
@@ -86,7 +91,7 @@ int main()
 
 	// 訓練
 	printf("Starting training using (stochastic) gradient descent\n");
-	CatsEye_train(&cat, x, x, sample, 3000/*repeat*/, 0.001);
+	CatsEye_train(&cat, x, x, sample, 1000/*repeat*/, 0.001);
 	printf("Training complete\n");
 //	CatsEye_save(&cat, "dae-illust.weights");
 //	CatsEye_saveJson(&cat, "dae-illust.json");
@@ -97,14 +102,10 @@ int main()
 		double mse = 0;
 		CatsEye_forward(&cat, x+size*i);
 
-		CatsEye_visualize(cat.o[2], w*h, w, &pixels[(i/10)*w*h*10+(i%10)*w], w*10);
-		CatsEye_visualize(&x[size*i], w*h, w, &pixels[5*w*h*10+(i/10)*w*h*10+(i%10)*w], w*10);
-//		unsigned char *p = &pixels[(i/10)*size*10 + (i%10)*w];
+		CatsEye_visualize(cat.o[2], w*h, w, &pixels[(i/10)*w*h*10 + (i%10)*w], w*10);
+		CatsEye_visualize(&x[size*i], w*h, w, &pixels[5*w*h*10+(i/10)*w*h*10 + (i%10)*w], w*10);
 		for (int j=0; j<size; j++) {
-//			p[(j/w)*w*10+(j%w)] = cat.o[2][j] * 255.0;
 			mse += (x[size*i+j]-cat.o[2][j])*(x[size*i+j]-cat.o[2][j]);
-
-//			p[5*size*10+(j/w)*w*10+(j%w)] = x[size*i+j] * 255.0;
 		}
 		printf("mse %lf\n", mse/size);
 	}
@@ -114,6 +115,7 @@ int main()
 	int m = (hidden<100 ? hidden : 100);
 	for (int n=0; n<m; n++) {
 		CatsEye_visualizeWeights(&cat, n, w, &pixels[(n/10)*w*h*10 + (n%10)*w], w*10);
+//		CatsEye_visualize(&cat.w[0][n], w*h, w, &pixels[(n/10)*w*h*10 + (n%10)*w], w*10);
 	}
 	stbi_write_png("dae-illust_weights.png", w*10, w*10, 1, pixels, w*10);
 
@@ -126,10 +128,7 @@ int main()
 		}
 		CatsEye_propagate(&cat, 1);
 
-		unsigned char *p = &pixels[(i/10)*size*10 + (i%10)*w];
-		for (int j=0; j<size; j++) {
-			p[(j/w)*w*10+(j%w)] = cat.o[2][j] * 255.0;
-		}
+		CatsEye_visualize(cat.o[2], w*h, w, &pixels[(i/10)*w*h*10 + (i%10)*w], w*10);
 	}
 	stbi_write_png("dae-illust_gen.png", w*10, w*10, 1, pixels, w*10);
 	free(pixels);
