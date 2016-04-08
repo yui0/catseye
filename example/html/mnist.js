@@ -3,8 +3,8 @@ var cat;
 function Main() {
         cat = new CatsEye(config[0], config[1], config[2], w1, w2);
 
-        this.canvas = document.getElementById('main');
         this.input = document.getElementById('input');
+        this.canvas = document.getElementById('sketch');
         this.canvas.width  = 225; // 8 * 28 + 1
         this.canvas.height = 225; // 8 * 28 + 1
         this.ctx = this.canvas.getContext('2d');
@@ -13,8 +13,8 @@ function Main() {
         this.canvas.addEventListener('mousemove', this.onMouseMove.bind(this));
 
         this.canvas.addEventListener('touchstart', this.onMouseDown.bind(this));
-        this.canvas.addEventListener('touchup',   this.onMouseUp.bind(this));
-        this.canvas.addEventListener('touchend', this.onMouseMove.bind(this));
+        this.canvas.addEventListener('touchend',   this.onMouseUp.bind(this));
+        this.canvas.addEventListener('touchmove', this.onMouseMove.bind(this));
         this.initialize();
     };
 Main.prototype = {
@@ -43,7 +43,7 @@ Main.prototype = {
     onMouseDown: function(e) {
         this.canvas.style.cursor = 'default';
         this.drawing = true;
-        this.prev = this.getPosition(e.clientX, e.clientY);
+        this.prev = this.getPosition(e);
     },
     onMouseUp: function() {
         this.drawing = false;
@@ -51,7 +51,7 @@ Main.prototype = {
     },
     onMouseMove: function(e) {
         if (this.drawing) {
-            var curr = this.getPosition(e.clientX, e.clientY);
+            var curr = this.getPosition(e);
             this.ctx.lineWidth = 16;
             this.ctx.lineCap = 'round';
             this.ctx.beginPath();
@@ -60,13 +60,19 @@ Main.prototype = {
             this.ctx.stroke();
             this.ctx.closePath();
             this.prev = curr;
+            //$('#output tr').eq(2).find('td').eq(0).text(curr.x+" "+curr.y);
         }
     },
-    getPosition: function(clientX, clientY) {
+    getPosition: function(e) {
         var rect = this.canvas.getBoundingClientRect();
+
+	if (e.changedTouches) e = e.changedTouches[0];
+        //if (!e.pageX) e = event.touches[0];
+        //$('#output tr').eq(1).find('td').eq(0).text(e.pageX+" "+e.pageY);
+
         return {
-            x: clientX - rect.left,
-            y: clientY - rect.top
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top
         };
     },
     drawInput: function() {
@@ -106,6 +112,11 @@ Main.prototype = {
 }
 
 $(document).ready(function() {
+    // prevent elastic scrolling
+    document.body.addEventListener('touchmove', function (event) {
+        event.preventDefault();
+    }, false); // end body.onTouchMove
+
     var main = new Main();
     $('#clear').click(function() {
         main.initialize();
