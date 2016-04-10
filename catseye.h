@@ -278,7 +278,7 @@ double CatsEye_dact_LeakyReLU(double *x, int n, int len)
 // http://docs.chainer.org/en/stable/_modules/chainer/functions/activation/elu.html
 double CatsEye_act_ELU(double *x, int n, int len)
 {
-	return (x[n]>0 ? x[n] : exp(x[n]-1.0));
+	return (x[n]>0 ? x[n] : exp(x[n])-1.0);
 }
 double CatsEye_dact_ELU(double *x, int n, int len)
 {
@@ -352,9 +352,13 @@ void CatsEye_linear_layer_forward(double *x, double *w, double *z, double *o, in
 	int in = u[SIZE-LPLEN]+1;	// +1 -> for bias
 	int out = u[SIZE];
 
-	for (int i=0; i<out; i++) {
+	/*for (int i=0; i<out; i++) {
 		z[i] = dotT(&w[i], x, in, out);
 		o[i] = CatsEye_act[u[ACT]](z, i, out);
+	}*/
+	for (int i=out; i>0; i--) {
+		*z = dotT(w++, x, in, out);
+		*o++ = CatsEye_act[u[ACT]](z++, 0, 1);
 	}
 }
 // calculate back propagation
@@ -364,10 +368,13 @@ void CatsEye_linear_layer_backward(double *o, double *w, double *d, double *delt
 	int out = u[SIZE];
 
 	// calculate the error
-	for (int i=0; i<in; i++) {
+	/*for (int i=0; i<in; i++) {
 		d[i] = dot(&w[i*out], delta, out) * CatsEye_dact[u[ACT-LPLEN]](o, i, in);
 	}
-	d[in] = dot(&w[in*out], delta, out) * CatsEye_dact[u[ACT-LPLEN]](o, in, in);
+	d[in] = dot(&w[in*out], delta, out) * CatsEye_dact[u[ACT-LPLEN]](o, in, in);*/
+	for (int i=0; i<=in; i++) {
+		*d++ = dot(&w[i*out], delta, out) * CatsEye_dact[u[ACT-LPLEN]](o++, 0, 1);
+	}
 }
 void CatsEye_linear_layer_update(double eta, double *o, double *w, double *d, int u[])
 {
@@ -379,7 +386,7 @@ void CatsEye_linear_layer_update(double eta, double *o, double *w, double *d, in
 		double a = eta * (*o++);
 		for (int j=0; j<out; j++) {
 //			w[i*out+j] -= eta*o[i]*d[j];
-			w[i*out+j] -= a*d[j];
+			*w++ -= a*d[j];
 		}
 	}
 }
@@ -395,7 +402,8 @@ void CatsEye_SVM_layer_update(double eta, double *o, double *w, double *d, int u
 			// SVM (http://d.hatena.ne.jp/echizen_tm/20110627/1309188711)
 			// ∂loss(w, x, t) / ∂w = ∂(λ - twx + α * w^2 / 2) / ∂w = - tx + αw
 //			w[i*out+j] -= eta*o[i]*d[j] + w[i*out+j]*1e-8;
-			w[i*out+j] -= a*d[j] + w[i*out+j]*1e-8;
+			*w -= a*d[j] + (*w)*1e-8;
+			w++;
 		}
 	}
 }
@@ -407,6 +415,7 @@ void CatsEye_convolutional_layer_forward(double *s, double *w, double *z, double
 	int sy = u[YSIZE] - (u[KSIZE]/2)*2;
 	int n = u[CHANNEL] * u[KSIZE]*u[KSIZE];
 	int size = u[SIZE-LPLEN]/u[CHANNEL-LPLEN];
+	int step = u[XSIZE]-u[KSIZE];
 
 	for (int c=0; c<u[CHANNEL]; c++) {	// out
 		for (int y=0; y<sy; y++) {
@@ -417,12 +426,12 @@ void CatsEye_convolutional_layer_forward(double *s, double *w, double *z, double
 					k = &w[c*(u[KSIZE]*u[KSIZE]) + cc*n];
 //!!!					k = &w[c*(u[KSIZE]*u[KSIZE]+1)];
 					double *p = s + (size*cc) + y*u[XSIZE]+x;	// in
-					for (int wy=0; wy<u[KSIZE]; wy++) {
+					for (int wy=u[KSIZE]; wy>0; wy--) {
 //						double *p = s + (size*cc) + (y+wy)*u[XSIZE]+x;	// in
-						for (int wx=0; wx<u[KSIZE]; wx++) {
+						for (int wx=u[KSIZE]; wx>0; wx--) {
 							a += (*p++) * (*k++);
 						}
-						p += u[XSIZE]-u[KSIZE];
+						p += step;
 					}
 				}
 //!!!				a += *k;	// bias

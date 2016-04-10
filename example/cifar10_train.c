@@ -4,8 +4,8 @@
 //		©2016 Yuichiro Nakada
 //---------------------------------------------------------
 
-// gcc cifar10_train.c -o cifar10_cnn_train -lm -Ofast -fopenmp -lgomp
-// clang cifar10_cnn_train.c -o cifar10_cnn_train -lm -Ofast
+// gcc cifar10_train.c -o cifar10_train -lm -Ofast -fopenmp -lgomp
+// clang cifar10_train.c -o cifar10_train -lm -Ofast
 #include "../catseye.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "../stb_image_write.h"
@@ -34,10 +34,10 @@ int main()
 		0, 0, 3, size, 0, 0, 0, 100,			// input 32x32x3, mini batch size is 100 by random
 //		0, 0, 1, 32*32, 0, 0, 0, 100,			// input 32x32x3, mini batch size is 100 by random
 
-//		CATS_CONV, CATS_ACT_ELU, 32, 0, 0, 0, 5, 1,	// CONV1 32ch k3, only 96.9%
-//		CATS_CONV, CATS_ACT_ELU, 64, 0, 0, 0, 3, 1,	// CONV2 32ch k3, only 98.5%
+		CATS_CONV, CATS_ACT_ELU, 32, 0, 0, 0, 5, 1,		// CONV1 32ch k5, only 96.6%
+		CATS_CONV, CATS_ACT_ELU, 64, 0, 0, 0, 3, 1,
 
-		CATS_CONV, CATS_ACT_LEAKY_RELU, 16, 0, 0, 0, 3, 1,	// CONV1 32ch k3 97.7%
+//		CATS_CONV, CATS_ACT_LEAKY_RELU, 16, 0, 0, 0, 3, 1,	// CONV1 32ch k3 97.9%
 //		CATS_CONV, CATS_ACT_LEAKY_RELU, 16, 0, 0, 0, 3, 1,	// CONV2 32ch k3
 
 //		CATS_CONV, CATS_ACT_LEAKY_RELU, 32, 0, 0, 0, 5, 1,	// CONV1 32ch k5, only 97.3%

@@ -72,7 +72,7 @@ int main()
 	double *x = load("./illust/", w, h, &sample);
 //	sample = 100;
 
-#if 1
+#if 0
 	int u[] = {
 		0, 0, 1, size, 0, 0, 0, sample,				// mini batch size is 40 by random
 		CATS_LINEAR, CATS_ACT_SIGMOID, 1, hidden, 0, 0, 0, 0,
@@ -80,11 +80,14 @@ int main()
 	};
 #else
 	int u[] = {
-		0, 0, 1, size, 0, 0, 0, sample<50?sample:50,		// mini batch size is 50 by random
-//		0, 0, 1, size, 0, 0, 0, sample,				// mini batch size is 40 by random
+//		0, 0, 1, size, 0, 0, 0, sample<70?sample:70,		// mini batch size is 50 by random
+		0, 0, 1, size, 0, 0, 0, sample,				// mini batch size is 40 by random
 
-		CATS_CONV, CATS_ACT_LEAKY_RELU, 1, 0, 0, 0, 3, 1,
-		CATS_CONV, CATS_ACT_LEAKY_RELU, 1, 0, 0, 0, 3, 1,
+		CATS_CONV, CATS_ACT_TANH, 2, 0, 0, 0, 3, 1,
+		CATS_CONV, CATS_ACT_TANH, 1, 0, 0, 0, 3, 1,
+
+//		CATS_CONV, CATS_ACT_LEAKY_RELU, 32, 0, 0, 0, 3, 1,
+//		CATS_CONV, CATS_ACT_LEAKY_RELU, 1, 0, 0, 0, 3, 1,
 
 //		CATS_CONV, CATS_ACT_LEAKY_RELU, 4, 0, 0, 0, 3, 1,
 //		CATS_MAXPOOL, 0, 4, 0, 0, 0, 2, 2,
