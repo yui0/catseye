@@ -37,17 +37,17 @@ int main()
 //		CATS_CONV, CATS_ACT_ELU, 32, 0, 0, 0, 5, 1,		// CONV1 32ch k5, only 96.6%
 //		CATS_CONV, CATS_ACT_ELU, 64, 0, 0, 0, 3, 1,		// 98.2%
 
-//		CATS_CONV, CATS_ACT_LEAKY_RELU, 16, 0, 0, 0, 3, 1,	// CONV1 32ch k3 97.9%
-//		CATS_CONV, CATS_ACT_LEAKY_RELU, 16, 0, 0, 0, 3, 1,	// CONV2 32ch k3
+		CATS_CONV, CATS_ACT_LEAKY_RELU, 16, 0, 0, 0, 3, 1,	// CONV1 32ch k3, only 94.7%
+		CATS_CONV, CATS_ACT_LEAKY_RELU, 32, 0, 0, 0, 3, 1,	// CONV2 32ch k3 99.7%
 
-		CATS_CONV, CATS_ACT_LEAKY_RELU, 32, 0, 0, 0, 5, 1,	// CONV1 32ch k5, only 97.3%
+//		CATS_CONV, CATS_ACT_LEAKY_RELU, 32, 0, 0, 0, 5, 1,	// CONV1 32ch k5, only 97.3%
 		//CATS_MAXPOOL, 0, 32, 0, 0, 0, 2, 2,
 //		CATS_CONV, CATS_ACT_LEAKY_RELU, 64, 0, 0, 0, 3, 1,	// CONV2 32ch k3, only 99.1%
 		//CATS_MAXPOOL, 0, 64, 0, 0, 0, 2, 2,			// 96.1%
 //		CATS_CONV, CATS_ACT_LEAKY_RELU, 128, 0, 0, 0, 3, 1,	// CONV1 32ch k3
 //		CATS_MAXPOOL, 0, 128, 0, 0, 0, 2, 2,
 
-		CATS_LINEAR, CATS_ACT_SIGMOID, 1, 256, 0, 0, 0, 0,
+//		CATS_LINEAR, CATS_ACT_SIGMOID, 1, 256, 0, 0, 0, 0,
 		CATS_LINEAR, CATS_ACT_SIGMOID, 1, label, 0, 0, 0, 0,
 	};
 #else
@@ -99,9 +99,9 @@ int main()
 	printf("Starting training using (stochastic) gradient descent\n");
 	CatsEye_train(&cat, x, t, sample, 100/*repeat*/, 0.01);
 	printf("Training complete\n");
-//	CatsEye_save(&cat, "mnist.weights");
-//	CatsEye_saveJson(&cat, "cifar10_cnn_train.json");
-//	CatsEye_saveBin(&cat, "mnist.bin");
+//	CatsEye_save(&cat, "cifar10.weights");
+	CatsEye_saveJson(&cat, "cifar10.json");
+//	CatsEye_saveBin(&cat, "cifar10.bin");
 
 	// 結果の表示
 	unsigned char *pixels = calloc(1, size*100);
@@ -112,7 +112,8 @@ int main()
 		if (p==t[i]) r++;
 		else {
 			if (c<100) {
-				//CatsEye_visualize(cat.o[0], 28*28, 28, &pixels[(c/10)*k*k*10+(c%10)*28], k*10);
+//				CatsEye_visualize(x+size*i, size, k*3, &pixels[(c/10)*size*10+(c%10)*k*3], k*3*10);
+				//CatsEye_visualize(cat.o[0], k*k, k, &pixels[(c/10)*k*k*10+(c%10)*k], k*10);
 				CatsEye_visualizeUnits(&cat, 0, 0, 0, &pixels[(c/10)*k*k*10+(c%10)*k], k*10);
 			}
 			c++;
@@ -121,6 +122,7 @@ int main()
 	}
 	printf("Prediction accuracy on training data = %f%%\n", (float)r/sample*100.0);
 	stbi_write_png("cifar10_train_wrong.png", k*10, k*10, 1, pixels, k*10);
+//	stbi_write_png("cifar10_train_wrong.png", k*3*10, k*3*10, 3, pixels, k*3*10);
 
 	int n[10];
 	memset(n, 0, sizeof(int)*10);

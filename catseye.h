@@ -184,6 +184,7 @@ typedef struct {
 	double **d;
 	// weights
 	double **w;
+	int *wsize;
 
 	// gradient value
 	double *e2, *e3, *m2, *v2, *m3, *v3;
@@ -577,7 +578,7 @@ void CatsEye_maxpooling_layer_backward(double *o, double *w, double *d, double *
 	}
 #endif
 }
-void CatsEye_maxpooling_layer_update(double eta, double *s, double *w, double *d, int u[])
+void CatsEye_none_update(double eta, double *s, double *w, double *d, int u[])
 {
 }
 
@@ -595,7 +596,7 @@ void (*CatsEye_layer_update[])(double eta, double *s, double *w, double *d, int 
 //	CatsEye_linear_layer_update,
 	CatsEye_SVM_layer_update,
 	CatsEye_convolutional_layer_update,
-	CatsEye_maxpooling_layer_update,
+	CatsEye_none_update,
 };
 enum CATS_LAYER_TYPE {
 	CATS_LINEAR,
@@ -684,6 +685,7 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 
 	// allocate weights
 	this->w = malloc(sizeof(double*)*(this->layers-1));
+	this->wsize = malloc(sizeof(int)*(this->layers-1));
 	for (int i=0; i<this->layers-1; i++) {
 		int n, m;
 		int *u = &this->u[LPLEN*(i+1)]; 
@@ -691,27 +693,31 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 		case CATS_CONV:
 			n = u[KSIZE] * u[KSIZE];		// kernel size
 			m = u[CHANNEL] * u[CHANNEL-LPLEN];	// channel
+			printf("L%02d CONV %d %d\n", i+1, n, m);
 			break;
 		case CATS_MAXPOOL:
 			n = SIZE(i);
 			m = 1;
+			printf("L%02d POOL [%d]\n", i+1, n);
 			break;
 		default:
 			n = SIZE(i);
 			m = SIZE(i+1);
+			printf("L%02d %d %d\n", i+1, n, m);
 		}
-		printf("L%02d %d %d\n", i+1, n, m);
+		this->wsize[i] = (n+1)*m;
 
 		this->w[i] = malloc(sizeof(double)*(n+1)*m);
 		if (!this->w[i]) printf("memory error!!\n");
 
 		// initialize weights (http://aidiary.hatenablog.com/entry/20150618/1434628272)
 		// range depends on the research of Y. Bengio et al. (2010)
-		srand((unsigned)(time(0)));
+		xor128_init(time(0));
+//		srand((unsigned)(time(0)));
 		double range = sqrt(6)/sqrt(n+m+2);
-		srand((unsigned)(time(0)));
 		for (int j=0; j<(n+1)*m; j++) {
-			this->w[i][j] = 2.0*range*rand()/RAND_MAX-range;
+//			this->w[i][j] = 2.0*range*rand()/RAND_MAX-range;
+			this->w[i][j] = 2.0*range*xor128()/XOR128_MAX-range;
 		}
 	}
 
@@ -742,6 +748,7 @@ void CatsEye__destruct(CatsEye *this)
 	free(this->m3);
 	free(this->v2);
 	free(this->v3);
+	free(this->wsize);
 	for (int i=0; i<this->layers-1; i++) free(this->w[i]);
 	free(this->w);
 	free(this->u);
@@ -975,7 +982,7 @@ int CatsEye_saveJson(CatsEye *this, char *filename)
 	FILE *fp = fopen(filename, "w");
 	if (fp==NULL) return -1;
 
-	fprintf(fp, "var config = [%d,%d,%d];\n", SIZE(0), SIZE(1), SIZE(2));
+/*	fprintf(fp, "var config = [%d,%d,%d];\n", SIZE(0), SIZE(1), SIZE(2));
 
 	int i;
 	fprintf(fp, "var w1 = [");
@@ -988,7 +995,28 @@ int CatsEye_saveJson(CatsEye *this, char *filename)
 	for (i=0; i<(SIZE(1)+1)*SIZE(2)-1; i++) {
 		fprintf(fp, "%lf,", this->w[1][i]);
 	}
-	fprintf(fp, "%lf];\n", this->w[1][i]);
+	fprintf(fp, "%lf];\n", this->w[1][i]);*/
+
+	int *u = this->u;
+	for (int n=0; n<this->layers; n++) {
+		fprintf(fp, "var u%d = [%d,%d,%d,%d,%d,%d,%d,%d];\n", n, u[TYPE], u[ACT],
+			u[CHANNEL], u[SIZE], u[XSIZE], u[YSIZE], u[KSIZE], u[STRIDE]);
+		u += LPLEN;
+	}
+	fprintf(fp, "var u = [u0");
+	for (int n=1; n<this->layers; n++) {
+		fprintf(fp, ",u%d", n);
+	}
+	fprintf(fp, "];\n");
+
+	for (int n=0; n<this->layers-1; n++) {
+		int i;
+		fprintf(fp, "var w%d = [", n+1);
+		for (i=0; i<this->wsize[n]; i++) {
+			fprintf(fp, "%lf,", this->w[n][i]);
+		}
+		fprintf(fp, "%lf];\n", this->w[n][i]);
+	}
 
 	fclose(fp);
 	return 0;
