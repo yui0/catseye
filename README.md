@@ -95,3 +95,4 @@ for more information, see example/
   - Recognizing handwritten digits [http://aidiary.hatenablog.com/entry/20140201/1391218771]
   - Recognizing handwritten digits on Web [http://d.hatena.ne.jp/sugyan/20151124/1448292129]
   - Image generator by Denoising Autoencoder [http://joisino.hatenablog.com/entry/2015/09/09/224157]
+  - Neural Network 'paints' an image [http://cs.stanford.edu/people/karpathy/convnetjs/demo/image_regression.html]

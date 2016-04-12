@@ -693,7 +693,7 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 		case CATS_CONV:
 			n = u[KSIZE] * u[KSIZE];		// kernel size
 			m = u[CHANNEL] * u[CHANNEL-LPLEN];	// channel
-			printf("L%02d CONV %d %d\n", i+1, n, m);
+			printf("L%02d CONV %d[ksize]x%d[ch]\n", i+1, n, m);
 			break;
 		case CATS_MAXPOOL:
 			n = SIZE(i);
@@ -713,10 +713,8 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 		// initialize weights (http://aidiary.hatenablog.com/entry/20150618/1434628272)
 		// range depends on the research of Y. Bengio et al. (2010)
 		xor128_init(time(0));
-//		srand((unsigned)(time(0)));
 		double range = sqrt(6)/sqrt(n+m+2);
 		for (int j=0; j<(n+1)*m; j++) {
-//			this->w[i][j] = 2.0*range*rand()/RAND_MAX-range;
 			this->w[i][j] = 2.0*range*xor128()/XOR128_MAX-range;
 		}
 	}
@@ -860,7 +858,8 @@ void CatsEye_loss_mse_with_sparse(CatsEye *this, int c, void *t, int n)
 	double *a = &((double*)t)[n*size];
 	for (int i=0; i<size; i++) {
 //		d[i] = o[i]-a[i] - l1;
-		d[i] = o[i]-a[i] - (o[i]>0 ? 1.0 : o[i]<0 ? -1.0 : 0.0)*0.1;
+//		d[i] = o[i]-a[i] - (o[i]>0 ? 1.0 : o[i]<0 ? -1.0 : 0.0)*0.1;
+		d[i] = o[i]-a[i] - fabs(o[i])*0.1;
 	}
 }
 void (*CatsEye_loss[])(CatsEye *this, int c, void *t, int n) = {

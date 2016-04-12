@@ -83,8 +83,8 @@ int main()
 //		0, 0, 1, size, 0, 0, 0, sample<70?sample:70,		// mini batch size is 50 by random
 		0, 0, 1, size, 0, 0, 0, sample,				// mini batch size is 40 by random
 
-		CATS_CONV, CATS_ACT_TANH, 2, 0, 0, 0, 3, 1,
-		CATS_CONV, CATS_ACT_TANH, 1, 0, 0, 0, 3, 1,
+		CATS_CONV, CATS_ACT_TANH, 4, 0, 0, 0, 3, 1,
+//		CATS_CONV, CATS_ACT_TANH, 1, 0, 0, 0, 3, 1,
 
 //		CATS_CONV, CATS_ACT_LEAKY_RELU, 32, 0, 0, 0, 3, 1,
 //		CATS_CONV, CATS_ACT_LEAKY_RELU, 1, 0, 0, 0, 3, 1,
@@ -95,7 +95,7 @@ int main()
 		//CATS_MAXPOOL, 0, 2, 0, 0, 0, 2, 2,
 
 //		CATS_LINEAR, CATS_ACT_SIGMOID, 1, size, 0, 0, 0, 1,	// use mse
-//		CATS_LINEAR, 0, 1, size, 0, 0, 0, 1,			// use mse (sakura)
+		CATS_LINEAR, 0, 1, size, 0, 0, 0, 1,			// use mse (sakura)
 	};
 #endif
 	int layers = sizeof(u)/sizeof(int)/LPLEN;

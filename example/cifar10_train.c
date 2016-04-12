@@ -168,7 +168,7 @@ int main()
 		cat.o[layers-1][i] = 1;
 		CatsEye_backpropagate(&cat, layers-2);
 
-		CatsEye_visualizeUnits(&cat, 0, 0, 0, &pixels[i*k], k*10);
+		CatsEye_visualizeUnits(&cat, 0, 1, 0, &pixels[i*k], k*10);
 	}
 	stbi_write_png("cifar10_gen.png", k*10, k*10, 1, pixels, k*10);
 	free(pixels);
