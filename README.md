@@ -33,6 +33,11 @@ for more information, see example/
 - Recognizing handwritten digits by MNIST training (example/mnist_train.c)
   - http://yui0.github.io/catseye/example/html/mnist.html
 
+- Neural Network 'paints' an image (example/paint.c)
+
+  ![[sakura](example/paint_sakura.png)](example/paint_sakura.mpg)
+  ![[sakura](example/paint_sakura0499.png)](example/paint_sakura.mpg)
+
 - Function approximation (example/sin.c)
 
   ![sin](example/sin.png)
