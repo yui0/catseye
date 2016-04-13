@@ -35,8 +35,8 @@ for more information, see example/
 
 - Neural Network 'paints' an image (example/paint.c)
 
-  ![sakura](example/paint_sakura.png)
-  ![[sakura](example/paint_sakura0499.png)](https://raw.githubusercontent.com/yui0/catseye/master/example/paint_sakura.mp4)
+  ![Sakura](example/paint_sakura.png)
+  [![Sakura](http://img.youtube.com/vi/445ilzeKtto/0.jpg)](http://www.youtube.com/watch?v=445ilzeKtto)
 
 - Function approximation (example/sin.c)
 
