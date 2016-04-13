@@ -40,7 +40,7 @@ int main(int argc,char *argv[])
 	}
 	free(pixels);
 
-#if 0
+#if 1
 	int u[] = {	// http://cs.stanford.edu/people/karpathy/convnetjs/demo/image_regression.html
 		0, 0, 1, 2/*xy*/, 0, 0, 0, sample,
 		CATS_LINEAR, CATS_ACT_LEAKY_RELU, 1, 20, 0, 0, 0, 0,	// sigmoid×
@@ -50,7 +50,7 @@ int main(int argc,char *argv[])
 		CATS_LINEAR, CATS_ACT_LEAKY_RELU, 1, 20, 0, 0, 0, 0,
 		CATS_LINEAR, CATS_ACT_LEAKY_RELU, 1, 20, 0, 0, 0, 0,
 		CATS_LINEAR, CATS_ACT_LEAKY_RELU, 1, 20, 0, 0, 0, 0,
-		CATS_LINEAR, 0, 1, 3/*RGB*/, 0, 0, 0, 1,
+		CATS_LINEAR, CATS_ACT_SIGMOID, 1, 3/*RGB*/, 0, 0, 0, 1,
 	};
 #else
 	int neurons = 20;
@@ -91,7 +91,7 @@ int main(int argc,char *argv[])
 			}
 		}
 		char name[256];
-		snprintf(name, 256, "paint%04d.png", n);
+		snprintf(name, 256, "/tmp/paint%04d.png", n);
 		stbi_write_png(name, width, height, 3, pixels, 0);
 	}
 	printf("ffmpeg -r 30 -i paint%%4d.png -pix_fmt yuv420p paint.mp4\n");

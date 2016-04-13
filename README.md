@@ -38,6 +38,11 @@ for more information, see example/
   ![Sakura](example/paint_sakura.png)
   [![Sakura](example/paint_sakura0499.png)](http://www.youtube.com/watch?v=445ilzeKtto)
 
+  [![CCSakura](example/paint_ccsakura0149.png)](http://www.youtube.com/watch?v=CnZ-z2C64_8)
+
+  ![Nyanko](example/paint_cat.png)
+  [![Nyanko](example/paint_cat0499.png)](http://www.youtube.com/watch?v=qy_R2gp5rx0)
+
 - Function approximation (example/sin.c)
 
   ![sin](example/sin.png)
