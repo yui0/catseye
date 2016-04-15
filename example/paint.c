@@ -33,27 +33,27 @@ int main(int argc,char *argv[])
 	double t[sample*3];
 	for (int i=0; i<height; i++) {
 		for (int j=0; j<width; j++) {
-			t[(i*width+j)*3  ] = pixels[(i*width+j)*3  ] / 256.0;
-			t[(i*width+j)*3+1] = pixels[(i*width+j)*3+1] / 256.0;
-			t[(i*width+j)*3+2] = pixels[(i*width+j)*3+2] / 256.0;
+			t[(i*width+j)*3  ] = pixels[(i*width+j)*3  ] / 255.0;
+			t[(i*width+j)*3+1] = pixels[(i*width+j)*3+1] / 255.0;
+			t[(i*width+j)*3+2] = pixels[(i*width+j)*3+2] / 255.0;
 		}
 	}
 	free(pixels);
 
-#if 1
+	int neurons = 20;	// 20
+#if 0
 	int u[] = {	// http://cs.stanford.edu/people/karpathy/convnetjs/demo/image_regression.html
 		0, 0, 1, 2/*xy*/, 0, 0, 0, sample,
-		CATS_LINEAR, CATS_ACT_LEAKY_RELU, 1, 20, 0, 0, 0, 0,	// sigmoid×
-		CATS_LINEAR, CATS_ACT_LEAKY_RELU, 1, 20, 0, 0, 0, 0,
-		CATS_LINEAR, CATS_ACT_LEAKY_RELU, 1, 20, 0, 0, 0, 0,
-		CATS_LINEAR, CATS_ACT_LEAKY_RELU, 1, 20, 0, 0, 0, 0,
-		CATS_LINEAR, CATS_ACT_LEAKY_RELU, 1, 20, 0, 0, 0, 0,
-		CATS_LINEAR, CATS_ACT_LEAKY_RELU, 1, 20, 0, 0, 0, 0,
-		CATS_LINEAR, CATS_ACT_LEAKY_RELU, 1, 20, 0, 0, 0, 0,
+		CATS_LINEAR, CATS_ACT_LEAKY_RELU, 1, neurons, 0, 0, 0, 0,	// sigmoid×
+		CATS_LINEAR, CATS_ACT_LEAKY_RELU, 1, neurons, 0, 0, 0, 0,
+		CATS_LINEAR, CATS_ACT_LEAKY_RELU, 1, neurons, 0, 0, 0, 0,
+		CATS_LINEAR, CATS_ACT_LEAKY_RELU, 1, neurons, 0, 0, 0, 0,
+		CATS_LINEAR, CATS_ACT_LEAKY_RELU, 1, neurons, 0, 0, 0, 0,
+		CATS_LINEAR, CATS_ACT_LEAKY_RELU, 1, neurons, 0, 0, 0, 0,
+		CATS_LINEAR, CATS_ACT_LEAKY_RELU, 1, neurons, 0, 0, 0, 0,
 		CATS_LINEAR, CATS_ACT_SIGMOID, 1, 3/*RGB*/, 0, 0, 0, 1,
 	};
 #else
-	int neurons = 20;
 	int u[] = {
 		0, 0, 1, 2/*xy*/, 0, 0, 0, sample,
 		CATS_LINEAR, CATS_ACT_TANH, 1, neurons, 0, 0, 0, 0,
@@ -84,7 +84,11 @@ int main(int argc,char *argv[])
 		// 結果の表示
 		for (int i=0; i<height; i++) {
 			for (int j=0; j<width; j++) {
-				CatsEye_forward(&cat, x+2*(i*width+j));
+//				CatsEye_forward(&cat, x+2*(i*width+j));
+				double xx[2];
+				xx[0] = i / (double)width;
+				xx[1] = j / (double)height;
+				CatsEye_forward(&cat, xx);
 				pixels[(i*width+j)*3  ] = cat.o[layers-1][0] * 255.0;
 				pixels[(i*width+j)*3+1] = cat.o[layers-1][1] * 255.0;
 				pixels[(i*width+j)*3+2] = cat.o[layers-1][2] * 255.0;
@@ -95,6 +99,8 @@ int main(int argc,char *argv[])
 		stbi_write_png(name, width, height, 3, pixels, 0);
 	}
 	printf("ffmpeg -r 30 -i paint%%4d.png -pix_fmt yuv420p paint.mp4\n");
+	system("ffmpeg -r 30 -i /tmp/paint%4d.png -pix_fmt yuv420p paint.mp4");
+	system("mv /tmp/paint0499.png .");
 	free(pixels);
 
 	CatsEye__destruct(&cat);

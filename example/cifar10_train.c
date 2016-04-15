@@ -29,7 +29,7 @@ int main()
 		CATS_LINEAR, CATS_ACT_SIGMOID, 1, label, 0, 0, 0, 0,
 	};
 #endif
-#if 1
+#if 0
 	int u[] = {	//
 		0, 0, 3, size, 0, 0, 0, 100,			// input 32x32x3, mini batch size is 100 by random
 //		0, 0, 1, 32*32, 0, 0, 0, 100,			// input 32x32x3, mini batch size is 100 by random
@@ -51,17 +51,15 @@ int main()
 		CATS_LINEAR, CATS_ACT_SIGMOID, 1, label, 0, 0, 0, 0,
 	};
 #else
+	// Network in Network 99.9% (repeat must be 1000), 72.0% (100 repeat)
 	int u[] = {
-		0, 0, 1, 32*32, 0, 0, 0, 100,			// input 32x32x3, mini batch size is 100 by random
+		0, 0, 3, size, 0, 0, 0, 100,				// input 32x32x3, mini batch size is 100 by random
 
-//		CATS_CONV, CATS_ACT_RELU, 32, 0, 0, 0, 5, 1,	// CONV1 32ch k5
-		CATS_CONV, CATS_ACT_TANH, 32, 0, 0, 0, 5, 1,	// CONV1 32ch k5
-		CATS_MAXPOOL, 0, 32, 0, 0, 0, 2, 2,
-//		CATS_CONV, CATS_ACT_RELU, 64, 0, 0, 0, 3, 1,	// CONV2 64ch k3
-//		CATS_CONV, CATS_ACT_TANH, 64, 0, 0, 0, 3, 1,	// CONV2 64ch k3
-//		CATS_MAXPOOL, 0, 64, 0, 0, 0, 2, 2,
+		CATS_CONV, CATS_ACT_LEAKY_RELU, 16, 0, 0, 0, 3, 1,	// CONV1 32ch k3
+		CATS_CONV, CATS_ACT_RELU, 1, 0, 0, 0, 1, 1,		// CCCP1
+		CATS_CONV, CATS_ACT_LEAKY_RELU, 32, 0, 0, 0, 3, 1,	// CONV2 32ch k3
+		CATS_CONV, CATS_ACT_RELU, 1, 0, 0, 0, 1, 1,		// CCCP2
 
-		CATS_LINEAR, CATS_ACT_SIGMOID, 1, 512, 0, 0, 0, 0,
 		CATS_LINEAR, CATS_ACT_SIGMOID, 1, label, 0, 0, 0, 0,
 	};
 #endif

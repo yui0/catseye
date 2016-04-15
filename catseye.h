@@ -32,33 +32,6 @@
 #define DACT2(x)		1
 #endif
 
-// activation function and derivative of activation function
-/*#ifdef CATS_SIGMOID
-// sigmoid function
-#define ACT1(x)			(1.0 / (1.0 + exp(-x * s_gain)))
-#define DACT1(x)		((1.0-x)*x * s_gain)	// ((1.0-sigmod(x))*sigmod(x))
-#elif defined CATS_TANH
-// tanh function
-#define ACT1(x)			(tanh(x))
-#define DACT1(x)		(1.0-x*x)		// (1.0-tanh(x)*tanh(x))
-#elif defined CATS_SCALEDTANH
-// scaled tanh function
-#define ACT1(x)			(1.7159 * tanh(2.0/3.0 * x))
-#define DACT1(x)		((2.0/3.0)/1.7159 * (1.7159-x)*(1.7159+x))
-#elif defined CATS_RELU
-// rectified linear unit function
-#define ACT1(x)			(x>0 ? x : 0.0)
-#define DACT1(x)		(x>0 ? 1.0 : 0.0)
-#elif defined CATS_ABS
-// abs function
-#define ACT1(x)			(x / (1.0 + fabs(x)))
-#define DACT1(x)		(1.0 / (1.0 + fabs(x))*(1.0 + fabs(x)))
-#else
-// identity function (output only)
-#define ACT1(x)			(x)
-#define DACT1(x)		(1.0)
-#endif*/
-
 #ifdef CATS_OPT_ADAGRAD
 // AdaGrad (http://qiita.com/ak11/items/7f63a1198c345a138150)
 #define eps 1e-8		// 1e-4 - 1e-8
