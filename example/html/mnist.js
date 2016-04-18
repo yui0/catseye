@@ -94,6 +94,10 @@ Main.prototype = {
             /*if (Math.min(...inputs) === 255) {
                 return;
             }*/
+            if (Math.min.apply(null, inputs) === 255) return;
+            /*for (n in inputs) {
+                if (n === 255)
+            }*/
             for (i=0; i<28*28; i++) inputs[i] = 255-inputs[i];
             for (i=0; i<28*28; i++) inputs[i] /= 255;
             a = cat.predict(inputs);
@@ -112,7 +116,7 @@ Main.prototype = {
 }
 
 $(document).ready(function() {
-    // prevent elastic scrolling
+    // prevent elastic scrolling (for mobile)
     document.body.addEventListener('touchmove', function (event) {
         event.preventDefault();
     }, false); // end body.onTouchMove

@@ -75,7 +75,7 @@ int main()
 //	double table[256];
 //	for (int i=0; i<256; i++) table[i] = i/255.0;
 
-	// 訓練データの読み込み
+	// 訓練データの読み込み (https://www.cs.toronto.edu/~kriz/cifar.html)
 	printf("Training data:\n");
 	FILE *fp = fopen("data_batch_1.bin", "rb");
 	if (fp==NULL) return -1;
@@ -84,7 +84,7 @@ int main()
 //	double *xx = x;
 	for (int n=0; n<sample; n++) {
 		t[n] = data[n*(size+1)];
-		for (int i=0; i<size; i++) x[n*size+i] = data[n*(size+1)+i] * (1.0/255.0);
+		for (int i=0; i<size; i++) x[n*size+i] = data[n*(size+1)+1+i] * (1.0/255.0);
 //		t[n] = *p++;
 //		for (int i=0; i<size; i++) *xx++ = table[*p++];
 
@@ -111,16 +111,26 @@ int main()
 		else {
 			if (c<100) {
 //				CatsEye_visualize(x+size*i, size, k*3, &pixels[(c/10)*size*10+(c%10)*k*3], k*3*10);
+				double *xx = &x[size*i];
+				unsigned char *p = &pixels[(c/10)*size*10+(c%10)*k*3];
+				for (int y=0; y<k; y++) {
+					for (int x=0; x<k; x++) {
+						p[(y*k*10+x)*3  ] = xx[y*k+x] * 255.0;
+						p[(y*k*10+x)*3+1] = xx[k*k+y*k+x] * 255.0;
+						p[(y*k*10+x)*3+2] = xx[2*k*k+y*k+x] * 255.0;
+					}
+				}
+
 				//CatsEye_visualize(cat.o[0], k*k, k, &pixels[(c/10)*k*k*10+(c%10)*k], k*10);
-				CatsEye_visualizeUnits(&cat, 0, 0, 0, &pixels[(c/10)*k*k*10+(c%10)*k], k*10);
+//				CatsEye_visualizeUnits(&cat, 0, 0, 0, &pixels[(c/10)*k*k*10+(c%10)*k], k*10);
 			}
 			c++;
 		}
 //		printf("%d -> %d\n", p, t[i]);
 	}
 	printf("Prediction accuracy on training data = %f%%\n", (float)r/sample*100.0);
-	stbi_write_png("cifar10_train_wrong.png", k*10, k*10, 1, pixels, k*10);
-//	stbi_write_png("cifar10_train_wrong.png", k*3*10, k*3*10, 3, pixels, k*3*10);
+//	stbi_write_png("cifar10_train_wrong.png", k*10, k*10, 1, pixels, k*10);
+	stbi_write_png("cifar10_train_wrong.png", k*10, k*10, 3, pixels, 0);
 
 	int n[10];
 	memset(n, 0, sizeof(int)*10);

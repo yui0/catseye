@@ -305,7 +305,7 @@ enum CATS_ACTIVATION_FUNCTION {
 typedef double (*CATS_ACT)(double *x, int n, int len);
 
 enum CATS_LP {
-	TYPE,		// MLP, Conv
+	TYPE,		// MLP, CONV, MAXPOOL
 	ACT,		// activation function type
 	CHANNEL,
 	SIZE,		// input size (ch * x * y)
@@ -386,7 +386,7 @@ void CatsEye_SVM_layer_update(double eta, double *o, double *w, double *d, int u
 }
 
 // calculate forward propagation
-void CatsEye_convolutional_layer_forward(double *s, double *w, double *z, double *o, int u[])
+void CatsEye_convolutional_layer_forward(double *s, double *w, double *z/*no use*/, double *o, int u[])
 {
 	int sx = u[XSIZE] - (u[KSIZE]/2)*2;	// out
 	int sy = u[YSIZE] - (u[KSIZE]/2)*2;
@@ -989,6 +989,11 @@ int CatsEye_saveJson(CatsEye *this, char *filename)
 		}
 		fprintf(fp, "%lf];\n", this->w[n][i]);
 	}
+	fprintf(fp, "var w = [w1");
+	for (int n=1; n<this->layers-1; n++) {
+		fprintf(fp, ",w%d", n+1);
+	}
+	fprintf(fp, "];\n");
 
 	fclose(fp);
 	return 0;

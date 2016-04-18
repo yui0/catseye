@@ -72,6 +72,10 @@ int main(int argc,char *argv[])
 	CatsEye cat;
 	CatsEye__construct(&cat, 0, 0, layers, u);
 
+	double scale = 2.0;
+	width *= scale;
+	height *= scale;
+
 	/*unsigned char * */pixels = malloc(width*height*3);
 	for (int n=0; n<500; n++) {
 		// 訓練
