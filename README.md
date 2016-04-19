@@ -33,6 +33,9 @@ for more information, see example/
 - Recognizing handwritten digits by MNIST training (example/mnist_train.c)
   - http://yui0.github.io/catseye/example/html/mnist.html
 
+- Recognizing pictures (example/cifar10_train.c)
+  - http://yui0.github.io/catseye/example/html/cifar10.html
+
 - Neural Network 'paints' an image (example/paint.c)
 
   ![Sakura](example/paint_sakura.png)

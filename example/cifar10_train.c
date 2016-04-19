@@ -15,7 +15,8 @@ int main()
 	int k = 32;
 	int size = 32*32*3;	// 入力層
 	int label = 10;	// 出力層
-	int sample = 1000;//10000;
+	//int sample = 2000;//10000;
+	int sample = 5000;
 
 #if 0
 	int u[] = {	// 67.7% (http://aidiary.hatenablog.com/entry/20151108/1446952402)
@@ -51,14 +52,26 @@ int main()
 		CATS_LINEAR, CATS_ACT_SIGMOID, 1, label, 0, 0, 0, 0,
 	};
 #else
-	// Network in Network 99.9% (repeat must be 1000), 72.0% (100 repeat)
-	int u[] = {
-		0, 0, 3, size, 0, 0, 0, 100,				// input 32x32x3, mini batch size is 100 by random
+	// Network in Network 100%/1000[sample] (repeat must be 1000), 72.0% (100 repeat)
+	// 87.45%/2000[sample], 65.89%/3000[sample]
+	/*int u[] = {
+		0, 0, 3, size, 0, 0, 0, 200,				// input 32x32x3, mini batch size is 100 by random
 
-		CATS_CONV, CATS_ACT_LEAKY_RELU, 16, 0, 0, 0, 3, 1,	// CONV1 32ch k3
+		CATS_CONV, CATS_ACT_LEAKY_RELU, 16, 0, 0, 0, 3, 1,	// CONV1 16ch k3
 		CATS_CONV, CATS_ACT_RELU, 1, 0, 0, 0, 1, 1,		// CCCP1
 		CATS_CONV, CATS_ACT_LEAKY_RELU, 32, 0, 0, 0, 3, 1,	// CONV2 32ch k3
 		CATS_CONV, CATS_ACT_RELU, 1, 0, 0, 0, 1, 1,		// CCCP2
+
+		CATS_LINEAR, CATS_ACT_SIGMOID, 1, label, 0, 0, 0, 0,
+	};*/
+	// Network in Network 99%/3000[sample]/1000[repeat], 97.15%/4000[sample]
+	int u[] = {
+		0, 0, 3, size, 0, 0, 0, 100,				// input 32x32x3, mini batch size is 100 by random
+
+		CATS_CONV, CATS_ACT_LEAKY_RELU, 16, 0, 0, 0, 3, 1,	// CONV1 16ch k3
+		CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP1
+		CATS_CONV, CATS_ACT_LEAKY_RELU, 32, 0, 0, 0, 3, 1,	// CONV2 32ch k3
+		CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP2
 
 		CATS_LINEAR, CATS_ACT_SIGMOID, 1, label, 0, 0, 0, 0,
 	};
@@ -95,7 +108,7 @@ int main()
 
 	// 訓練
 	printf("Starting training using (stochastic) gradient descent\n");
-	CatsEye_train(&cat, x, t, sample, 100/*repeat*/, 0.01);
+	CatsEye_train(&cat, x, t, sample, 1000/*repeat*/, 0.01);
 	printf("Training complete\n");
 //	CatsEye_save(&cat, "cifar10.weights");
 	CatsEye_saveJson(&cat, "cifar10.json");
@@ -170,7 +183,7 @@ int main()
 	}
 	stbi_write_png("cifar10_train.png", k*10, k*10, 1, pixels, k*10);
 
-	memset(pixels, 0, size*100);
+/*	memset(pixels, 0, size*100);
 	for (int i=0; i<10; i++) {
 		memset(cat.o[layers-1], 0, label);
 		cat.o[layers-1][i] = 1;
@@ -178,7 +191,7 @@ int main()
 
 		CatsEye_visualizeUnits(&cat, 0, 1, 0, &pixels[i*k], k*10);
 	}
-	stbi_write_png("cifar10_gen.png", k*10, k*10, 1, pixels, k*10);
+	stbi_write_png("cifar10_gen.png", k*10, k*10, 1, pixels, k*10);*/
 	free(pixels);
 
 	free(x);

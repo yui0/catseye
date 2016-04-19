@@ -1,3 +1,9 @@
+//---------------------------------------------------------
+//	Cat's eye
+//
+//		©2016 Yuichiro Nakada
+//---------------------------------------------------------
+
 var cat;
 
 function Main() {
@@ -18,10 +24,9 @@ Main.prototype = {
         this.ctx.lineWidth = 1;
         this.ctx.strokeRect(0, 0, 257, 257);
         this.ctx.lineWidth = 0.05;
-//        this.drawInput();
         $('#output td').text('').removeClass('success');
     },
-    drawInput: function() {
+    recognize: function() {
         var ctx = this.input.getContext('2d');
         var img = new Image();
         img.onload = function() {
@@ -32,15 +37,13 @@ Main.prototype = {
             for (var i = 0; i < 32; i++) {
                 for (var j = 0; j < 32; j++) {
                     var n = 4 * (i * 32 + j);
-                    //inputs[i * 32 + j] = (data[n + 0] + data[n + 1] + data[n + 2]) / 3;
-                    inputs[(i*32+j)*3  ] = data[n];
-                    inputs[(i*32+j)*3+1] = data[n+1];
-                    inputs[(i*32+j)*3+2] = data[n+2];
+                    inputs[        (i*32+j)] = data[n];
+                    inputs[  32*32+(i*32+j)] = data[n+1];
+                    inputs[2*32*32+(i*32+j)] = data[n+2];
                     ctx.fillStyle = 'rgb(' + [data[n + 0], data[n + 1], data[n + 2]].join(',') + ')';
                     ctx.fillRect(j * 5, i * 5, 5, 5);
                 }
             }
-            //for (i=0; i<32*32; i++) inputs[i] = 255-inputs[i];
             for (i=0; i<32*32*3; i++) inputs[i] /= 255;
             a = cat.predict(inputs);
             //$('#output tr').eq(a+1).find('td').eq(0).text(a);
@@ -83,20 +86,13 @@ $(document).ready(function() {
 
     var main = new Main();
     $("img.iClick").click(function(){
-        /*var imgSrc = $(this).attr("src");
-        var imgAlt = $(this).attr("alt");
-        $("img#MainPhoto").attr({src:imgSrc, alt:imgAlt});
-        $("img#MainPhoto").hide();
-        $("img#MainPhoto").fadeIn("slow");*/
-
         canvas = document.getElementById('sketch');
         ctx = canvas.getContext('2d');
-        //ctx.drawImage(this, 0, 0);
         ctx.drawImage(this, 0, 0, this.width, this.height, 0, 0, 257, 257);
         return false;
     });
     $('#recognize').click(function() {
-        main.drawInput();
+        main.recognize();
     });
     $("#img").change(function(){
         main.readURL(this);
