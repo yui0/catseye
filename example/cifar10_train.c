@@ -15,8 +15,8 @@ int main()
 	int k = 32;
 	int size = 32*32*3;	// 入力層
 	int label = 10;	// 出力層
-	//int sample = 2000;//10000;
-	int sample = 5000;
+//	int sample = 2000;//10000;
+	int sample = 10000;
 
 #if 0
 	int u[] = {	// 67.7% (http://aidiary.hatenablog.com/entry/20151108/1446952402)
@@ -64,14 +64,32 @@ int main()
 
 		CATS_LINEAR, CATS_ACT_SIGMOID, 1, label, 0, 0, 0, 0,
 	};*/
-	// Network in Network 99%/3000[sample]/1000[repeat], 97.15%/4000[sample]
+	// Network in Network 99%/3000[sample]/1000[repeat], 97.15%/4000, 92.5%/5000
 	int u[] = {
 		0, 0, 3, size, 0, 0, 0, 100,				// input 32x32x3, mini batch size is 100 by random
 
-		CATS_CONV, CATS_ACT_LEAKY_RELU, 16, 0, 0, 0, 3, 1,	// CONV1 16ch k3
+/*		CATS_CONV, CATS_ACT_LEAKY_RELU, 16, 0, 0, 0, 3, 1,	// CONV1 16ch k3
 		CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP1
 		CATS_CONV, CATS_ACT_LEAKY_RELU, 32, 0, 0, 0, 3, 1,	// CONV2 32ch k3
-		CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP2
+		CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP2*/
+
+		// 97.17%/5000
+//		CATS_CONV, CATS_ACT_LEAKY_RELU, 32, 0, 0, 0, 3, 1,	// CONV1 32ch k3, only 96.98%
+//		CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP1
+		//CATS_CONV, CATS_ACT_LEAKY_RELU, 64, 0, 0, 0, 3, 1,	// CONV2 64ch k3
+		//CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP2
+
+		// 97.85%/5000
+//		CATS_CONV, CATS_ACT_LEAKY_RELU, 48, 0, 0, 0, 3, 1,	// CONV1 48ch k3, only 98.17%
+//		CATS_CONV, CATS_ACT_RELU, 10, 0, 0, 0, 1, 1,		// CCCP1
+		//CATS_CONV, CATS_ACT_LEAKY_RELU, 64, 0, 0, 0, 3, 1,	// CONV2 64ch k3
+		//CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP2
+
+		//CATS_CONV, CATS_ACT_LEAKY_RELU, 128, 0, 0, 0, 3, 1,	// CONV1 64ch k3, only 93.15%/10000
+
+		CATS_CONV, CATS_ACT_LEAKY_RELU, 64, 0, 0, 0, 3, 1,	// CONV1 64ch k3, only 99.9%/5000, 92.48%/10000
+//		CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP1 80.86%
+//		CATS_CONV, CATS_ACT_RELU, 32, 0, 0, 0, 1, 1,		// CCCP1 90.89%
 
 		CATS_LINEAR, CATS_ACT_SIGMOID, 1, label, 0, 0, 0, 0,
 	};
@@ -83,7 +101,7 @@ int main()
 
 	int t[sample+1];					// ラベルデータ
 	double *x = malloc(sizeof(double)*size*(sample+1));	// 訓練データ
-	unsigned char *data = malloc((sample+1)*size);
+	unsigned char *data = malloc((sample+1)*size*2);
 
 //	double table[256];
 //	for (int i=0; i<256; i++) table[i] = i/255.0;
