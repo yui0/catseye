@@ -54,7 +54,8 @@ layer_forward[1] = function(s, w, o, uu, u)	// convolutional
 {
 	var sx = u[CATS.XSIZE] - Math.floor(u[CATS.KSIZE]/2)*2;	// out
 	var sy = u[CATS.YSIZE] - Math.floor(u[CATS.KSIZE]/2)*2;
-	var n = u[CATS.CHANNEL] * u[CATS.KSIZE]*u[CATS.KSIZE];
+	var k2 = u[CATS.KSIZE] * u[CATS.KSIZE];
+	var n = u[CATS.CHANNEL] * k2;
 	var size = uu[CATS.SIZE]/uu[CATS.CHANNEL];
 	var step = u[CATS.XSIZE]-u[CATS.KSIZE];
 	var a = u[CATS.ACT];
@@ -68,7 +69,7 @@ layer_forward[1] = function(s, w, o, uu, u)	// convolutional
 			for (var x=0; x<sx; x++) {
 				var z = 0;
 				for (var cc=0; cc<uu[CATS.CHANNEL]; cc++) {	// in
-					var k = c*(u[CATS.KSIZE]*u[CATS.KSIZE]) + cc*n;
+					var k = c*k2 + cc*n;
 					var p = (size*cc) + y*u[CATS.XSIZE]+x;	// in
 					for (var wy=u[CATS.KSIZE]; wy>0; wy--) {
 						for (var wx=u[CATS.KSIZE]; wx>0; wx--) {
@@ -82,6 +83,29 @@ layer_forward[1] = function(s, w, o, uu, u)	// convolutional
 		}
 	}
 	console.log("min:"+Math.min.apply(null, o) +" max:"+ Math.max.apply(null, o));
+};
+layer_forward[2] = function(s, w, o, uu, u)	// maxpooling
+{
+	var sx = u[CATS.XSIZE];
+	var sy = u[CATS.YSIZE];
+
+	var m = 0;
+	for (var c=0; c<u[CATS.CHANNEL]; c++) {
+		for (var y=0; y<sy-1; y+=u[CATS.STRIDE]) {
+			for (var x=0; x<sx-1; x+=u[CATS.STRIDE]) {
+				var n = c*sx*sy + y*sx+x;
+				var a = s[n];
+				for (var wy=u[CATS.KSIZE]; wy>0; wy--) {
+					for (var wx=u[CATS.KSIZE]; wx>0; wx--) {
+						if (a<s[n]) a =s[n];
+						n++;
+					}
+					n += sx-u[CATS.KSIZE];
+				}
+				o[m++] = a;
+			}
+		}
+	}
 };
 function _CatsEye(w, u)
 {

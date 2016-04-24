@@ -68,7 +68,7 @@ int main()
 	int u[] = {
 		0, 0, 3, size, 0, 0, 0, 100,				// input 32x32x3, mini batch size is 100 by random
 
-/*		CATS_CONV, CATS_ACT_LEAKY_RELU, 16, 0, 0, 0, 3, 1,	// CONV1 16ch k3
+		/*CATS_CONV, CATS_ACT_LEAKY_RELU, 16, 0, 0, 0, 3, 1,	// CONV1 16ch k3
 		CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP1
 		CATS_CONV, CATS_ACT_LEAKY_RELU, 32, 0, 0, 0, 3, 1,	// CONV2 32ch k3
 		CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP2*/
@@ -86,10 +86,13 @@ int main()
 		//CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP2
 
 		//CATS_CONV, CATS_ACT_LEAKY_RELU, 128, 0, 0, 0, 3, 1,	// CONV1 64ch k3, only 93.15%/10000
-
 		CATS_CONV, CATS_ACT_LEAKY_RELU, 64, 0, 0, 0, 3, 1,	// CONV1 64ch k3, only 99.9%/5000, 92.48%/10000
-//		CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP1 80.86%
-//		CATS_CONV, CATS_ACT_RELU, 32, 0, 0, 0, 1, 1,		// CCCP1 90.89%
+		CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP1 80.8%
+		CATS_CONV, CATS_ACT_LEAKY_RELU, 96, 0, 0, 0, 3, 1,	// CONV2 48.5%/10000
+		CATS_MAXPOOL, 0, 96, 0, 0, 0, 2, 2,			// POOL2 49.5%/10000, 94.8%, 97.8%(1500)
+		//CATS_CONV, CATS_ACT_RELU, 10, 0, 0, 0, 1, 1,		// CCCP2
+		//CATS_CONV, CATS_ACT_LEAKY_RELU, 128, 0, 0, 0, 3, 1,	// CONV3
+		//CATS_MAXPOOL, 0, 128, 0, 0, 0, 2, 2,			// POOL3 38.2%
 
 		CATS_LINEAR, CATS_ACT_SIGMOID, 1, label, 0, 0, 0, 0,
 	};
@@ -126,7 +129,7 @@ int main()
 
 	// 訓練
 	printf("Starting training using (stochastic) gradient descent\n");
-	CatsEye_train(&cat, x, t, sample, 1000/*repeat*/, 0.01);
+	CatsEye_train(&cat, x, t, sample, 1500/*repeat*/, 0.01);
 	printf("Training complete\n");
 //	CatsEye_save(&cat, "cifar10.weights");
 	CatsEye_saveJson(&cat, "cifar10.json");

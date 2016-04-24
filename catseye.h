@@ -501,8 +501,8 @@ void CatsEye_maxpooling_layer_forward(double *s, double *w, double *z, double *o
 				int n = c*sx*sy + y*sx+x;
 				double a = s[n];
 				*max = n;
-				for (int wy=0; wy<u[KSIZE]; wy++) {
-					for (int wx=0; wx<u[KSIZE]; wx++) {
+				for (int wy=u[KSIZE]; wy>0; wy--) {
+					for (int wx=u[KSIZE]; wx>0; wx--) {
 						if (a<s[n]) {
 							a = s[n];
 							*max = n;
