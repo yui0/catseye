@@ -396,6 +396,7 @@ void CatsEye_convolutional_layer_forward(double *s, double *w, double *z/*no use
 	int step = u[XSIZE]-u[KSIZE];
 	CATS_ACT act = CatsEye_act[u[ACT]];
 
+#if 0
 	for (int c=0; c<u[CHANNEL]; c++) {	// out
 		for (int y=0; y<sy; y++) {
 			for (int x=0; x<sx; x++) {
@@ -418,6 +419,34 @@ void CatsEye_convolutional_layer_forward(double *s, double *w, double *z/*no use
 			}
 		}
 	}
+#else
+	double a[u[CHANNEL]];
+	for (int y=0; y<sy; y++) {
+		for (int x=0; x<sx; x++) {
+//			double a[u[CHANNEL]] = {0};
+			memset(a, 0, sizeof(double)*u[CHANNEL]);
+			double *k = w;
+//			double *k;
+			for (int cc=0; cc<u[CHANNEL-LPLEN]; cc++) {	// in
+				for (int c=0; c<u[CHANNEL]; c++) {	// out
+//					k = w;
+					double *p = s + (size*cc) + y*u[XSIZE]+x;	// in
+					for (int wy=u[KSIZE]; wy>0; wy--) {
+						for (int wx=u[KSIZE]; wx>0; wx--) {
+							a[c] += (*p++) * (*k++);
+						}
+						p += step;
+					}
+				}
+//				w = k;
+			}
+			for (int c=0; c<u[CHANNEL]; c++) {	// out
+				o[c*sx*sy] = act(&a[c], 0, 1);
+			}
+			o++;
+		}
+	}
+#endif
 }
 // calculate back propagation
 void CatsEye_convolutional_layer_backward(double *prev_out, double *w, double *prev_delta, double *delta, int u[])
