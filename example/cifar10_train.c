@@ -15,7 +15,6 @@ int main()
 	int k = 32;
 	int size = 32*32*3;	// 入力層
 	int label = 10;	// 出力層
-//	int sample = 2000;//10000;
 	int sample = 10000;
 
 #if 0
@@ -87,9 +86,9 @@ int main()
 
 		//CATS_CONV, CATS_ACT_LEAKY_RELU, 128, 0, 0, 0, 3, 1,	// CONV1 64ch k3, only 93.15%/10000
 		CATS_CONV, CATS_ACT_LEAKY_RELU, 64, 0, 0, 0, 3, 1,	// CONV1 64ch k3, only 99.9%/5000, 92.48%/10000
-		CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP1 80.8%
-		CATS_CONV, CATS_ACT_LEAKY_RELU, 96, 0, 0, 0, 3, 1,	// CONV2 48.5%/10000
-		CATS_MAXPOOL, 0, 96, 0, 0, 0, 2, 2,			// POOL2 49.5%/10000, 94.8%, 97.8%(1500)
+//		CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP1 80.8%
+//		CATS_CONV, CATS_ACT_LEAKY_RELU, 96, 0, 0, 0, 3, 1,	// CONV2 48.5%/10000
+//		CATS_MAXPOOL, 0, 96, 0, 0, 0, 2, 2,			// POOL2 50.9%/10000, 94.8%, 97.8%(1500)
 		//CATS_CONV, CATS_ACT_RELU, 10, 0, 0, 0, 1, 1,		// CCCP2
 		//CATS_CONV, CATS_ACT_LEAKY_RELU, 128, 0, 0, 0, 3, 1,	// CONV3
 		//CATS_MAXPOOL, 0, 128, 0, 0, 0, 2, 2,			// POOL3 38.2%
@@ -129,7 +128,7 @@ int main()
 
 	// 訓練
 	printf("Starting training using (stochastic) gradient descent\n");
-	CatsEye_train(&cat, x, t, sample, 1500/*repeat*/, 0.01);
+	CatsEye_train(&cat, x, t, sample, 100/*repeat*/, 0.01);
 	printf("Training complete\n");
 //	CatsEye_save(&cat, "cifar10.weights");
 	CatsEye_saveJson(&cat, "cifar10.json");

@@ -10,6 +10,11 @@
 #include <time.h>
 #include <math.h>
 
+#define CATS_TIME
+#ifdef CATS_TIME
+#include <time.h>
+#endif
+
 #define CATS_SIGMOID
 //#define CATS_TANH
 //#define CATS_SCALEDTANH
@@ -426,11 +431,11 @@ void CatsEye_convolutional_layer_forward(double *s, double *w, double *z/*no use
 //			double a[u[CHANNEL]] = {0};
 			memset(a, 0, sizeof(double)*u[CHANNEL]);
 			double *k = w;
-//			double *k;
+			double *pp = s + y*u[XSIZE]+x;	// in
 			for (int cc=0; cc<u[CHANNEL-LPLEN]; cc++) {	// in
+//				double *pp = s + (size*cc) + y*u[XSIZE]+x;	// in
 				for (int c=0; c<u[CHANNEL]; c++) {	// out
-//					k = w;
-					double *p = s + (size*cc) + y*u[XSIZE]+x;	// in
+					double *p = pp;
 					for (int wy=u[KSIZE]; wy>0; wy--) {
 						for (int wx=u[KSIZE]; wx>0; wx--) {
 							a[c] += (*p++) * (*k++);
@@ -438,10 +443,11 @@ void CatsEye_convolutional_layer_forward(double *s, double *w, double *z/*no use
 						p += step;
 					}
 				}
-//				w = k;
+				pp += size;
 			}
 			for (int c=0; c<u[CHANNEL]; c++) {	// out
 				o[c*sx*sy] = act(&a[c], 0, 1);
+//				a[c] = 0;
 			}
 			o++;
 		}
@@ -886,6 +892,10 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 	int loss = this->u[(this->layers-1)*LPLEN+STRIDE];
 	if (!loss && x==t) loss = 1;
 
+#ifdef CATS_TIME
+	clock_t start, stop;
+	start = clock();
+#endif
 	for (int times=0; times<repeat; times++) {
 		double err = 0;
 #ifndef CATS_OPT_SGD
@@ -933,7 +943,12 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 			}
 			err = 0.5 * (err + mse);
 		}
-		printf("epochs %d, mse %f\n", times, err);
+		printf("epochs %d, mse %f", times, err);
+#ifdef CATS_TIME
+		stop = clock();
+		printf(" [%.2fs]", (double)(stop-start)/CLOCKS_PER_SEC);
+#endif
+		printf("\n");
 	}
 }
 
