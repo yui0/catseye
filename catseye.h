@@ -12,7 +12,7 @@
 
 #define CATS_TIME
 #ifdef CATS_TIME
-#include <time.h>
+#include <sys/time.h>
 #endif
 
 #define CATS_SIGMOID
@@ -893,8 +893,8 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 	if (!loss && x==t) loss = 1;
 
 #ifdef CATS_TIME
-	clock_t start, stop;
-	start = clock();
+	struct timeval start, stop;
+	gettimeofday(&start, NULL);
 #endif
 	for (int times=0; times<repeat; times++) {
 		double err = 0;
@@ -945,8 +945,8 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 		}
 		printf("epochs %d, mse %f", times, err);
 #ifdef CATS_TIME
-		stop = clock();
-		printf(" [%.2fs]", (double)(stop-start)/CLOCKS_PER_SEC);
+		gettimeofday(&stop, NULL);
+		printf(" [%.2fs]", (stop.tv_sec - start.tv_sec) + (stop.tv_usec - start.tv_usec)*0.001*0.001);
 #endif
 		printf("\n");
 	}
