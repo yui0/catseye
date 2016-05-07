@@ -25,9 +25,13 @@ Neural network library written in C and Javascript
     - max pooling layer
 
 ## Usage
-just include header files in your project
+Just include header files in your project.
 
 for more information, see example/
+
+	$ cd example
+	$ make
+	$ ./sin
 
 ## Demo
 - Recognizing handwritten digits by MNIST training (example/mnist_train.c)

@@ -646,6 +646,7 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 					u[SIZE] = u[CHANNEL] * (u[XSIZE]-u[KSIZE]/2*2) * (u[YSIZE]-u[KSIZE]/2*2);
 					break;
 				case CATS_MAXPOOL:
+					u[CHANNEL] = u[CHANNEL-LPLEN];
 					u[SIZE] = u[CHANNEL] * (u[XSIZE]/u[KSIZE]) * (u[YSIZE]/u[KSIZE]);
 				}
 			}
@@ -703,12 +704,12 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 		case CATS_CONV:
 			n = u[KSIZE] * u[KSIZE];		// kernel size
 			m = u[CHANNEL] * u[CHANNEL-LPLEN];	// channel
-			printf("L%02d CONV %d[ksize]x%d[ch]\n", i+1, n, m);
+			printf("L%02d: CONV%d-%d (%d[ksize]x%d[ch])\n", i+1, u[KSIZE], u[CHANNEL], n, m);
 			break;
 		case CATS_MAXPOOL:
 			n = SIZE(i);
 			m = 1;
-			printf("L%02d POOL [%d]\n", i+1, n);
+			printf("L%02d: POOL%d [%d]\n", i+1, u[KSIZE], n);
 			break;
 		default:
 			n = SIZE(i);
@@ -885,6 +886,8 @@ void (*CatsEye_loss[])(CatsEye *this, int c, void *t, int n) = {
  * eta: learning rate (1e-6 to 1) */
 void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double eta)
 {
+	int a = this->layers-1;
+
 	// for random
 	int batch = N;
 	if (RANDOM) batch = RANDOM;
@@ -902,6 +905,7 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 		memset(this->e3, 0, sizeof(double)*SIZE(2));
 		memset(this->e2, 0, sizeof(double)*SIZE(1));
 #endif
+//#pragma omp parallel
 		for (int n=0; n<batch; n++) {
 			int sample = RANDOM ? (xor128()%N) : n;
 
@@ -909,7 +913,6 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 			CatsEye_forward(this, x+sample*SIZE(0));
 
 			// calculate the error of output layer
-			int a = this->layers-1;
 			CatsEye_loss[loss](this, a, t, sample);
 
 			// calculate the error of hidden layer
@@ -935,7 +938,8 @@ void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double 
 				}
 			}
 #endif
-
+		}
+		{
 			// calculate the mean squared error
 			double mse = 0;
 			for (int i=0; i<SIZE(2); i++) {
