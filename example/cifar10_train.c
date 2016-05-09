@@ -5,7 +5,7 @@
 //---------------------------------------------------------
 
 // gcc cifar10_train.c -o cifar10_train -lm -Ofast -fopenmp -lgomp
-// clang cifar10_train.c -o cifar10_train -lm -Ofast
+// clang cifar10_train.c -o cifar10_train -lm -Ofast -mavx -msse4.1
 #include "../catseye.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "../stb_image_write.h"

@@ -10,6 +10,14 @@
 #include <time.h>
 #include <math.h>
 
+#ifdef CATS_USE_FIXED
+#define numerus		short
+#elif defined CATS_USE_FLOAT
+#define numerus		float
+#else
+#define numerus		double
+#endif
+
 #define CATS_TIME
 #ifdef CATS_TIME
 #include <sys/time.h>
@@ -110,37 +118,6 @@ unsigned long xor128()
 	seed/*z*/ = w;
 	return (w = (w^(w>>19))^(t^(t>>8)));
 }
-/*void muladd(double *vec1, double *vec2, double a, int n)
-{
-	for (int i=0; i<n; i++) {
-		vec1[i] += vec2[i] * a;
-	}
-}*/
-double dot(double *vec1, double *vec2, int n)
-{
-	double s = 0.0;
-	for (int i=0; i<n; i++) {
-		s += vec1[i] * vec2[i];
-	}
-	return s;
-}
-double dotT(double *mat1, double *vec1, int r, int c)
-{
-	double s = 0.0;
-	for (int i=0; i<r; i++) {
-		s += mat1[i*c] * vec1[i];
-	}
-	return s;
-}
-/*void transpose(double *src, double *dst, int N, int M)
-{
-//	#pragma omp parallel for
-	for (int i=0; i<M; i++) {
-		for (int j=0; j<N; j++) {
-			*dst++ = src[M*j + i];
-		}
-	}
-}*/
 int binomial(/*int n, */double p)
 {
 //	if (p<0 || p>1) return 0;
@@ -150,6 +127,69 @@ int binomial(/*int n, */double p)
 		if (r < p) c++;
 //	}
 	return c;
+}
+
+#define CATS_SSE
+#ifdef CATS_SSE
+#include <xmmintrin.h>
+#include <immintrin.h>
+double dot(double *vec1, double *vec2, int n)
+{
+	__m128d u = {0};
+	for (int i=0; i<n; i+=2) {
+		__m128d w = _mm_load_pd(&vec1[i]);	// load 2 values
+		__m128d x = _mm_load_pd(&vec2[i]);
+		x = _mm_mul_pd(w, x);
+		u = _mm_add_pd(u, x);
+	}
+	__attribute__((aligned(16))) double t[2] = {0};
+	_mm_store_pd(t, u);
+	return t[0] + t[1];
+}
+float dot_sse(float *vec1, float *vec2, unsigned int n)
+{
+	__m128 u = {0};
+	for (unsigned int i=0; i<n; i+=4) {
+		__m128 w = _mm_load_ps(&vec1[i]);	// load 4 values
+		__m128 x = _mm_load_ps(&vec2[i]);
+		x = _mm_mul_ps(w, x);
+		u = _mm_add_ps(u, x);
+	}
+	__attribute__((aligned(16))) float t[4] = {0};
+	_mm_store_ps(t, u);
+	return t[0] + t[1] + t[2] + t[3];
+}
+float dot_avx(float *vec1, float *vec2, unsigned int n)
+{
+	__m256 u = {0};
+	for (unsigned int i=0; i<n; i+=8) {
+		__m256 w = _mm256_load_ps(&vec1[i]);
+		__m256 x = _mm256_load_ps(&vec2[i]);
+		x = _mm256_mul_ps(w, x);
+		u = _mm256_add_ps(u, x);
+	}
+	__attribute__((aligned(32))) float t[8] = {0};
+	_mm256_store_ps(t, u);
+	return t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
+}
+#else
+double dot(double *vec1, double *vec2, int n)
+{
+	double s = 0.0;
+	for (int i=n; i>0; i--) {
+		s += (*vec1++) * (*vec2++);
+	}
+	return s;
+}
+#endif
+double dotT(double *mat1, double *vec1, int r, int c)
+{
+	double s = 0.0;
+	for (int i=r; i>0; i--) {
+		s += *mat1 * (*vec1++);
+		mat1 += c;
+	}
+	return s;
 }
 
 typedef struct {
@@ -714,7 +754,7 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 		default:
 			n = SIZE(i);
 			m = SIZE(i+1);
-			printf("L%02d %d %d\n", i+1, n, m);
+			printf("L%02d: LINEAR %d %d\n", i+1, n, m);
 		}
 		this->wsize[i] = (n+1)*m;
 
