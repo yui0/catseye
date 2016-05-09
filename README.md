@@ -6,6 +6,7 @@ Neural network library written in C and Javascript
   - Header only
   - Just include catseye.h and write your model in c. There is nothing to install.
   - Small dependency & simple implementation
+  - SSE, AVX support
 - Support Deep Learning
   - Multilayer perceptron (MLP)
   - Deep Neural Networks (DNN)
@@ -13,16 +14,20 @@ Neural network library written in C and Javascript
   - Network in Network (NIN)
 - Supported networks
   - Activation functions
-    - sigmoid, tanh, scaled tanh, ReLU, Leaky ReLU, ELU, abs, identity function
+    - sigmoid,
+    - tanh, scaled tanh (1.7519 * tanh(2/3x))
+    - ReLU, Leaky ReLU, ELU
+    - abs
+    - identity
   - Loss functions
     - cross-entropy, mean-squared-error
   - Optimization algorithms
     - stochastic gradient descent (with/without L2 normalization and momentum)
   - Layer types
-    - linear layer
-    - convolutional layer
-    - CCCP, Cascaded Cross Channel Parametric Pooling layer
-    - max pooling layer
+    - convolutional
+    - max pooling
+    - linear
+    - CCCP, Cascaded Cross Channel Parametric Pooling
 
 ## Usage
 Just include header files in your project.
