@@ -10,18 +10,17 @@
 #include <time.h>
 #include <math.h>
 
-#define CATS_USE_FLOAT
+#define CATS_TIME
+#ifdef CATS_TIME
+#include <sys/time.h>
+#endif
+
 #ifdef CATS_USE_FIXED
 #define numerus		short
 #elif defined CATS_USE_FLOAT
 #define numerus		float
 #else
 #define numerus		double
-#endif
-
-#define CATS_TIME
-#ifdef CATS_TIME
-#include <sys/time.h>
 #endif
 
 #define CATS_SIGMOID
@@ -130,123 +129,8 @@ int binomial(/*int n, */numerus p)
 	return c;
 }
 
-#define CATS_SSE
 #ifdef CATS_SSE
-#include <xmmintrin.h>
-#include <immintrin.h>
-void *_malloc(int x)
-{
-	void *p;
-	posix_memalign((void**)&p, 32, x);
-	return p;
-}
-#define malloc(x)	_malloc(x)
-#ifdef CATS_USE_FLOAT
-float dot(float *vec1, float *vec2, int n)
-{
-	__m128 u = {0};
-	for (int i=0; i<n; i+=4) {
-		__m128 w = _mm_load_ps(&vec1[i]);	// load 4 values
-		__m128 x = _mm_load_ps(&vec2[i]);
-		x = _mm_mul_ps(w, x);
-		u = _mm_add_ps(u, x);
-	}
-	__attribute__((aligned(16))) float t[4] = {0};
-	_mm_store_ps(t, u);
-	return t[0] + t[1] + t[2] + t[3];
-}
-float dotT(float *mat1, float *vec1, int r, int c)
-{
-	__attribute__((aligned(16))) float t[4] = {0};
-	__m128 u = {0};
-	for (int i=0; i<r; i+=4) {
-		t[0] = *mat1;
-		mat1 += c;
-		t[1] = *mat1;
-		mat1 += c;
-		t[2] = *mat1;
-		mat1 += c;
-		t[3] = *mat1;
-		mat1 += c;
-		__m128 w = _mm_load_ps(t);
-		__m128 x = _mm_load_ps(vec1);
-		vec1 += 4;
-		x = _mm_mul_ps(w, x);
-		u = _mm_add_ps(u, x);
-	}
-	_mm_store_ps(t, u);
-	return t[0] + t[1] + t[2] + t[3];
-}
-/*float dot(float *vec1, float *vec2, int n)
-{
-	__m256 u = {0};
-	for (int i=0; i<n; i+=8) {
-		__m256 w = _mm256_load_ps(&vec1[i]);
-		__m256 x = _mm256_load_ps(&vec2[i]);
-		x = _mm256_mul_ps(w, x);
-		u = _mm256_add_ps(u, x);
-	}
-	__attribute__((aligned(32))) float t[8];
-	_mm256_store_ps(t, u);
-	return t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
-}
-float dotT(float *mat1, float *vec1, int r, int c)
-{
-	__attribute__((aligned(32))) float t[8];
-	__m256 u = {0};
-	for (int i=0; i<r; i+=8) {
-		t[0] = *mat1;	mat1 += c;
-		t[1] = *mat1;	mat1 += c;
-		t[2] = *mat1;	mat1 += c;
-		t[3] = *mat1;	mat1 += c;
-		t[4] = *mat1;	mat1 += c;
-		t[5] = *mat1;	mat1 += c;
-		t[6] = *mat1;	mat1 += c;
-		t[7] = *mat1;	mat1 += c;
-		__m256 w = _mm256_load_ps(t);
-		__m256 x = _mm256_load_ps(vec1);
-		vec1 += 8;
-		x = _mm256_mul_ps(w, x);
-		u = _mm256_add_ps(u, x);
-	}
-	_mm256_store_ps(t, u);
-	return t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
-}*/
-#else
-double dot(double *vec1, double *vec2, int n)
-{
-	__m128d u = {0};
-	for (int i=0; i<n; i+=2) {
-		__m128d w = _mm_load_pd(vec1);	// load 2 values
-		__m128d x = _mm_load_pd(vec2);
-		vec1 += 2;
-		vec2 += 2;
-		x = _mm_mul_pd(w, x);
-		u = _mm_add_pd(u, x);
-	}
-	__attribute__((aligned(16))) double t[2] = {0};
-	_mm_store_pd(t, u);
-	return t[0] + t[1];
-}
-double dotT(double *mat1, double *vec1, int r, int c)
-{
-	__attribute__((aligned(16))) double t[2] = {0};
-	__m128d u = {0};
-	for (int i=0; i<r; i+=2) {
-		t[0] = *mat1;
-		mat1 += c;
-		t[1] = *mat1;
-		mat1 += c;
-		__m128d w = _mm_load_pd(t);
-		__m128d x = _mm_load_pd(vec1);
-		vec1 += 2;
-		x = _mm_mul_pd(w, x);
-		u = _mm_add_pd(u, x);
-	}
-	_mm_store_pd(t, u);
-	return t[0] + t[1];
-}
-#endif
+#include "catseye_fast.h"
 #else
 numerus dot(numerus *vec1, numerus *vec2, int n)
 {
@@ -447,10 +331,6 @@ void CatsEye_linear_layer_forward(numerus *x, numerus *w, numerus *z, numerus *o
 	int in = u[SIZE-LPLEN]+1;	// +1 -> for bias
 	int out = u[SIZE];
 
-	/*for (int i=0; i<out; i++) {
-		z[i] = dotT(&w[i], x, in, out);
-		o[i] = CatsEye_act[u[ACT]](z, i, out);
-	}*/
 	CATS_ACT act = CatsEye_act[u[ACT]];
 	for (int i=out; i>0; i--) {
 		*z = dotT(w++, x, in, out);
@@ -464,12 +344,8 @@ void CatsEye_linear_layer_backward(numerus *o, numerus *w, numerus *d, numerus *
 	int out = u[SIZE];
 
 	// calculate the error
-	/*for (int i=0; i<in; i++) {
-		d[i] = dot(&w[i*out], delta, out) * CatsEye_dact[u[ACT-LPLEN]](o, i, in);
-	}
-	d[in] = dot(&w[in*out], delta, out) * CatsEye_dact[u[ACT-LPLEN]](o, in, in);*/
 	CATS_ACT dact = CatsEye_dact[u[ACT-LPLEN]];
-	for (int i=0; i<=in; i++) {
+	for (int i=0; i<=in; i++) {	// bias!!
 		*d++ = dot(&w[i*out], delta, out) * dact(o++, 0, 1);
 	}
 }
@@ -482,7 +358,6 @@ void CatsEye_linear_layer_update(numerus eta, numerus *o, numerus *w, numerus *d
 	for (int i=0; i<in; i++) {
 		numerus a = eta * (*o++);
 		for (int j=0; j<out; j++) {
-//			w[i*out+j] -= eta*o[i]*d[j];
 			*w++ -= a*d[j];
 		}
 	}
@@ -551,7 +426,9 @@ void CatsEye_convolutional_layer_forward(numerus *s, numerus *w, numerus *z/*no 
 //				numerus *pp = s + (size*cc) + y*u[XSIZE]+x;	// in
 				for (int c=0; c<u[CHANNEL]; c++) {	// out
 					numerus *p = pp;
+#pragma unroll
 					for (int wy=u[KSIZE]; wy>0; wy--) {
+#pragma unroll
 						for (int wx=u[KSIZE]; wx>0; wx--) {
 							a[c] += (*p++) * (*k++);
 						}

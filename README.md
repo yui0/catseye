@@ -14,7 +14,7 @@ Neural network library written in C and Javascript
   - Network in Network (NIN)
 - Supported networks
   - Activation functions
-    - sigmoid,
+    - sigmoid
     - tanh, scaled tanh (1.7519 * tanh(2/3x))
     - ReLU, Leaky ReLU, ELU
     - abs
