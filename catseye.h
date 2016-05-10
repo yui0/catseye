@@ -129,28 +129,6 @@ int binomial(/*int n, */numerus p)
 	return c;
 }
 
-#ifdef CATS_SSE
-#include "catseye_fast.h"
-#else
-numerus dot(numerus *vec1, numerus *vec2, int n)
-{
-	numerus s = 0.0;
-	for (int i=n; i>0; i--) {
-		s += (*vec1++) * (*vec2++);
-	}
-	return s;
-}
-numerus dotT(numerus *mat1, numerus *vec1, int r, int c)
-{
-	numerus s = 0.0;
-	for (int i=r; i>0; i--) {
-		s += *mat1 * (*vec1++);
-		mat1 += c;
-	}
-	return s;
-}
-#endif
-
 typedef struct {
 	// number of each layer
 	int layers, *u;
@@ -324,6 +302,28 @@ enum CATS_LP {
 #define CH(i)		this->u[LPLEN*(i)+CH]
 #define RANDOM		this->u[STRIDE]
 
+#ifdef CATS_SSE
+#include "catseye_fast.h"
+#else
+numerus dot(numerus *vec1, numerus *vec2, int n)
+{
+	numerus s = 0.0;
+	for (int i=n; i>0; i--) {
+		s += (*vec1++) * (*vec2++);
+	}
+	return s;
+}
+numerus dotT(numerus *mat1, numerus *vec1, int r, int c)
+{
+	numerus s = 0.0;
+	for (int i=r; i>0; i--) {
+		s += *mat1 * (*vec1++);
+		mat1 += c;
+	}
+	return s;
+}
+#endif
+
 // calculate forward propagation of input x
 // f(x) = h(scale*x+bias)
 void CatsEye_linear_layer_forward(numerus *x, numerus *w, numerus *z, numerus *o, int u[])
@@ -370,11 +370,12 @@ void CatsEye_SVM_layer_update(numerus eta, numerus *o, numerus *w, numerus *d, i
 	// update the weights
 	for (int i=0; i<in; i++) {
 		numerus a = eta * (*o++);
+		numerus *dd = d;
 		for (int j=0; j<out; j++) {
 			// SVM (http://d.hatena.ne.jp/echizen_tm/20110627/1309188711)
 			// ∂loss(w, x, t) / ∂w = ∂(λ - twx + α * w^2 / 2) / ∂w = - tx + αw
 //			w[i*out+j] -= eta*o[i]*d[j] + w[i*out+j]*1e-8;
-			*w -= a*d[j] + (*w)*1e-8;
+			*w -= a* (*dd++) + (*w)*1e-8;
 			w++;
 		}
 	}
@@ -478,7 +479,7 @@ void CatsEye_convolutional_layer_backward(numerus *prev_out, numerus *w, numerus
 	numerus *d = prev_delta;
 	numerus *o = prev_out;
 	CATS_ACT dact = CatsEye_dact[u[ACT-LPLEN]];
-	for (int i=0; i<u[CHANNEL-LPLEN]*ix*iy; i++) {
+	for (int i=u[CHANNEL-LPLEN]*ix*iy; i>0; i--) {
 		*d++ *= dact(o++, 0, 1);
 	}
 }
@@ -711,7 +712,7 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 		this->wsize[i] = (n+1)*m;
 
 		this->w[i] = malloc(sizeof(numerus)*(n+1)*m);
-		if (!this->w[i]) printf("memory error!!\n");
+		if (!this->w[i]) printf("memory error at layer %d[%d], size %d!!\n", i+1, u[TYPE], this->wsize[i]);
 
 		// initialize weights (http://aidiary.hatenablog.com/entry/20150618/1434628272)
 		// range depends on the research of Y. Bengio et al. (2010)

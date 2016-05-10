@@ -72,7 +72,7 @@ int main()
 	double *x = load("./illust/", w, h, &sample);
 //	sample = 100;
 
-#if 0
+#if 1
 	int u[] = {
 		0, 0, 1, size, 0, 0, 0, sample,				// mini batch size is 40 by random
 		CATS_LINEAR, CATS_ACT_SIGMOID, 1, hidden, 0, 0, 0, 0,
