@@ -367,6 +367,13 @@ void CatsEye_SVM_layer_update(numerus eta, numerus *o, numerus *w, numerus *d, i
 	int in = u[SIZE-LPLEN]+1;
 	int out = u[SIZE];
 
+#ifdef CATS_SSE
+	for (int i=0; i<in; i++) {
+		numerus a = -eta * (*o++);
+		muladd(d, w, a, out);
+		w += out;
+	}
+#else
 	// update the weights
 	for (int i=0; i<in; i++) {
 		numerus a = eta * (*o++);
@@ -374,11 +381,11 @@ void CatsEye_SVM_layer_update(numerus eta, numerus *o, numerus *w, numerus *d, i
 		for (int j=0; j<out; j++) {
 			// SVM (http://d.hatena.ne.jp/echizen_tm/20110627/1309188711)
 			// ∂loss(w, x, t) / ∂w = ∂(λ - twx + α * w^2 / 2) / ∂w = - tx + αw
-//			w[i*out+j] -= eta*o[i]*d[j] + w[i*out+j]*1e-8;
 			*w -= a* (*dd++) + (*w)*1e-8;
 			w++;
 		}
 	}
+#endif
 }
 
 // calculate forward propagation
