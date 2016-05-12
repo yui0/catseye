@@ -391,8 +391,9 @@ void CatsEye_SVM_layer_update(numerus eta, numerus *o, numerus *w, numerus *d, i
 // calculate forward propagation
 void CatsEye_convolutional_layer_forward(numerus *s, numerus *w, numerus *z/*no use*/, numerus *o, int u[])
 {
-	int sx = u[XSIZE] - (u[KSIZE]/2)*2;	// out
-	int sy = u[YSIZE] - (u[KSIZE]/2)*2;
+	int m = (u[KSIZE]/2)*2;
+	int sx = u[XSIZE] - m;	// out
+	int sy = u[YSIZE] - m;
 	int k2 = u[KSIZE] * u[KSIZE];
 	int n = u[CHANNEL] * k2;
 	int size = u[SIZE-LPLEN]/u[CHANNEL-LPLEN];
@@ -400,38 +401,41 @@ void CatsEye_convolutional_layer_forward(numerus *s, numerus *w, numerus *z/*no 
 	CATS_ACT act = CatsEye_act[u[ACT]];
 
 #if 0
-	for (int c=0; c<u[CHANNEL]; c++) {	// out
-		for (int y=0; y<sy; y++) {
-			for (int x=0; x<sx; x++) {
+	// h, w, c
+	m *= ch;
+	step *= ch;
+	int ch = u[CHANNEL-LPLEN];
+	for (int y=sy; y>0; y--) {
+		for (int x=sx; x>0; x--) {
+			numerus *k = w;
+			numerus *pp = s;	// in
+			s += ch;
+			for (int c=u[CHANNEL]; c>0; c--) {	// out
+				numerus *p = pp;
 				numerus a = 0;
-				numerus *k;
-				for (int cc=0; cc<u[CHANNEL-LPLEN]; cc++) {	// in
-					k = &w[c*k2 + cc*n];
-//!!!					k = &w[c*(u[KSIZE]*u[KSIZE]+1)];
-					numerus *p = s + (size*cc) + y*u[XSIZE]+x;	// in
-					for (int wy=u[KSIZE]; wy>0; wy--) {
-//						numerus *p = s + (size*cc) + (y+wy)*u[XSIZE]+x;	// in
-						for (int wx=u[KSIZE]; wx>0; wx--) {
+				for (int wy=u[KSIZE]; wy>0; wy--) {
+					for (int wx=u[KSIZE]; wx>0; wx--) {
+						for (int cc=ch; cc>0; cc--) {	// in
 							a += (*p++) * (*k++);
 						}
-						p += step;
 					}
+					p += step;
 				}
-//!!!				a += *k;	// bias
 				*o++ = act(&a, 0, 1);
 			}
 		}
+		s += m;
 	}
 #else
+	// c, h, w
 	numerus a[u[CHANNEL]];
 	for (int y=0; y<sy; y++) {
 		for (int x=0; x<sx; x++) {
-//			numerus a[u[CHANNEL]] = {0};
 			memset(a, 0, sizeof(numerus)*u[CHANNEL]);
 			numerus *k = w;
-			numerus *pp = s + y*u[XSIZE]+x;	// in
+//			numerus *pp = s + y*u[XSIZE]+x;	// in
+			numerus *pp = s++; // in(x,y) u[XSIZE]!=sx
 			for (int cc=0; cc<u[CHANNEL-LPLEN]; cc++) {	// in
-//				numerus *pp = s + (size*cc) + y*u[XSIZE]+x;	// in
 				for (int c=0; c<u[CHANNEL]; c++) {	// out
 					numerus *p = pp;
 #pragma unroll
@@ -443,7 +447,7 @@ void CatsEye_convolutional_layer_forward(numerus *s, numerus *w, numerus *z/*no 
 						p += step;
 					}
 				}
-				pp += size;
+				pp += size;	// next 'in' channel
 			}
 			for (int c=0; c<u[CHANNEL]; c++) {	// out
 				o[c*sx*sy] = act(&a[c], 0, 1);
@@ -451,6 +455,7 @@ void CatsEye_convolutional_layer_forward(numerus *s, numerus *w, numerus *z/*no 
 			}
 			o++;
 		}
+		s += m;
 	}
 #endif
 }
@@ -1003,21 +1008,6 @@ int CatsEye_saveJson(CatsEye *this, char *filename)
 {
 	FILE *fp = fopen(filename, "w");
 	if (fp==NULL) return -1;
-
-/*	fprintf(fp, "var config = [%d,%d,%d];\n", SIZE(0), SIZE(1), SIZE(2));
-
-	int i;
-	fprintf(fp, "var w1 = [");
-	for (i=0; i<(SIZE(0)+1)*SIZE(1)-1; i++) {
-		fprintf(fp, "%lf,", this->w[0][i]);
-	}
-	fprintf(fp, "%lf];\n", this->w[0][i]);
-
-	fprintf(fp, "var w2 = [");
-	for (i=0; i<(SIZE(1)+1)*SIZE(2)-1; i++) {
-		fprintf(fp, "%lf,", this->w[1][i]);
-	}
-	fprintf(fp, "%lf];\n", this->w[1][i]);*/
 
 	int *u = this->u;
 	for (int n=0; n<this->layers; n++) {
