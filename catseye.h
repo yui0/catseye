@@ -1140,6 +1140,34 @@ void CatsEye_visualizeUnits(CatsEye *this, int n, int l, int ch, unsigned char *
 	CatsEye_visualize(s, size, w, p, width);
 }
 
+numerus *CatsEye_loadCifar(char *name, int sample, int **label)
+{
+	unsigned char *data = malloc((32*32*3+1)*sample);
+	if (!data) return 0;
+	int *t = malloc(sizeof(int)*sample);
+	if (!t) return 0;
+	numerus *x = malloc(sizeof(numerus)*32*32*3*(sample+1));
+	if (!x) return 0;
+
+	FILE *fp = fopen(name, "rb");
+	if (!fp) return 0;
+	fread(data, (32*32*3+1)*sample, 1, fp);
+	for (int n=0; n<sample; n++) {
+		t[n] = data[n*(32*32*3+1)];
+		for (int i=0; i<32*32*3; i++) x[n*32*32*3+i] = data[n*(32*32*3+1)+1+i] * (1.0/255.0);
+/*		for (int i=0; i<32*32; i++) {
+			x[n*32*32*3+i] = data[n*(32*32*3+1)+1        +i] * (1.0/255.0);	// r
+			x[n*32*32*3+i] = data[n*(32*32*3+1)+1+32*32  +i] * (1.0/255.0);	// g
+			x[n*32*32*3+i] = data[n*(32*32*3+1)+1+32*32*2+i] * (1.0/255.0);	// b
+		}*/
+	}
+	fclose(fp);
+	free(data);
+
+	*label = t;
+	return x;
+}
+
 #undef TYPE
 #undef SIZE
 #undef CH

@@ -96,7 +96,7 @@ int main()
 		//CATS_MAXPOOL, 0, 0, 0, 0, 0, 2, 2,			// POOL1 48.7%
 		CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP1 43.6%
 		CATS_CONV, CATS_ACT_LEAKY_RELU, 96, 0, 0, 0, 3, 1,	// CONV2 51.0%
-		CATS_MAXPOOL, 0, 0, 0, 0, 0, 2, 2,			// POOL2 52.1%
+		CATS_MAXPOOL, 0, 0, 0, 0, 0, 2, 2,			// POOL2 53.6%
 		//CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP1 43.6%
 //		CATS_CONV, CATS_ACT_RELU, 10, 0, 0, 0, 1, 1,		// CCCP1
 //		CATS_CONV, CATS_ACT_LEAKY_RELU, 128, 0, 0, 0, 3, 1,	// CONV3 45.1%
@@ -113,30 +113,10 @@ int main()
 	CatsEye cat;
 	CatsEye__construct(&cat, 0, 0, layers, u);
 
-	int t[sample+1];					// ラベルデータ
-	numerus *x = malloc(sizeof(numerus)*size*(sample+1));	// 訓練データ
-	unsigned char *data = malloc((sample+1)*size*2);
-
-//	numerus table[256];
-//	for (int i=0; i<256; i++) table[i] = i/255.0;
-
 	// 訓練データの読み込み (https://www.cs.toronto.edu/~kriz/cifar.html)
 	printf("Training data:\n");
-	FILE *fp = fopen("data_batch_1.bin", "rb");
-	if (fp==NULL) return -1;
-	fread(data, (size+1)*sample, 1, fp);
-//	unsigned char *p = data;
-//	numerus *xx = x;
-	for (int n=0; n<sample; n++) {
-		t[n] = data[n*(size+1)];
-		for (int i=0; i<size; i++) x[n*size+i] = data[n*(size+1)+1+i] * (1.0/255.0);
-//		t[n] = *p++;
-//		for (int i=0; i<size; i++) *xx++ = table[*p++];
-
-//		if (n%100) { printf("."); fflush(stdout); }
-	}
-	fclose(fp);
-	free(data);
+	int *t;
+	numerus *x = CatsEye_loadCifar("data_batch_1.bin", sample, &t);
 
 	// 訓練
 	printf("Starting training using (stochastic) gradient descent\n");
@@ -226,6 +206,7 @@ int main()
 	stbi_write_png("cifar10_gen.png", k*10, k*10, 1, pixels, k*10);*/
 	free(pixels);
 
+	free(t);
 	free(x);
 	CatsEye__destruct(&cat);
 
