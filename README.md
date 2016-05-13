@@ -2,17 +2,18 @@
 Neural network library written in C and Javascript
 
 ## Features
-- Lightweight and minimalistic
+- Lightweight and minimalistic:
   - Header only
   - Just include catseye.h and write your model in c. There is nothing to install.
   - Small dependency & simple implementation
+- Fast: [under construction]
   - SSE, AVX support
-- Support Deep Learning
+- Support Deep Learning:
   - Multilayer perceptron (MLP)
   - Deep Neural Networks (DNN)
   - Convolutional Neural Networks (CNN)
   - Network in Network (NIN)
-- Supported networks
+- Supported networks:
   - Activation functions
     - sigmoid
     - tanh, scaled tanh (1.7519 * tanh(2/3x))
@@ -28,6 +29,9 @@ Neural network library written in C and Javascript
     - max pooling
     - linear
     - CCCP, Cascaded Cross Channel Parametric Pooling
+- Loader formats:
+  - PNG
+  - cifar [https://www.cs.toronto.edu/~kriz/cifar.html]
 
 ## Usage
 Just include header files in your project.
