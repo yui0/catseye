@@ -388,8 +388,9 @@ void CatsEye_SVM_layer_update(numerus eta, numerus *o, numerus *w, numerus *d, i
 #endif
 }
 
+//#define CATS_FASTCONV
 // calculate forward propagation
-void CatsEye_convolutional_layer_forward(numerus *s, numerus *w, numerus *z/*no use*/, numerus *o, int u[])
+void CatsEye_convolutional_layer_forward(numerus *s, numerus *w, numerus *_z/*no use*/, numerus *o, int u[])
 {
 	int ks = u[KSIZE];
 	int k2 = ks * ks;
@@ -402,7 +403,7 @@ void CatsEye_convolutional_layer_forward(numerus *s, numerus *w, numerus *z/*no 
 	int step = u[XSIZE] - ks;
 	CATS_ACT act = CatsEye_act[u[ACT]];
 
-#if 0
+#ifdef CATS_FASTCONV
 	// h, w, c[in], c[out]
 	m *= ch;
 	step *= ch;
@@ -465,13 +466,15 @@ void CatsEye_convolutional_layer_backward(numerus *prev_out, numerus *w, numerus
 	int ix = u[XSIZE];	// in
 	int iy = u[YSIZE];
 	int ks = u[KSIZE];	// kernel size
-	int ox = u[XSIZE] - (u[KSIZE]/2)*2;	// out
-	int oy = u[YSIZE] - (u[KSIZE]/2)*2;
+	int m = (ks/2)*2;
+	int ox = u[XSIZE] - m;	// out
+	int oy = u[YSIZE] - m;
+	int ch = u[CHANNEL-LPLEN];
 
-	memset(prev_delta, 0, sizeof(numerus)*u[CHANNEL-LPLEN]*ix*iy);
+	memset(prev_delta, 0, sizeof(numerus)*ch*ix*iy);
 
 	// calculate the error
-	for (int cc=0; cc<u[CHANNEL-LPLEN]; cc++) {	// in
+	for (int cc=0; cc<ch; cc++) {	// in
 		numerus *d = &prev_delta[cc*ix*iy];
 		for (int c=0; c<u[CHANNEL]; c++) {	// out
 			for (int y=0; y<oy; y++) {
@@ -491,7 +494,7 @@ void CatsEye_convolutional_layer_backward(numerus *prev_out, numerus *w, numerus
 	numerus *d = prev_delta;
 	numerus *o = prev_out;
 	CATS_ACT dact = CatsEye_dact[u[ACT-LPLEN]];
-	for (int i=u[CHANNEL-LPLEN]*ix*iy; i>0; i--) {
+	for (int i=ch*ix*iy; i>0; i--) {
 		*d++ *= dact(o++, 0, 1);
 	}
 }
@@ -504,7 +507,7 @@ void CatsEye_convolutional_layer_update(numerus eta, numerus *prev_out, numerus 
 	int ch = u[CHANNEL-LPLEN];
 	int size = u[SIZE-LPLEN]/ch;
 
-#if 0
+#ifdef CATS_FASTCONV
 	// update the weights
 	for (int c=0; c<u[CHANNEL]; c++) {	// out
 		for (int wy=0; wy<ks; wy++) {
@@ -1140,6 +1143,7 @@ void CatsEye_visualizeUnits(CatsEye *this, int n, int l, int ch, unsigned char *
 	CatsEye_visualize(s, size, w, p, width);
 }
 
+// https://www.cs.toronto.edu/~kriz/cifar.html
 numerus *CatsEye_loadCifar(char *name, int sample, int **label)
 {
 	unsigned char *data = malloc((32*32*3+1)*sample);
@@ -1154,12 +1158,15 @@ numerus *CatsEye_loadCifar(char *name, int sample, int **label)
 	fread(data, (32*32*3+1)*sample, 1, fp);
 	for (int n=0; n<sample; n++) {
 		t[n] = data[n*(32*32*3+1)];
+#ifdef CATS_FASTCONV
+		for (int i=0; i<32*32; i++) {
+			x[n*32*32*3+i*3  ] = data[n*(32*32*3+1)+1        +i] * (1.0/255.0);	// r
+			x[n*32*32*3+i*3+1] = data[n*(32*32*3+1)+1+32*32  +i] * (1.0/255.0);	// g
+			x[n*32*32*3+i*3+2] = data[n*(32*32*3+1)+1+32*32*2+i] * (1.0/255.0);	// b
+		}
+#else
 		for (int i=0; i<32*32*3; i++) x[n*32*32*3+i] = data[n*(32*32*3+1)+1+i] * (1.0/255.0);
-/*		for (int i=0; i<32*32; i++) {
-			x[n*32*32*3+i] = data[n*(32*32*3+1)+1        +i] * (1.0/255.0);	// r
-			x[n*32*32*3+i] = data[n*(32*32*3+1)+1+32*32  +i] * (1.0/255.0);	// g
-			x[n*32*32*3+i] = data[n*(32*32*3+1)+1+32*32*2+i] * (1.0/255.0);	// b
-		}*/
+#endif
 	}
 	fclose(fp);
 	free(data);

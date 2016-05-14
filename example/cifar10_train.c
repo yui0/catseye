@@ -92,11 +92,11 @@ int main()
 //		CATS_CONV, CATS_ACT_LEAKY_RELU, 96, 0, 0, 0, 3, 1,	// CONV2 48.5%/10000
 //		CATS_MAXPOOL, 0, 96, 0, 0, 0, 2, 2,			// POOL2 52.8%/10000(100), 94.8%, 97.8%(1500)
 
-		CATS_CONV, CATS_ACT_LEAKY_RELU, 64, 0, 0, 0, 3, 1,	// CONV1 50.0%
+		CATS_CONV, CATS_ACT_LEAKY_RELU, 64, 0, 0, 0, 3, 1,	// CONV1 50.8%
 		//CATS_MAXPOOL, 0, 0, 0, 0, 0, 2, 2,			// POOL1 48.7%
-		CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP1 43.6%
-		CATS_CONV, CATS_ACT_LEAKY_RELU, 96, 0, 0, 0, 3, 1,	// CONV2 51.0%
-		CATS_MAXPOOL, 0, 0, 0, 0, 0, 2, 2,			// POOL2 53.6%
+//		CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP1 43.6%
+//		CATS_CONV, CATS_ACT_LEAKY_RELU, 96, 0, 0, 0, 3, 1,	// CONV2 51.0%
+//		CATS_MAXPOOL, 0, 0, 0, 0, 0, 2, 2,			// POOL2 53.6%, 95.5%(1500)
 		//CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP1 43.6%
 //		CATS_CONV, CATS_ACT_RELU, 10, 0, 0, 0, 1, 1,		// CCCP1
 //		CATS_CONV, CATS_ACT_LEAKY_RELU, 128, 0, 0, 0, 3, 1,	// CONV3 45.1%
@@ -113,7 +113,7 @@ int main()
 	CatsEye cat;
 	CatsEye__construct(&cat, 0, 0, layers, u);
 
-	// 訓練データの読み込み (https://www.cs.toronto.edu/~kriz/cifar.html)
+	// 訓練データの読み込み
 	printf("Training data:\n");
 	int *t;
 	numerus *x = CatsEye_loadCifar("data_batch_1.bin", sample, &t);
