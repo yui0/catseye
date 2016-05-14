@@ -151,107 +151,108 @@ typedef struct {
 } CatsEye;
 
 // identity function (output only)
-numerus CatsEye_act_identity(numerus *x, int n, int len)
+numerus CatsEye_act_identity(numerus x)
 {
-	return (x[n]);
+	return (x);
 }
-numerus CatsEye_dact_identity(numerus *x, int n, int len)
+numerus CatsEye_dact_identity(numerus x)
 {
 	return (1.0);
 }
 // softmax function (output only)
-numerus CatsEye_act_softmax(numerus *x, int n, int len)
+numerus CatsEye_act_softmax(numerus x/* *x, int n, int len*/)
 {
-	numerus alpha = x[0];
+/*	numerus alpha = x[0];
 	for (int i=1; i<len; i++) if (alpha<x[i]) alpha = x[i];
 	numerus numer = exp(x[n] - alpha);
 	numerus denom = 0.0;
 	for (int i=0; i<len; i++) denom += exp(x[i] - alpha);
-	return (numer / denom);
+	return (numer / denom);*/
+	return (x);
 }
-numerus CatsEye_dact_softmax(numerus *x, int n, int len)
+numerus CatsEye_dact_softmax(numerus x)
 {
-	return (x[n] * (1.0 - x[n]));
+	return (x * (1.0 - x));
 }
 // sigmoid function
-numerus CatsEye_act_sigmoid(numerus *x, int n, int len)
+numerus CatsEye_act_sigmoid(numerus x)
 {
-	return (1.0 / (1.0 + exp(-x[n] * s_gain)));
+	return (1.0 / (1.0 + exp(-x * s_gain)));
 }
-numerus CatsEye_dact_sigmoid(numerus *x, int n, int len)
+numerus CatsEye_dact_sigmoid(numerus x)
 {
-	return ((1.0-x[n])*x[n] * s_gain);	// ((1.0-sigmod(x))*sigmod(x))
+	return ((1.0-x)*x * s_gain);	// ((1.0-sigmod(x))*sigmod(x))
 }
 // tanh function
 // https://github.com/nyanp/tiny-cnn/blob/master/tiny_cnn/activations/activation_function.h
-numerus CatsEye_act_tanh(numerus *x, int n, int len)
+numerus CatsEye_act_tanh(numerus x)
 {
-	return (tanh(x[n]));
+//	return (tanh(x));
 
 /*	numerus ep = exp(x[n]);
 	numerus em = exp(-x[n]);
 	return (ep-em) / (ep+em);*/
 
 	// fast approximation of tanh (improve 2-3% speed in LeNet-5)
-/*	numerus x1 = x[n];
+	numerus x1 = x;
 	numerus x2 = x1 * x1;
 	x1 *= 1.0 + x2 * (0.1653 + x2 * 0.0097);
-	return x1 / sqrt(1.0 + x2);*/
+	return x1 / sqrt(1.0 + x2);
 }
-numerus CatsEye_dact_tanh(numerus *x, int n, int len)
+numerus CatsEye_dact_tanh(numerus x)
 {
-	return (1.0-x[n]*x[n]);		// (1.0-tanh(x)*tanh(x))
+	return (1.0-x*x);		// (1.0-tanh(x)*tanh(x))
 }
 // scaled tanh function
-numerus CatsEye_act_scaled_tanh(numerus *x, int n, int len)
+numerus CatsEye_act_scaled_tanh(numerus x)
 {
-	return (1.7159 * tanh(2.0/3.0 * x[n]));
+	return (1.7159 * tanh(2.0/3.0 * x));
 }
-numerus CatsEye_dact_scaled_tanh(numerus *x, int n, int len)
+numerus CatsEye_dact_scaled_tanh(numerus x)
 {
-	return ((2.0/3.0)/1.7159 * (1.7159-x[n])*(1.7159+x[n]));
+	return ((2.0/3.0)/1.7159 * (1.7159-x)*(1.7159+x));
 }
 // rectified linear unit function
-numerus CatsEye_act_ReLU(numerus *x, int n, int len)
+numerus CatsEye_act_ReLU(numerus x)
 {
-	return (x[n]>0 ? x[n] : 0.0);
+	return (x>0 ? x : 0.0);
 }
-numerus CatsEye_dact_ReLU(numerus *x, int n, int len)
+numerus CatsEye_dact_ReLU(numerus x)
 {
-	return (x[n]>0 ? 1.0 : 0.0);
+	return (x>0 ? 1.0 : 0.0);
 }
 // leaky rectified linear unit function
 #define leaky_alpha	0.01	// 0 - 1
-numerus CatsEye_act_LeakyReLU(numerus *x, int n, int len)
+numerus CatsEye_act_LeakyReLU(numerus x)
 {
-	return (x[n]>0 ? x[n] : x[n]*leaky_alpha);
+	return (x>0 ? x : x*leaky_alpha);
 }
-numerus CatsEye_dact_LeakyReLU(numerus *x, int n, int len)
+numerus CatsEye_dact_LeakyReLU(numerus x)
 {
-	return (x[n]>0 ? 1.0 : leaky_alpha);
+	return (x>0 ? 1.0 : leaky_alpha);
 }
 // exponential rectified linear unit function
 // http://docs.chainer.org/en/stable/_modules/chainer/functions/activation/elu.html
-numerus CatsEye_act_ELU(numerus *x, int n, int len)
+numerus CatsEye_act_ELU(numerus x)
 {
-	return (x[n]>0 ? x[n] : exp(x[n])-1.0);
+	return (x>0 ? x : exp(x)-1.0);
 }
-numerus CatsEye_dact_ELU(numerus *x, int n, int len)
+numerus CatsEye_dact_ELU(numerus x)
 {
-	return (x[n]>0 ? 1.0 : 1.0+x[n]);
+	return (x>0 ? 1.0 : 1.0+x);
 }
 // abs function
-numerus CatsEye_act_abs(numerus *x, int n, int len)
+numerus CatsEye_act_abs(numerus x)
 {
-	return (x[n] / (1.0 + fabs(x[n])));
+	return (x / (1.0 + fabs(x)));
 }
-numerus CatsEye_dact_abs(numerus *x, int n, int len)
+numerus CatsEye_dact_abs(numerus x)
 {
-	return (1.0 / (1.0 + fabs(x[n]))*(1.0 + fabs(x[n])));
+	return (1.0 / (1.0 + fabs(x))*(1.0 + fabs(x)));
 }
 
 // activation function and derivative of activation function
-numerus (*CatsEye_act[])(numerus *x, int n, int len) = {
+numerus (*CatsEye_act[])(numerus x) = {
 	CatsEye_act_identity,
 	CatsEye_act_softmax,
 	CatsEye_act_sigmoid,
@@ -262,7 +263,7 @@ numerus (*CatsEye_act[])(numerus *x, int n, int len) = {
 	CatsEye_act_ELU,
 	CatsEye_act_abs
 };
-numerus (*CatsEye_dact[])(numerus *x, int n, int len) = {
+numerus (*CatsEye_dact[])(numerus x) = {
 	CatsEye_dact_identity,
 	CatsEye_dact_softmax,
 	CatsEye_dact_sigmoid,
@@ -284,7 +285,7 @@ enum CATS_ACTIVATION_FUNCTION {
 	CATS_ACT_ELU,
 	CATS_ACT_ABS,
 };
-typedef numerus (*CATS_ACT)(numerus *x, int n, int len);
+typedef numerus (*CATS_ACT)(numerus x);
 
 enum CATS_LP {
 	TYPE,		// MLP, CONV, MAXPOOL
@@ -333,8 +334,9 @@ void CatsEye_linear_layer_forward(numerus *x, numerus *w, numerus *z, numerus *o
 
 	CATS_ACT act = CatsEye_act[u[ACT]];
 	for (int i=out; i>0; i--) {
-		*z = dotT(w++, x, in, out);
-		*o++ = act(z++, 0, 1);
+//		*z = dotT(w++, x, in, out);
+//		*o++ = act(*z++);
+		*o++ = act(dotT(w++, x, in, out));
 	}
 }
 // calculate back propagation
@@ -346,7 +348,7 @@ void CatsEye_linear_layer_backward(numerus *o, numerus *w, numerus *d, numerus *
 	// calculate the error
 	CATS_ACT dact = CatsEye_dact[u[ACT-LPLEN]];
 	for (int i=0; i<=in; i++) {	// bias!!
-		*d++ = dot(&w[i*out], delta, out) * dact(o++, 0, 1);
+		*d++ = dot(&w[i*out], delta, out) * dact(*o++);
 	}
 }
 void CatsEye_linear_layer_update(numerus eta, numerus *o, numerus *w, numerus *d, int u[])
@@ -423,7 +425,7 @@ void CatsEye_convolutional_layer_forward(numerus *s, numerus *w, numerus *_z/*no
 					}
 					p += step;
 				}
-				*o++ = act(&a, 0, 1);
+				*o++ = act(a);
 			}
 		}
 		s += m;
@@ -452,7 +454,7 @@ void CatsEye_convolutional_layer_forward(numerus *s, numerus *w, numerus *_z/*no
 				pp += size;	// next 'in' channel
 			}
 			for (int c=0; c<u[CHANNEL]; c++) {	// out
-				o[c*sx*sy] = act(&a[c], 0, 1);
+				o[c*sx*sy] = act(a[c]);
 			}
 			o++;
 		}
@@ -495,7 +497,7 @@ void CatsEye_convolutional_layer_backward(numerus *prev_out, numerus *w, numerus
 	numerus *o = prev_out;
 	CATS_ACT dact = CatsEye_dact[u[ACT-LPLEN]];
 	for (int i=ch*ix*iy; i>0; i--) {
-		*d++ *= dact(o++, 0, 1);
+		*d++ *= dact(*o++);
 	}
 }
 void CatsEye_convolutional_layer_update(numerus eta, numerus *prev_out, numerus *w, numerus *curr_delta, int u[])
@@ -617,7 +619,7 @@ void CatsEye_maxpooling_layer_backward(numerus *o, numerus *w, numerus *d, numer
 	int *max = (int*)w;
 	memset(d, 0, sizeof(numerus)*u[SIZE-LPLEN]);
 	for (int i=0; i<u[SIZE]; i++) {
-		d[*max] = (*delta++) * dact(&o[*max], 0, 1);
+		d[*max] = (*delta++) * dact(o[*max]);
 		max++;
 	}
 #endif
