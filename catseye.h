@@ -390,7 +390,7 @@ void CatsEye_SVM_layer_update(numerus eta, numerus *o, numerus *w, numerus *d, i
 #endif
 }
 
-//#define CATS_FASTCONV
+#define CATS_FASTCONV
 // calculate forward propagation
 void CatsEye_convolutional_layer_forward(numerus *s, numerus *w, numerus *_z/*no use*/, numerus *o, int u[])
 {
@@ -511,24 +511,22 @@ void CatsEye_convolutional_layer_update(numerus eta, numerus *prev_out, numerus 
 
 #ifdef CATS_FASTCONV
 	// update the weights
-	for (int c=0; c<u[CHANNEL]; c++) {	// out
-		for (int wy=0; wy<ks; wy++) {
-			for (int wx=0; wx<ks; wx++) {
-				numerus *d = curr_delta;	// out
-				for (int y=0; y<sy; y++) {
-					numerus *p = &prev_out[(y+wy)*u[XSIZE]+wx];	// in
-					for (int x=0; x<sx; x++) {
+	for (int y=0; y<sy; y++) {
+		for (int x=0; x<sx; x++) {
+			for (int wy=0; wy<ks; wy++) {
+				for (int wx=0; wx<ks; wx++) {
+					numerus *k = w;
+					for (int c=0; c<u[CHANNEL]; c++) {	// out
+						numerus *d = curr_delta;	// out
+						numerus *p = &prev_out[(y+wy)*u[XSIZE]+wx];	// in
 						for (int cc=0; cc<ch; cc++) {	// in
-							w[cc] -= eta * (*d) * (*p++);
+							*k++ -= eta * (*d) * (*p++);
 						}
-						d += ch;
+						d++;
 					}
-					p += m;
 				}
-				w += ch;
 			}
 		}
-		curr_delta++;
 	}
 #else
 	// update the weights
