@@ -471,11 +471,38 @@ void CatsEye_convolutional_layer_backward(numerus *prev_out, numerus *w, numerus
 	int m = (ks/2)*2;
 	int ox = u[XSIZE] - m;	// out
 	int oy = u[YSIZE] - m;
-	int ch = u[CHANNEL-LPLEN];
-
-	memset(prev_delta, 0, sizeof(numerus)*ch*ix*iy);
+	int ch = u[CHANNEL-LPLEN];	// 'in' channel
 
 	// calculate the error
+	memset(prev_delta, 0, sizeof(numerus)*ch*ix*iy);
+
+#ifdef CATS_FASTCONV
+	numerus *p = prev_delta;
+	int sx = u[XSIZE] - m;	// out
+	int sy = u[YSIZE] - m;
+	int step = sx * ch;
+	m *= ch;
+	for (int y=sy; y>0; y--) {
+		for (int x=sx; x>0; x--) {
+			numerus *k = w;
+			for (int c=u[CHANNEL]; c>0; c--) {	// out
+				numerus *d = prev_delta;	// in
+				for (int wy=ks; wy>0; wy--) {
+					for (int wx=ks; wx>0; wx--) {
+						for (int cc=ch; cc>0; cc--) {	// in
+							*d++ += (*delta) * (*k++);
+						}
+					}
+					d += step;
+				}
+				delta++;
+			}
+			prev_delta += ch;
+		}
+		prev_delta += m;
+	}
+	prev_delta = p;
+#else
 	for (int cc=0; cc<ch; cc++) {	// in
 		numerus *d = &prev_delta[cc*ix*iy];
 		for (int c=0; c<u[CHANNEL]; c++) {	// out
@@ -492,6 +519,7 @@ void CatsEye_convolutional_layer_backward(numerus *prev_out, numerus *w, numerus
 			}
 		}
 	}
+#endif
 
 	numerus *d = prev_delta;
 	numerus *o = prev_out;
@@ -500,6 +528,7 @@ void CatsEye_convolutional_layer_backward(numerus *prev_out, numerus *w, numerus
 		*d++ *= dact(*o++);
 	}
 }
+// update the weights
 void CatsEye_convolutional_layer_update(numerus eta, numerus *prev_out, numerus *w, numerus *curr_delta, int u[])
 {
 	int ks = u[KSIZE];
@@ -510,15 +539,14 @@ void CatsEye_convolutional_layer_update(numerus eta, numerus *prev_out, numerus 
 	int size = u[SIZE-LPLEN]/ch;
 
 #ifdef CATS_FASTCONV
-	// update the weights
 	int step = u[XSIZE] - ks;
 	step *= ch;
 	m *= ch;
 	numerus *d = curr_delta;	// out
-	for (int y=0; y<sy; y++) {
-		for (int x=0; x<sx; x++) {
+	for (int y=sy; y>0; y--) {
+		for (int x=sx; x>0; x--) {
 			numerus *k = w;
-			for (int c=0; c<u[CHANNEL]; c++) {	// out
+			for (int c=u[CHANNEL]; c>0; c--) {	// out
 				numerus *p = prev_out;	// in
 //				numerus *p = &prev_out[(y*u[XSIZE]+x)*ch];	// in
 				for (int wy=ks; wy>0; wy--) {
@@ -536,7 +564,6 @@ void CatsEye_convolutional_layer_update(numerus eta, numerus *prev_out, numerus 
 		prev_out += m;
 	}
 #else
-	// update the weights
 	// c, h, w
 	for (int cc=0; cc<ch; cc++) {	// in
 		for (int c=0; c<u[CHANNEL]; c++) {	// out
