@@ -390,7 +390,7 @@ void CatsEye_SVM_layer_update(numerus eta, numerus *o, numerus *w, numerus *d, i
 #endif
 }
 
-#define CATS_FASTCONV
+//#define CATS_FASTCONV
 // calculate forward propagation
 void CatsEye_convolutional_layer_forward(numerus *s, numerus *w, numerus *_z/*no use*/, numerus *o, int u[])
 {
@@ -402,7 +402,7 @@ void CatsEye_convolutional_layer_forward(numerus *s, numerus *w, numerus *_z/*no
 	int sy = u[YSIZE] - m;
 	int ch = u[CHANNEL-LPLEN];
 	int size = u[SIZE-LPLEN] / ch;
-	int step = u[XSIZE] - ks;
+	int step = u[XSIZE] - ks;//m??
 	CATS_ACT act = CatsEye_act[u[ACT]];
 
 #ifdef CATS_FASTCONV
@@ -511,42 +511,29 @@ void CatsEye_convolutional_layer_update(numerus eta, numerus *prev_out, numerus 
 
 #ifdef CATS_FASTCONV
 	// update the weights
-/*	for (int y=0; y<sy; y++) {
-		for (int x=0; x<sx; x++) {
-//			numerus *k = w;
-			for (int wy=0; wy<ks; wy++) {
-				for (int wx=0; wx<ks; wx++) {
-					numerus *k = w;
-					numerus *d = curr_delta;	// out
-//					numerus *d = &curr_delta[(y+wy)*sx+wx];	// out
-					for (int c=0; c<u[CHANNEL]; c++) {	// out
-						numerus *p = &prev_out[(y+wy)*u[XSIZE]+wx];	// in
-						for (int cc=0; cc<ch; cc++) {	// in
-							*k++ -= eta * (*d) * (*p++);
-						}
-//						d++;
-					}
-				}
-			}
-		}
-	}*/
-
+	int step = u[XSIZE] - ks;
+	step *= ch;
+	m *= ch;
+	numerus *d = curr_delta;	// out
 	for (int y=0; y<sy; y++) {
 		for (int x=0; x<sx; x++) {
 			numerus *k = w;
-			numerus *d = &curr_delta[(y*sx+x)*u[CHANNEL]];	// out
 			for (int c=0; c<u[CHANNEL]; c++) {	// out
-				for (int wy=0; wy<ks; wy++) {
-					numerus *p = &prev_out[((y+wy)*u[XSIZE]+x)*ch];	// in
-					for (int wx=0; wx<ks; wx++) {
+				numerus *p = prev_out;	// in
+//				numerus *p = &prev_out[(y*u[XSIZE]+x)*ch];	// in
+				for (int wy=ks; wy>0; wy--) {
+					for (int wx=ks; wx>0; wx--) {
 						for (int cc=ch; cc>0; cc--) {	// in
 							*k++ -= eta * (*d) * (*p++);
 						}
 					}
+					p += step;
 				}
 				d++;
 			}
+			prev_out += ch;
 		}
+		prev_out += m;
 	}
 #else
 	// update the weights
