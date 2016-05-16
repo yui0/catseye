@@ -154,7 +154,7 @@ int main()
 //		printf("%d -> %d\n", p, t[i]);
 	}
 	printf("Prediction accuracy on training data = %f%%\n", (float)r/sample*100.0);
-//	stbi_write_png("cifar10_train_wrong.png", k*10, k*10, 1, pixels, k*10);
+//	stbi_write_png("cifar10_train_wrong.png", k*10, k*10, 1, pixels, 0);
 	stbi_write_png("cifar10_train_wrong.png", k*10, k*10, 3, pixels, 0);
 
 	int n[10];
@@ -169,7 +169,7 @@ int main()
 			n[p]++;
 //		}
 	}
-	stbi_write_png("cifar10_classify.png", k*10, k*10, 1, pixels, k*10);
+	stbi_write_png("cifar10_classify.png", k*10, k*10, 1, pixels, 0);
 
 	memset(pixels, 0, size*100);
 	for (int i=0; i<10; i++) {
@@ -193,7 +193,7 @@ int main()
 		int n = (u[KSIZE+LPLEN]+2);
 		CatsEye_visualizeUnits(&cat, 1, 0, i, &pixels[k*k*10*(9+(i*n)/(k*10))+(i*n)%(k*10)], k*10);
 	}
-	stbi_write_png("cifar10_train.png", k*10, k*10, 1, pixels, k*10);
+	stbi_write_png("cifar10_train.png", k*10, k*10, 1, pixels, 0);
 
 /*	memset(pixels, 0, size*100);
 	for (int i=0; i<10; i++) {

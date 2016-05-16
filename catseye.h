@@ -514,9 +514,9 @@ void CatsEye_convolutional_layer_update(numerus eta, numerus *prev_out, numerus 
 	for (int c=0; c<u[CHANNEL]; c++) {	// out
 		for (int wy=0; wy<ks; wy++) {
 			for (int wx=0; wx<ks; wx++) {
-				numerus *d = curr_delta;
+				numerus *d = curr_delta;	// out
 				for (int y=0; y<sy; y++) {
-					numerus *p = &prev_out[(y+wy)*u[XSIZE]+wx];
+					numerus *p = &prev_out[(y+wy)*u[XSIZE]+wx];	// in
 					for (int x=0; x<sx; x++) {
 						for (int cc=0; cc<ch; cc++) {	// in
 							w[cc] -= eta * (*d) * (*p++);
@@ -1130,6 +1130,30 @@ void CatsEye_visualizeUnits(CatsEye *this, int n, int l, int ch, unsigned char *
 	int *u = &this->u[(l+1)*LPLEN];
 	numerus *s;
 	int size, w;
+#ifdef CATS_FASTCONV
+	switch (n) {
+	case 0:
+		size = u[XSIZE]*u[YSIZE];
+		w = u[XSIZE];
+		s = &this->o[l][ch];
+		break;
+	case 1:
+		size = u[KSIZE]*u[KSIZE];
+		w = u[KSIZE];
+		s = &this->w[l][ch];
+	}
+	ch = u[CHANNEL-LPLEN];
+
+	numerus max = s[0];
+	numerus min = s[0];
+	for (int i=1; i<size; i++) {
+		if (max < s[i*ch]) max = s[i*ch];
+		if (min > s[i*ch]) min = s[i*ch];
+	}
+	for (int i=0; i<size; i++) {
+		p[(i/w)*width + i%w] = ((s[i*ch] - min) / (max - min)) * 255.0;
+	}
+#else
 	switch (n) {
 	case 0:
 		size = u[XSIZE]*u[YSIZE];
@@ -1140,9 +1164,9 @@ void CatsEye_visualizeUnits(CatsEye *this, int n, int l, int ch, unsigned char *
 		size = u[KSIZE]*u[KSIZE];
 		w = u[KSIZE];
 		s = &this->w[l][ch * size];
-//		s = &this->w[l][ch * (u[KSIZE]*u[KSIZE]+1)];	// bias
 	}
 	CatsEye_visualize(s, size, w, p, width);
+#endif
 }
 
 // https://www.cs.toronto.edu/~kriz/cifar.html
