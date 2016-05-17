@@ -402,7 +402,9 @@ void CatsEye_convolutional_layer_forward(numerus *s, numerus *w, numerus *_z/*no
 	int sy = u[YSIZE] - m;
 	int ch = u[CHANNEL-LPLEN];
 	int size = u[SIZE-LPLEN] / ch;
-	int step = u[XSIZE] - ks;//m??
+//	int step = u[XSIZE] - ks;//m??
+//	int step = u[XSIZE] - m-1;
+	int step = u[XSIZE] - ks-1;
 	CATS_ACT act = CatsEye_act[u[ACT]];
 
 #ifdef CATS_FASTCONV
@@ -477,7 +479,10 @@ void CatsEye_convolutional_layer_backward(numerus *prev_out, numerus *w, numerus
 
 #ifdef CATS_FASTCONV
 	numerus *p = prev_delta;
-	int step = sx * ch;
+//	int step = u[XSIZE] - m-1;
+	int step = u[XSIZE] - ks-1;
+	step *= ch;
+//	int step = sx * ch;
 	m *= ch;
 	for (int y=sy; y>0; y--) {
 		for (int x=sx; x>0; x--) {
@@ -534,7 +539,9 @@ void CatsEye_convolutional_layer_update(numerus eta, numerus *prev_out, numerus 
 	int size = u[SIZE-LPLEN]/ch;
 
 #ifdef CATS_FASTCONV
-	int step = u[XSIZE] - ks;
+//	int step = u[XSIZE] - ks;
+	int step = u[XSIZE] - ks-1;
+//	int step = u[XSIZE] - m-1;
 	step *= ch;
 	m *= ch;
 	numerus *d = curr_delta;	// out
