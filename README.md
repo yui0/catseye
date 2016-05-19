@@ -8,6 +8,7 @@ Neural network library written in C and Javascript
   - Small dependency & simple implementation
 - Fast: [under construction]
   - SSE, AVX support
+  - OpenMP support
 - Support Deep Learning:
   - Multilayer perceptron (MLP)
   - Deep Neural Networks (DNN)
