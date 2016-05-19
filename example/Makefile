@@ -4,7 +4,7 @@ PROGRAM = $(patsubst %.c,%,$(wildcard *.c))
 #OBJS = $(patsubst %.c,%.o,$(wildcard *.c))
 
 CC = clang
-CFLAGS = -Ofast -mavx
+CFLAGS = -Ofast -march=native
 LDFLAGS = -lm
 
 .PHONY: all

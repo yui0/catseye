@@ -5,7 +5,7 @@
 //---------------------------------------------------------
 
 // gcc cifar10_train.c -o cifar10_train -lm -Ofast -fopenmp -lgomp
-// clang cifar10_train.c -o cifar10_train -lm -Ofast -mavx
+// clang cifar10_train.c -o cifar10_train -lm -Ofast -march=native
 #define CATS_SSE
 #define CATS_USE_FLOAT
 #include "../catseye.h"

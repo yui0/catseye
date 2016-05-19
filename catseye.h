@@ -430,8 +430,8 @@ void CatsEye_convolutional_layer_forward(numerus *s, numerus *w, numerus *_z/*no
 		s += m;
 	}
 #else
+#if 1
 	// c[out], c[in], h, w
-//	numerus *k = w;
 	numerus *pp = s;
 	for (int c=0; c<u[CHANNEL]; c++) {	// out
 //	for (int c=u[CHANNEL]; c>0; c--) {	// out
@@ -441,6 +441,7 @@ void CatsEye_convolutional_layer_forward(numerus *s, numerus *w, numerus *_z/*no
 			for (int y=sy; y>0; y--) {
 				for (int x=sx; x>0; x--) {
 					numerus *k = &w[c*k2];
+//					numerus *k = w;
 					numerus *p = s++;	// in
 					numerus a = 0;
 					for (int wy=ks; wy>0; wy--) {
@@ -453,12 +454,14 @@ void CatsEye_convolutional_layer_forward(numerus *s, numerus *w, numerus *_z/*no
 				}
 				s += m;
 			}
+//			w += k2;
 
 		for (int cc=1; cc<ch-1; cc++) {	// in
 			numerus *oo = o;
 			for (int y=sy; y>0; y--) {
 				for (int x=sx; x>0; x--) {
 					numerus *k = &w[cc*k2*ch+c*k2];
+//					numerus *k = w;
 					numerus *p = s++;	// in
 					numerus a = 0;
 					for (int wy=ks; wy>0; wy--) {
@@ -471,12 +474,14 @@ void CatsEye_convolutional_layer_forward(numerus *s, numerus *w, numerus *_z/*no
 				}
 				s += m;
 			}
+//			w += k2;
 		}
 
 			/*numerus * */oo = o;
 			for (int y=sy; y>0; y--) {
 				for (int x=sx; x>0; x--) {
-					numerus *k = &w[(ch-1)*k2*ch+c*k2];
+					numerus *k = &w[ch*k2*ch+c*k2];
+//					numerus *k = w;
 					numerus *p = s++;	// in
 					numerus a = 0;
 					for (int wy=ks; wy>0; wy--) {
@@ -485,16 +490,17 @@ void CatsEye_convolutional_layer_forward(numerus *s, numerus *w, numerus *_z/*no
 						}
 						p += step;
 					}
-					*oo += a;
-					*oo = act(*oo);
+					*oo = act(*oo + a);
 					oo++;
 				}
 				s += m;
 			}
+//			w += k2;
 
 		o += sx*sy;
 		s = pp;
 	}
+#endif
 	// c, h, w
 /*	numerus a[u[CHANNEL]];
 	for (int y=0; y<sy; y++) {
@@ -634,6 +640,8 @@ void CatsEye_convolutional_layer_update(numerus eta, numerus *prev_out, numerus 
 						numerus *p = &prev_out[size*cc + (y+wy)*u[XSIZE]+wx];
 						for (int x=0; x<sx; x++) {
 							*w -= eta * (*d++) * (*p++);
+//							w[cc*u[CHANNEL]*ks*ks + c*ks*ks + wy*ks+wx] -= eta * (*d++) * (*p++);
+//							w[c*ch*ks*ks + cc*ks*ks + wy*ks+wx] -= eta * (*d++) * (*p++);
 						}
 					}
 					w++;

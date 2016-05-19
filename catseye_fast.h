@@ -10,7 +10,8 @@ void *_malloc(int x)
 }
 #define malloc(x)	_malloc(x)
 #ifdef CATS_USE_FLOAT
-/*float dot(float *vec1, float *vec2, int n)
+#ifndef CATS_AVX
+float dot(float *vec1, float *vec2, int n)
 {
 	int i;
 	__m128 u = {0};
@@ -57,7 +58,27 @@ float dotT(float *mat1, float *vec1, int r, int c)
 		mat1 += c;
 	}
 	return t[0] + t[1] + t[2] + t[3] + s;
-}*/
+}
+void muladd(float *vec1, float *vec2, float a, int n)
+{
+	int i;
+	__m128 alpha = _mm_set1_ps(a);
+	__m128 beta = _mm_set1_ps(1e-8);
+	for (i=0; i<n; i+=4) {
+		__m128 d = _mm_load_ps(&vec1[i]);
+		__m128 w = _mm_load_ps(&vec2[i]);
+		d = _mm_mul_ps(alpha, d);
+		w = _mm_add_ps(w, d);
+		d = _mm_mul_ps(beta, w);
+		w = _mm_add_ps(w, d);
+		_mm_storeu_ps(&vec2[i], w);
+	}
+
+	for (; i<n; i++) {
+		vec2[i] += a * vec1[i] + vec2[i]*1e-8;
+	}
+}
+#else
 float dot(float *vec1, float *vec2, int n)
 {
 	int i;
@@ -127,6 +148,7 @@ void muladd(float *vec1, float *vec2, float a, int n)
 		vec2[i] += a * vec1[i] + vec2[i]*1e-8;
 	}
 }
+#endif
 #else
 double dot(double *vec1, double *vec2, int n)
 {
