@@ -4,8 +4,8 @@
 //		©2016 Yuichiro Nakada
 //---------------------------------------------------------
 
-// gcc cifar10_train.c -o cifar10_train -lm -Ofast -fopenmp -lgomp
-// clang cifar10_train.c -o cifar10_train -lm -Ofast -march=native
+// gcc cifar10_train.c -o cifar10_train -lm -Ofast -march=native -funroll-loops -fopenmp -lgomp
+// clang cifar10_train.c -o cifar10_train -lm -Ofast -march=native -funroll-loops
 #define CATS_SSE
 #define CATS_USE_FLOAT
 #include "../catseye.h"
