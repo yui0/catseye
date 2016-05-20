@@ -433,15 +433,19 @@ void CatsEye_convolutional_layer_forward(numerus *s, numerus *w, numerus *_z/*no
 	}
 #else
 	// c[out], c[in], h, w
+	numerus *z, *p, *k, a;
 	numerus *pp = s;
+	int ss = u[XSIZE] * m;
+	ch -= 2;
 	for (int c=u[CHANNEL]; c>0; c--) {	// out
-#define _LOOP(st)	{\
-			numerus *oo = o;\
+#define _LOOP(st)	\
+		{\
+			z = o;\
 			for (int y=sy; y>0; y--) {\
 				for (int x=sx; x>0; x--) {\
-					numerus *k = w;\
-					numerus *p = s++;/*in*/\
-					numerus a = 0;\
+					k = w;\
+					p = s++;/*in*/\
+					a = 0;\
 					for (int wy=ks; wy>0; wy--) {\
 						for (int wx=ks; wx>0; wx--) {\
 							a += (*p++) * (*k++);\
@@ -452,15 +456,17 @@ void CatsEye_convolutional_layer_forward(numerus *s, numerus *w, numerus *_z/*no
 				}\
 				s += m;\
 			}\
-			w += k2;\
-}
-		_LOOP(*oo++ = a);
-		for (int cc=ch-2; cc>0; cc--) {	// in
-			_LOOP(*oo++ += a);
+			s += ss;\
+			w = k;\
 		}
-		_LOOP(*oo = act(*oo + a); oo++);
+		_LOOP(*z++ = a);
+		for (int cc=ch; cc>0; cc--) {	// in
+			_LOOP(*z++ += a);
+		}
+		_LOOP(*z = act(*z + a); z++);
+#undef _LOOP
 
-		o += sx*sy;
+		o = z;
 		s = pp;
 	}
 	// c, h, w
@@ -504,13 +510,13 @@ void CatsEye_convolutional_layer_backward(numerus *prev_out, numerus *w, numerus
 	int sx = u[XSIZE] - m;	// out
 	int sy = u[YSIZE] - m;
 	int ch = u[CHANNEL-LPLEN];	// 'in' channel
+	int step = u[XSIZE] - ks;
 
 	// calculate the error
 	memset(prev_delta, 0, sizeof(numerus)*ch*ix*iy);
 
 #ifdef CATS_FASTCONV
 	numerus *p = prev_delta;
-	int step = u[XSIZE] - ks;
 	step *= ch;
 	m *= ch;
 	for (int y=sy; y>0; y--) {
@@ -534,6 +540,34 @@ void CatsEye_convolutional_layer_backward(numerus *prev_out, numerus *w, numerus
 	}
 	prev_delta = p;
 #else
+	// c[out], c[in], h, w
+	numerus *dd, *d, *k;
+	numerus *pp = prev_delta;
+	int ss = u[XSIZE] * m;
+	for (int c=u[CHANNEL]; c>0; c--) {	// out
+		for (int cc=ch; cc>0; cc--) {	// in
+			dd = delta;		// out
+			for (int y=sy; y>0; y--) {
+				for (int x=sx; x>0; x--) {
+					k = w;
+					d = prev_delta++;	// in
+					for (int wy=ks; wy>0; wy--) {
+						for (int wx=ks; wx>0; wx--) {
+							*d++ += (*dd) * (*k++);
+						}
+						d += step;
+					}
+					dd++;
+				}
+				prev_delta += m;
+			}
+			prev_delta += ss;
+			w = k;
+		}
+		delta = dd;
+		prev_delta = pp;
+	}
+#if 0
 	for (int cc=0; cc<ch; cc++) {	// in
 		numerus *d = &prev_delta[cc*ix*iy];
 		for (int c=0; c<u[CHANNEL]; c++) {	// out
@@ -550,6 +584,7 @@ void CatsEye_convolutional_layer_backward(numerus *prev_out, numerus *w, numerus
 			}
 		}
 	}
+#endif
 #endif
 
 	CATS_ACT dact = CatsEye_dact[u[ACT-LPLEN]];
@@ -593,15 +628,16 @@ void CatsEye_convolutional_layer_update(numerus eta, numerus *prev_out, numerus 
 	}
 #else
 	// c[out], c[in], h, w
+	numerus *d, *p, *k;
 	numerus *pp = prev_out;
+	int ss = u[XSIZE] * m;
 	for (int c=u[CHANNEL]; c>0; c--) {		// out
 		for (int cc=ch; cc>0; cc--) {		// in
-			numerus *d = curr_delta;	// out
+			d = curr_delta;			// out
 			for (int y=sy; y>0; y--) {
 				for (int x=sx; x>0; x--) {
-					numerus *k = w;
-					numerus *p = prev_out++;	// in
-					numerus a = 0;
+					k = w;
+					p = prev_out++;	// in
 					for (int wy=ks; wy>0; wy--) {
 						for (int wx=ks; wx>0; wx--) {
 							*k++ -= eta * (*d) * (*p++);
@@ -612,9 +648,10 @@ void CatsEye_convolutional_layer_update(numerus eta, numerus *prev_out, numerus 
 				}
 				prev_out += m;
 			}
-			w += ks*ks;
+			prev_out += ss;
+			w = k;
 		}
-		curr_delta += sx*sy;
+		curr_delta = d;
 		prev_out = pp;
 	}
 #if 0
