@@ -432,6 +432,44 @@ void CatsEye_convolutional_layer_forward(numerus *s, numerus *w, numerus *_z/*no
 		s += m;
 	}
 #else
+	// c[out], k, c[in], h, w
+	numerus *z, *p, *r;
+	numerus *pp = s;
+	int ss = u[XSIZE] * m;
+	memset(o, 0, sizeof(numerus)*u[CHANNEL]*sx*sy);
+	for (int c=u[CHANNEL]; c>0; c--) {	// out
+		r = s;
+		for (int cc=ch; cc>0; cc--) {	// in
+//			s = &pp[(ch-cc)*u[XSIZE]*u[YSIZE]];
+			for (int wy=ks; wy>0; wy--) {
+				for (int wx=ks; wx>0; wx--) {
+					p = s++;	// in
+					z = o;
+					for (int y=sy; y>0; y--) {
+						for (int x=sx; x>0; x--) {
+							*z++ += (*p++) * (*w);
+						}
+						p += m;
+					}
+					w++;
+				}
+				s += step;
+			}
+			r += u[XSIZE] * u [YSIZE];
+			s = r;
+		}
+/*		for (int c=sx*sy; c>0; c--) {	// out
+			*o = act(*o);
+			o++;
+		}*/
+		o = z;
+		s = pp;
+	}
+	for (int c=u[CHANNEL]*sx*sy; c>0; c--) {	// out
+		o--;
+		*o = act(*o);
+	}
+#if 0
 	// c[out], c[in], h, w
 	numerus *z, *p, *k, a;
 	numerus *pp = s;
@@ -469,6 +507,7 @@ void CatsEye_convolutional_layer_forward(numerus *s, numerus *w, numerus *_z/*no
 		o = z;
 		s = pp;
 	}
+#endif
 	// c, h, w
 /*	numerus a[u[CHANNEL]];
 	for (int y=0; y<sy; y++) {

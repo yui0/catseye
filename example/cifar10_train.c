@@ -93,6 +93,18 @@ int main()
 //		CATS_CONV, CATS_ACT_LEAKY_RELU, 96, 0, 0, 0, 3, 1,	// CONV2 48.5%/10000
 //		CATS_MAXPOOL, 0, 96, 0, 0, 0, 2, 2,			// POOL2 52.8%/10000(100), 94.8%, 97.8%(1500)
 
+		// N4 https://papers.nips.cc/paper/5636-recursive-training-of-2d-3d-convolutional-networks-for-neuronal-boundary-prediction.pdf
+//		CATS_CONV, CATS_ACT_LEAKY_RELU, 48, 0, 0, 0, 4, 1,	// CONV1
+//		CATS_MAXPOOL, 0, 0, 0, 0, 0, 2, 2,			// POOL1
+//		CATS_CONV, CATS_ACT_LEAKY_RELU, 48, 0, 0, 0, 5, 1,	// CONV2
+//		CATS_MAXPOOL, 0, 0, 0, 0, 0, 2, 2,			// POOL2
+//		CATS_CONV, CATS_ACT_LEAKY_RELU, 48, 0, 0, 0, 4, 1,	// CONV3
+//		CATS_MAXPOOL, 0, 0, 0, 0, 0, 2, 2,			// POOL3
+//		CATS_CONV, CATS_ACT_LEAKY_RELU, 48, 0, 0, 0, 4, 1,	// CONV4
+//		CATS_MAXPOOL, 0, 0, 0, 0, 0, 2, 2,			// POOL4
+//		CATS_CONV, CATS_ACT_LEAKY_RELU, 20, 0, 0, 0, 3, 1,	// CONV5
+//		CATS_LINEAR, CATS_ACT_SIGMOID, 1, 200, 0, 0, 0, 0,
+
 		CATS_CONV, CATS_ACT_LEAKY_RELU, 64, 0, 0, 0, 3, 1,	// CONV1 52.2%, 93.5%(1000)
 		//CATS_MAXPOOL, 0, 0, 0, 0, 0, 2, 2,			// POOL1 48.7%
 //		CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP1 46.5%
