@@ -6,7 +6,7 @@
 
 // gcc cifar10_train.c -o cifar10_train -lm -Ofast -march=native -funroll-loops -fopenmp -lgomp
 // clang cifar10_train.c -o cifar10_train -lm -Ofast -march=native -funroll-loops
-#define CATS_SSE
+//#define CATS_SSE
 //#define CATS_AVX
 #define CATS_USE_FLOAT
 #include "../catseye.h"
@@ -107,9 +107,9 @@ int main()
 
 		CATS_CONV, CATS_ACT_LEAKY_RELU, 64, 0, 0, 0, 3, 1,	// CONV1 52.2%, 93.5%(1000)
 		//CATS_MAXPOOL, 0, 0, 0, 0, 0, 2, 2,			// POOL1 48.7%
-		CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP1 46.5%
-		CATS_CONV, CATS_ACT_LEAKY_RELU, 96, 0, 0, 0, 3, 1,	// CONV2 51.8%
-		CATS_MAXPOOL, 0, 0, 0, 0, 0, 2, 2,			// POOL2 53.6%, 95.5%(1500)
+//		CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP1 46.5%
+//		CATS_CONV, CATS_ACT_LEAKY_RELU, 96, 0, 0, 0, 3, 1,	// CONV2 51.8%
+//		CATS_MAXPOOL, 0, 0, 0, 0, 0, 2, 2,			// POOL2 53.6%, 95.5%(1500)
 		//CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP1 43.6%
 //		CATS_CONV, CATS_ACT_RELU, 10, 0, 0, 0, 1, 1,		// CCCP1
 //		CATS_CONV, CATS_ACT_LEAKY_RELU, 128, 0, 0, 0, 3, 1,	// CONV3 45.1%

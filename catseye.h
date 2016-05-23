@@ -325,6 +325,12 @@ numerus dotT(numerus *mat1, numerus *vec1, int r, int c)
 	}
 	return s;
 }
+void muladd(float *vec1, float *vec2, float a, int n)
+{
+	for (int i=0; i<n; i++) {
+		vec1[i] += a * vec2[i];
+	}
+}
 #endif
 
 // calculate forward propagation of input x
@@ -371,10 +377,11 @@ void CatsEye_SVM_layer_update(numerus eta, numerus *o, numerus *w, numerus *d, i
 	int in = u[SIZE-LPLEN]+1;
 	int out = u[SIZE];
 
-#ifdef CATS_SSE
+//#ifdef CATS_SSE
+#if 1
 	for (int i=0; i<in; i++) {
 		numerus a = -eta * (*o++);
-		muladd(d, w, a, out);
+		muladd(w, d, a, out);
 		w += out;
 	}
 #else
@@ -444,10 +451,16 @@ void CatsEye_convolutional_layer_forward(numerus *s, numerus *w, numerus *_z/*no
 					p = s++;	// in
 					z = o;		// out
 					for (int y=sy; y>0; y--) {
+#if 1
+						muladd(z, p, *w, sx);
+						p += u[XSIZE];
+						z += sx;
+#else
 						for (int x=sx; x>0; x--) {
 							*z++ += (*p++) * (*w);
 						}
 						p += m;
+#endif
 					}
 					w++;
 				}
@@ -464,46 +477,8 @@ void CatsEye_convolutional_layer_forward(numerus *s, numerus *w, numerus *_z/*no
 		*o = act(*o);
 	}
 #if 0
-	// c[out], c[in], h, w
-	numerus *z, *p, *k, a;
-	numerus *pp = s;
-	int ss = u[XSIZE] * m;
-	ch -= 2;
-	for (int c=u[CHANNEL]; c>0; c--) {	// out
-#define _LOOP(st)	\
-		{\
-			z = o;\
-			for (int y=sy; y>0; y--) {\
-				for (int x=sx; x>0; x--) {\
-					k = w;\
-					p = s++;/*in*/\
-					a = 0;\
-					for (int wy=ks; wy>0; wy--) {\
-						for (int wx=ks; wx>0; wx--) {\
-							a += (*p++) * (*k++);\
-						}\
-						p += step;\
-					}\
-					st;\
-				}\
-				s += m;\
-			}\
-			s += ss;\
-			w = k;\
-		}
-		_LOOP(*z++ = a);
-		for (int cc=ch; cc>0; cc--) {	// in
-			_LOOP(*z++ += a);
-		}
-		_LOOP(*z = act(*z + a); z++);
-#undef _LOOP
-
-		o = z;
-		s = pp;
-	}
-#endif
 	// c, h, w
-/*	numerus a[u[CHANNEL]];
+	numerus a[u[CHANNEL]];
 	for (int y=0; y<sy; y++) {
 		for (int x=0; x<sx; x++) {
 			memset(a, 0, sizeof(numerus)*u[CHANNEL]);
@@ -513,9 +488,7 @@ void CatsEye_convolutional_layer_forward(numerus *s, numerus *w, numerus *_z/*no
 			for (int cc=0; cc<ch; cc++) {	// in
 				for (int c=0; c<u[CHANNEL]; c++) {	// out
 					numerus *p = pp;
-#pragma unroll
 					for (int wy=ks; wy>0; wy--) {
-#pragma unroll
 						for (int wx=ks; wx>0; wx--) {
 							a[c] += (*p++) * (*k++);
 						}
@@ -530,7 +503,8 @@ void CatsEye_convolutional_layer_forward(numerus *s, numerus *w, numerus *_z/*no
 			o++;
 		}
 		s += m;
-	}*/
+	}
+#endif
 #endif
 }
 // calculate back propagation
@@ -600,33 +574,6 @@ void CatsEye_convolutional_layer_backward(numerus *prev_out, numerus *w, numerus
 		delta = d;
 		prev_delta = pp;
 	}
-	// c[out], c[in], h, w
-/*	numerus *dd, *d, *k;
-	numerus *pp = prev_delta;
-	int ss = u[XSIZE] * m;
-	for (int c=u[CHANNEL]; c>0; c--) {	// out
-		for (int cc=ch; cc>0; cc--) {	// in
-			dd = delta;		// out
-			for (int y=sy; y>0; y--) {
-				for (int x=sx; x>0; x--) {
-					k = w;
-					d = prev_delta++;	// in
-					for (int wy=ks; wy>0; wy--) {
-						for (int wx=ks; wx>0; wx--) {
-							*d++ += (*dd) * (*k++);
-						}
-						d += step;
-					}
-					dd++;
-				}
-				prev_delta += m;
-			}
-			prev_delta += ss;
-			w = k;
-		}
-		delta = dd;
-		prev_delta = pp;
-	}*/
 #else
 	for (int cc=0; cc<ch; cc++) {	// in
 		numerus *d = &prev_delta[cc*ix*iy];
@@ -714,33 +661,6 @@ void CatsEye_convolutional_layer_update(numerus eta, numerus *prev_out, numerus 
 		curr_delta = d;
 		prev_out = pp;
 	}
-	// c[out], c[in], h, w
-/*	numerus *d, *p, *k;
-	numerus *pp = prev_out;
-	int ss = u[XSIZE] * m;
-	for (int c=u[CHANNEL]; c>0; c--) {		// out
-		for (int cc=ch; cc>0; cc--) {		// in
-			d = curr_delta;			// out
-			for (int y=sy; y>0; y--) {
-				for (int x=sx; x>0; x--) {
-					k = w;
-					p = prev_out++;	// in
-					for (int wy=ks; wy>0; wy--) {
-						for (int wx=ks; wx>0; wx--) {
-							*k++ -= eta * (*d) * (*p++);
-						}
-						p += step;
-					}
-					d++;
-				}
-				prev_out += m;
-			}
-			prev_out += ss;
-			w = k;
-		}
-		curr_delta = d;
-		prev_out = pp;
-	}*/
 #else
 	// c, h, w
 	for (int cc=0; cc<ch; cc++) {	// in
