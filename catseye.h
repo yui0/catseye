@@ -325,7 +325,7 @@ numerus dotT(numerus *mat1, numerus *vec1, int r, int c)
 	}
 	return s;
 }
-void muladd(float *vec1, float *vec2, float a, int n)
+void muladd(numerus *vec1, numerus *vec2, numerus a, int n)
 {
 	for (int i=0; i<n; i++) {
 		vec1[i] += a * vec2[i];
