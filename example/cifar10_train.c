@@ -93,6 +93,19 @@ int main()
 //		CATS_CONV, CATS_ACT_LEAKY_RELU, 96, 0, 0, 0, 3, 1,	// CONV2 48.5%/10000
 //		CATS_MAXPOOL, 0, 96, 0, 0, 0, 2, 2,			// POOL2 52.8%/10000(100), 94.8%, 97.8%(1500)
 
+//		CATS_CONV, CATS_ACT_LEAKY_RELU, 64, 0, 0, 0, 3, 1,	// CONV1 52.2%, 93.5%(1000)
+		//CATS_MAXPOOL, 0, 0, 0, 0, 0, 2, 2,			// POOL1 48.7%
+//		CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP1 46.5%
+//		CATS_CONV, CATS_ACT_LEAKY_RELU, 96, 0, 0, 0, 3, 1,	// CONV2 51.8%
+//		CATS_MAXPOOL, 0, 0, 0, 0, 0, 2, 2,			// POOL2 53.6%, 95.5%(1500)
+		//CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP1 43.6%
+//		CATS_CONV, CATS_ACT_RELU, 10, 0, 0, 0, 1, 1,		// CCCP1
+//		CATS_CONV, CATS_ACT_LEAKY_RELU, 128, 0, 0, 0, 3, 1,	// CONV3 45.1%
+//		CATS_MAXPOOL, 0, 96, 0, 0, 0, 2, 2,			// POOL2
+		//CATS_CONV, CATS_ACT_RELU, 10, 0, 0, 0, 1, 1,		// CCCP2
+		//CATS_CONV, CATS_ACT_LEAKY_RELU, 128, 0, 0, 0, 3, 1,	// CONV3
+		//CATS_MAXPOOL, 0, 128, 0, 0, 0, 2, 2,			// POOL3 38.2%
+
 		// N4 https://papers.nips.cc/paper/5636-recursive-training-of-2d-3d-convolutional-networks-for-neuronal-boundary-prediction.pdf
 //		CATS_CONV, CATS_ACT_LEAKY_RELU, 48, 0, 0, 0, 4, 1,	// CONV1
 //		CATS_MAXPOOL, 0, 0, 0, 0, 0, 2, 2,			// POOL1
@@ -105,18 +118,23 @@ int main()
 //		CATS_CONV, CATS_ACT_LEAKY_RELU, 20, 0, 0, 0, 3, 1,	// CONV5
 //		CATS_LINEAR, CATS_ACT_SIGMOID, 1, 200, 0, 0, 0, 0,
 
-		CATS_CONV, CATS_ACT_LEAKY_RELU, 64, 0, 0, 0, 3, 1,	// CONV1 52.2%, 93.5%(1000)
-		//CATS_MAXPOOL, 0, 0, 0, 0, 0, 2, 2,			// POOL1 48.7%
-//		CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP1 46.5%
-//		CATS_CONV, CATS_ACT_LEAKY_RELU, 96, 0, 0, 0, 3, 1,	// CONV2 51.8%
-//		CATS_MAXPOOL, 0, 0, 0, 0, 0, 2, 2,			// POOL2 53.6%, 95.5%(1500)
-		//CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP1 43.6%
-//		CATS_CONV, CATS_ACT_RELU, 10, 0, 0, 0, 1, 1,		// CCCP1
-//		CATS_CONV, CATS_ACT_LEAKY_RELU, 128, 0, 0, 0, 3, 1,	// CONV3 45.1%
-//		CATS_MAXPOOL, 0, 96, 0, 0, 0, 2, 2,			// POOL2
-		//CATS_CONV, CATS_ACT_RELU, 10, 0, 0, 0, 1, 1,		// CCCP2
-		//CATS_CONV, CATS_ACT_LEAKY_RELU, 128, 0, 0, 0, 3, 1,	// CONV3
-		//CATS_MAXPOOL, 0, 128, 0, 0, 0, 2, 2,			// POOL3 38.2%
+		// http://ai-programming.hatenablog.jp/entry/2016/03/04/160243
+/*		CATS_CONV, CATS_ACT_LEAKY_RELU, 32, 0, 0, 0, 3, 1,	// CONV1
+		CATS_CONV, CATS_ACT_LEAKY_RELU, 32, 0, 0, 0, 3, 1,	// CONV2
+		CATS_MAXPOOL, 0, 0, 0, 0, 0, 2, 2,			// POOL3
+		CATS_CONV, CATS_ACT_LEAKY_RELU, 32, 0, 0, 0, 3, 1,	// CONV4
+		CATS_CONV, CATS_ACT_LEAKY_RELU, 32, 0, 0, 0, 3, 1,	// CONV5
+		CATS_MAXPOOL, 0, 0, 0, 0, 0, 2, 2,			// POOL6
+		CATS_CONV, CATS_ACT_LEAKY_RELU, 32, 0, 0, 0, 3, 1,	// CONV7 50.8%(1000)
+		//CATS_CONV, CATS_ACT_LEAKY_RELU, 32, 0, 0, 0, 3, 1,	// CONV8
+		//CATS_MAXPOOL, 0, 0, 0, 0, 0, 2, 2,			// POOL9
+		CATS_LINEAR, CATS_ACT_LEAKY_RELU, 1, 512, 0, 0, 0, 0,*/
+
+		// http://qiita.com/nzw0301/items/c7a11baba0f2e029695e
+		CATS_CONV, CATS_ACT_LEAKY_RELU, 10, 0, 0, 0, 3, 1,	// CONV1
+		CATS_CONV, CATS_ACT_LEAKY_RELU, 10, 0, 0, 0, 3, 1,	// CONV2
+		CATS_MAXPOOL, 0, 0, 0, 0, 0, 2, 2,			// POOL3 97.7%(1000), 98.5%(3000)
+		CATS_LINEAR, CATS_ACT_LEAKY_RELU, 1, 256/*512*/, 0, 0, 0, 0,
 
 		CATS_LINEAR, CATS_ACT_SIGMOID, 1, label, 0, 0, 0, 0,
 	};
@@ -133,7 +151,7 @@ int main()
 
 	// 訓練
 	printf("Starting training using (stochastic) gradient descent\n");
-	CatsEye_train(&cat, x, t, sample, 100/*repeat*/, 0.01);
+	CatsEye_train(&cat, x, t, sample, 1000/*repeat*/, 0.01);
 	printf("Training complete\n");
 //	CatsEye_save(&cat, "cifar10.weights");
 	CatsEye_saveJson(&cat, "cifar10.json");

@@ -52,8 +52,9 @@ layer_forward[0] = function(s, w, o, uu, u)	// linear
 };
 layer_forward[1] = function(s, w, o, uu, u)	// convolutional
 {
-	var sx = u[CATS.XSIZE] - Math.floor(u[CATS.KSIZE]/2)*2;	// out
-	var sy = u[CATS.YSIZE] - Math.floor(u[CATS.KSIZE]/2)*2;
+	var m = Math.floor(u[CATS.KSIZE]/2)*2;
+	var sx = u[CATS.XSIZE] - m;	// out
+	var sy = u[CATS.YSIZE] - m;
 	var k2 = u[CATS.KSIZE] * u[CATS.KSIZE];
 	var n = u[CATS.CHANNEL] * k2;
 	var size = uu[CATS.SIZE]/uu[CATS.CHANNEL];
@@ -63,7 +64,7 @@ layer_forward[1] = function(s, w, o, uu, u)	// convolutional
 	console.log(sx +" "+ sy +" "+ a);
 	//console.log(s);
 
-	var m = 0;
+	/*var m = 0;
 	for (var c=0; c<u[CATS.CHANNEL]; c++) {	// out
 		for (var y=0; y<sy; y++) {
 			for (var x=0; x<sx; x++) {
@@ -81,6 +82,36 @@ layer_forward[1] = function(s, w, o, uu, u)	// convolutional
 				o[m++] = act[a](z);
 			}
 		}
+	}*/
+	for (var c=u[CATS.CHANNEL]*sx*sy-1; c>=0; c--) {	// out
+		o[c] = 0;
+	}
+	var oo = 0, z, ss = 0, p, r, k = 0;
+	for (var c=0; c<u[CATS.CHANNEL]; c++) {	// out
+		r = 0;
+		for (var cc=0; cc<uu[CATS.CHANNEL]; cc++) {	// in
+			for (var wy=u[CATS.KSIZE]; wy>0; wy--) {
+				for (var wx=u[CATS.KSIZE]; wx>0; wx--) {
+					p = ss++;
+					z = oo;
+					for (var y=0; y<sy; y++) {
+						for (var x=0; x<sx; x++) {
+							o[z++] += s[p++] * w[k];
+						}
+						p += m;
+					}
+					k++;
+				}
+				ss += step;
+			}
+			r += u[CATS.XSIZE] * u[CATS.YSIZE];
+			ss = r;
+		}
+		oo = z;
+		ss = 0;
+	}
+	for (var c=u[CATS.CHANNEL]*sx*sy-1; c>=0; c--) {	// out
+		o[c] = act[a](o[c]);
 	}
 	console.log("min:"+Math.min.apply(null, o) +" max:"+ Math.max.apply(null, o));
 };
