@@ -101,22 +101,30 @@
 // http://www.jstatsoft.org/v08/i14/
 // http://qiita.com/zarchis/items/fbbe569afc641ee50049
 // http://xorshift.di.unimi.it/xorshift128plus.c
-#define XOR128_MAX	4294967295.0
-static unsigned long seed = 521288629;
+// https://github.com/AndreasMadsen/xorshift/blob/master/reference.c
+#define XOR128_MAX	18446744073709551615.0
+typedef unsigned long long	uint64_t;
+// The state must be seeded so that it is not everywhere zero.
+uint64_t seed[2];
 void xor128_init(unsigned long s)
 {
-	seed ^= s;
-//	seed ^= seed >> 21; seed ^= seed << 35; seed ^= seed >> 4;
-	seed *= 2685821657736338717LL;
+	seed[0] = 1;
+	seed[1] = s;
 }
-unsigned long xor128()
+uint64_t xor128()
 {
-	static unsigned long x=123456789, y=362436069, /*z=521288629, */w=88675123;
-	unsigned long t = (x^(x<<11));
-	x = y;
-	y = seed;//z;
-	seed/*z*/ = w;
-	return (w = (w^(w>>19))^(t^(t>>8)));
+	uint64_t s1 = seed[0];
+	const uint64_t s0 = seed[1];
+	seed[0] = s0;
+	s1 ^= s1 << 23;
+	return ( seed[1] = ( s1 ^ s0 ^ ( s1 >> 17 ) ^ ( s0 >> 26 ) ) ) + s0;
+}
+double xorshift128plus_double()
+{
+	const uint64_t x = xor128();
+	const uint64_t x_doublefied = (uint64_t)(0x3FF) << 52 | x >> 12;
+
+	return *((double *) &x_doublefied) - 1.0;
 }
 int binomial(/*int n, */numerus p)
 {
@@ -377,26 +385,14 @@ void CatsEye_SVM_layer_update(numerus eta, numerus *o, numerus *w, numerus *d, i
 	int in = u[SIZE-LPLEN]+1;
 	int out = u[SIZE];
 
-//#ifdef CATS_SSE
-#if 1
-	for (int i=0; i<in; i++) {
-		numerus a = -eta * (*o++);
-		muladd(w, d, a, out);
-		w += out;
-	}
-#else
 	// update the weights
 	for (int i=0; i<in; i++) {
-		numerus a = eta * (*o++);
-		numerus *dd = d;
-		for (int j=0; j<out; j++) {
-			// SVM (http://d.hatena.ne.jp/echizen_tm/20110627/1309188711)
-			// ∂loss(w, x, t) / ∂w = ∂(λ - twx + α * w^2 / 2) / ∂w = - tx + αw
-			*w -= a* (*dd++) + (*w)*1e-8;
-			w++;
-		}
+		// SVM (http://d.hatena.ne.jp/echizen_tm/20110627/1309188711)
+		// ∂loss(w, x, t) / ∂w = ∂(λ - twx + α * w^2 / 2) / ∂w = - tx + αw
+		numerus a = -eta * (*o++);
+		muladd(w, d, a, out);	// *w -= a* (*dd++) + (*w)*1e-8; w++;
+		w += out;
 	}
-#endif
 }
 
 // calculate forward propagation
@@ -636,17 +632,19 @@ void CatsEye_convolutional_layer_update(numerus eta, numerus *prev_out, numerus 
 					d = curr_delta;	// out
 					numerus a = 0;
 					for (int y=sy; y>0; y--) {
-/*						a += dot(d, p, sx);
+						a += dot(d, p, sx);
+//						a -= dot(d, p, sx) * eta;
 						p += u[XSIZE];
-						d += sx;*/
-						for (int x=sx; x>0; x--) {
+						d += sx;
+/*						for (int x=sx; x>0; x--) {
 //							*w -= eta * (*d++) * (*p++);
 							a += (*d++) * (*p++);
 						}
-						p += m;
+						p += m;*/
 					}
 //					w++;
 					*w++ += -eta * a;
+//					*w++ += a;
 				}
 				prev_out += step;
 			}
@@ -693,6 +691,7 @@ void CatsEye_maxpooling_layer_forward(numerus *s, numerus *w, numerus *z, numeru
 	int *max = (int*)w;
 
 #ifdef CATS_FASTCONV
+	// FIXME
 /*	int step = sx * ch;
 	m *= ch;
 	for (int y=sy; y>0; y--) {
@@ -714,27 +713,6 @@ void CatsEye_maxpooling_layer_forward(numerus *s, numerus *w, numerus *z, numeru
 		}
 		prev_delta += m;
 	}*/
-	for (int c=0; c<u[CHANNEL]; c++) {
-		for (int y=0; y<sy-1; y+=u[STRIDE]) {
-			for (int x=0; x<sx-1; x+=u[STRIDE]) {
-				int n = c*sx*sy + y*sx+x;
-				numerus a = s[n];
-				*max = n;
-				for (int wy=u[KSIZE]; wy>0; wy--) {
-					for (int wx=u[KSIZE]; wx>0; wx--) {
-						if (a<s[n]) {
-							a = s[n];
-							*max = n;
-						}
-						n++;
-					}
-					n += sx-u[KSIZE];
-				}
-				max++;
-				*o++ = a;
-			}
-		}
-	}
 #else
 	for (int c=0; c<u[CHANNEL]; c++) {
 		for (int y=0; y<sy-1; y+=u[STRIDE]) {
@@ -1201,10 +1179,13 @@ int CatsEye_saveJson(CatsEye *this, char *filename)
 	for (int n=0; n<this->layers-1; n++) {
 		int i;
 		fprintf(fp, "var w%d = [", n+1);
-		for (i=0; i<this->wsize[n]; i++) {
-			fprintf(fp, "%lf,", this->w[n][i]);
-		}
-		fprintf(fp, "%lf];\n", this->w[n][i]);
+//		if (this->u[TYPE+LPLEN*n] != CATS_MAXPOOL) {
+			for (i=0; i<this->wsize[n]; i++) {
+				fprintf(fp, "%lf,", this->w[n][i]);
+			}
+			fprintf(fp, "%lf", this->w[n][i]);
+//		}
+		fprintf(fp, "];\n");
 	}
 	fprintf(fp, "var w = [w1");
 	for (int n=1; n<this->layers-1; n++) {
