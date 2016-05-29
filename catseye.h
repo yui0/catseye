@@ -98,18 +98,18 @@
 #define OPT_CALC2(n, x, y)	this->w[x-1][i*n+j] -= eta*this->o[x-1][i] *this->d[y-2][j] +this->w[x-1][i*n+j]*1e-8
 #endif
 
-// http://www.jstatsoft.org/v08/i14/
-// http://qiita.com/zarchis/items/fbbe569afc641ee50049
 // http://xorshift.di.unimi.it/xorshift128plus.c
 // https://github.com/AndreasMadsen/xorshift/blob/master/reference.c
+// http://ogawa-sankinkoutai.seesaa.net/category/5784373-1.html
 #define XOR128_MAX	18446744073709551615.0
 typedef unsigned long long	uint64_t;
 // The state must be seeded so that it is not everywhere zero.
 uint64_t seed[2];
-void xor128_init(unsigned long s)
+void xor128_init(unsigned int s)
 {
-	seed[0] = 1;
-	seed[1] = s;
+	for (int i=1; i<=2; i++) {
+		seed[i] = s = 1812433253U * ( s ^ ( s >> 30 ) ) + i;
+	}
 }
 uint64_t xor128()
 {
@@ -126,12 +126,15 @@ double xorshift128plus_double()
 
 	return *((double *) &x_doublefied) - 1.0;
 }
+//#define frand()		xorshift128plus_double()
+#define frand()		( xor128() / ((double)XOR128_MAX + 1.0f) )
+//#define frand()		( rand() / ((double)RAND_MAX + 1.0f) )
 int binomial(/*int n, */numerus p)
 {
 //	if (p<0 || p>1) return 0;
 	int c = 0;
 //	for (int i=0; i<n; i++) {
-		numerus r = xor128() / XOR128_MAX;
+		numerus r = frand();
 		if (r < p) c++;
 //	}
 	return c;
@@ -886,7 +889,7 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 		xor128_init(time(0));
 		numerus range = sqrt(6)/sqrt(n+m+2);
 		for (int j=0; j<(n+1)*m; j++) {
-			this->w[i][j] = 2.0*range*xor128()/XOR128_MAX-range;
+			this->w[i][j] = 2.0*range*frand()-range;
 		}
 	}
 
@@ -1067,7 +1070,7 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 #endif
 //#pragma omp parallel
 		for (int n=0; n<batch; n++) {
-			int sample = RANDOM ? (xor128()%N) : n;
+			int sample = RANDOM ? (frand()*N) : n;
 
 			// forward propagation
 			CatsEye_forward(this, x+sample*SIZE(0));
