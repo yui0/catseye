@@ -119,16 +119,7 @@ uint64_t xor128()
 	s1 ^= s1 << 23;
 	return ( seed[1] = ( s1 ^ s0 ^ ( s1 >> 17 ) ^ ( s0 >> 26 ) ) ) + s0;
 }
-double xorshift128plus_double()
-{
-	const uint64_t x = xor128();
-	const uint64_t x_doublefied = (uint64_t)(0x3FF) << 52 | x >> 12;
-
-	return *((double *) &x_doublefied) - 1.0;
-}
-//#define frand()		xorshift128plus_double()
 #define frand()		( xor128() / ((double)XOR128_MAX + 1.0f) )
-//#define frand()		( rand() / ((double)RAND_MAX + 1.0f) )
 int binomial(/*int n, */numerus p)
 {
 //	if (p<0 || p>1) return 0;
@@ -311,7 +302,7 @@ enum CATS_LP {
 };
 #define TYPE(i)		this->u[LPLEN*(i)+TYPE]
 #define SIZE(i)		this->u[LPLEN*(i)+SIZE]
-#define CH(i)		this->u[LPLEN*(i)+CH]
+//#define CH(i)		this->u[LPLEN*(i)+CH]
 #define RANDOM		this->u[STRIDE]
 
 #ifdef CATS_SSE
@@ -344,6 +335,7 @@ void muladd(numerus *vec1, numerus *vec2, numerus a, int n)
 }
 #endif
 
+#define CATS_NO_MINIBATCH
 // calculate forward propagation of input x
 // f(x) = h(scale*x+bias)
 void CatsEye_linear_layer_forward(numerus *x, numerus *w, numerus *z/*no use*/, numerus *o, int u[])
@@ -352,7 +344,6 @@ void CatsEye_linear_layer_forward(numerus *x, numerus *w, numerus *z/*no use*/, 
 	int out = u[SIZE];
 
 	CATS_ACT act = CatsEye_act[u[ACT]];
-//#pragma omp parallel for
 	for (int i=out; i>0; i--) {
 		*o++ = act(dotT(w++, x, in, out));
 	}
@@ -365,9 +356,13 @@ void CatsEye_linear_layer_backward(numerus *o, numerus *w, numerus *d, numerus *
 
 	// calculate the error
 	CATS_ACT dact = CatsEye_dact[u[ACT-LPLEN]];
-//#pragma omp parallel for
 	for (int i=0; i<=in; i++) {	// bias!!
+#ifdef CATS_NO_MINIBATCH
 		*d++ = dot(&w[i*out], delta, out) * dact(*o++);
+#else
+		*d += dot(&w[i*out], delta, out) * dact(*o++);
+		*d++ *= 0.5;
+#endif
 	}
 }
 void CatsEye_linear_layer_update(numerus eta, numerus *o, numerus *w, numerus *d, int u[])
@@ -467,35 +462,6 @@ void CatsEye_convolutional_layer_forward(numerus *s, numerus *w, numerus *_z/*no
 		o--;
 		*o = act(*o);
 	}
-#if 0
-	// c, h, w
-	numerus a[u[CHANNEL]];
-	for (int y=0; y<sy; y++) {
-		for (int x=0; x<sx; x++) {
-			memset(a, 0, sizeof(numerus)*u[CHANNEL]);
-			numerus *k = w;
-//			numerus *pp = s + y*u[XSIZE]+x;	// in
-			numerus *pp = s++; // in(x,y) u[XSIZE]!=sx
-			for (int cc=0; cc<ch; cc++) {	// in
-				for (int c=0; c<u[CHANNEL]; c++) {	// out
-					numerus *p = pp;
-					for (int wy=ks; wy>0; wy--) {
-						for (int wx=ks; wx>0; wx--) {
-							a[c] += (*p++) * (*k++);
-						}
-						p += step;
-					}
-				}
-				pp += size;	// next 'in' channel
-			}
-			for (int c=0; c<u[CHANNEL]; c++) {	// out
-				o[c*sx*sy] = act(a[c]);
-			}
-			o++;
-		}
-		s += m;
-	}
-#endif
 #endif
 }
 // calculate back propagation
@@ -511,8 +477,9 @@ void CatsEye_convolutional_layer_backward(numerus *prev_out, numerus *w, numerus
 	int step = u[XSIZE] - ks;
 
 	// calculate the error
+#ifdef CATS_NO_MINIBATCH
 	memset(prev_delta, 0, sizeof(numerus)*ch*ix*iy);
-
+#endif
 #ifdef CATS_FASTCONV
 	numerus *p = prev_delta;
 	step *= ch;
@@ -550,6 +517,9 @@ void CatsEye_convolutional_layer_backward(numerus *prev_out, numerus *w, numerus
 					d = delta;		// out
 					for (int y=sy; y>0; y--) {
 						muladd(p, d, *w, sx);	// *p++ += (*d++) * (*w);
+#ifndef CATS_NO_MINIBATCH
+						muladd(p, d, 0.5, sx);
+#endif
 						p += u[XSIZE];
 						d += sx;
 					}
@@ -563,24 +533,6 @@ void CatsEye_convolutional_layer_backward(numerus *prev_out, numerus *w, numerus
 		delta = d;
 		prev_delta = pp;
 	}
-#if 0
-	for (int cc=0; cc<ch; cc++) {	// in
-		numerus *d = &prev_delta[cc*ix*iy];
-		for (int c=0; c<u[CHANNEL]; c++) {	// out
-			for (int y=0; y<sy; y++) {
-				for (int x=0; x<sx; x++) {
-					numerus *k = &w[cc*u[CHANNEL]*ks*ks + c*ks*ks];
-//!!!					numerus *k = &w[c*(ks*ks+1)];
-					for (int wy=0; wy<ks; wy++) {
-						for (int wx=0; wx<ks; wx++) {
-							d[(y+wy)*ix+x+wx] += delta[c*sx*sy + y*sx+x] * (*k++);
-						}
-					}
-				}
-			}
-		}
-	}
-#endif
 #endif
 
 	CATS_ACT dact = CatsEye_dact[u[ACT-LPLEN]];
@@ -657,32 +609,6 @@ void CatsEye_convolutional_layer_update(numerus eta, numerus *prev_out, numerus 
 		curr_delta = d;
 		prev_out = pp;
 	}
-#if 0
-	// c, h, w
-	for (int cc=0; cc<ch; cc++) {	// in
-		for (int c=0; c<u[CHANNEL]; c++) {	// out
-			for (int wy=0; wy<ks; wy++) {
-				for (int wx=0; wx<ks; wx++) {
-					numerus *d = &curr_delta[c*sx*sy];
-					for (int y=0; y<sy; y++) {
-						numerus *p = &prev_out[size*cc + (y+wy)*u[XSIZE]+wx];
-						for (int x=0; x<sx; x++) {
-							*w -= eta * (*d++) * (*p++);
-						}
-					}
-					w++;
-				}
-			}
-			// bias
-/*			numerus *d = &curr_delta[c*sx*sy];
-			for (int y=0; y<sy; y++) {
-				for (int x=0; x<sx; x++) {
-					*w -= eta * (*d++);
-				}
-			}*/
-		}
-	}
-#endif
 #endif
 }
 
@@ -745,11 +671,19 @@ void CatsEye_maxpooling_layer_backward(numerus *o, numerus *w, numerus *d, numer
 {
 	CATS_ACT dact = CatsEye_dact[u[ACT-LPLEN]];
 	int *max = (int*)w;
+#ifdef CATS_NO_MINIBATCH
 	memset(d, 0, sizeof(numerus)*u[SIZE-LPLEN]);
 	for (int i=0; i<u[SIZE]; i++) {
 		d[*max] = (*delta++) * dact(o[*max]);
 		max++;
 	}
+#else
+	for (int i=0; i<u[SIZE]; i++) {
+		d[*max] += (*delta++) * dact(o[*max]);
+		d[*max] *= 0.5;
+		max++;
+	}
+#endif
 }
 void CatsEye_none_update(numerus eta, numerus *s, numerus *w, numerus *d, int u[])
 {
@@ -1084,6 +1018,10 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 			for (int i=this->layers-2; i>0; i--) {
 				CatsEye_layer_backward[TYPE(i+1)](this->o[i], this->w[i], this->d[i-1], this->d[i], &this->u[LPLEN*(i+1)]);
 			}
+#ifndef CATS_NO_MINIBATCH
+		}
+		{
+#endif
 			// update the weights of hidden layer
 			// w[0][in] -= eta * o[0][in] * d[0][in * hidden]
 			for (int i=this->layers-2; i>0; i--) {
