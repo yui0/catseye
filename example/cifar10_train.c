@@ -33,90 +33,47 @@ int main()
 	};
 #endif
 #if 0
-	int u[] = {	//
-		0, 0, 3, size, 0, 0, 0, 100,			// input 32x32x3, mini batch size is 100 by random
-//		0, 0, 1, 32*32, 0, 0, 0, 100,			// input 32x32x3, mini batch size is 100 by random
+	// Network in Network
+/*	int u[] = {
+		0, 0, 3, size, 0, 0, 0, 200,				// input 32x32x3, mini batch size is 200 by random
 
-//		CATS_CONV, CATS_ACT_ELU, 32, 0, 0, 0, 5, 1,		// CONV1 32ch k5, only 96.6%
-//		CATS_CONV, CATS_ACT_ELU, 64, 0, 0, 0, 3, 1,		// 98.2%
-
-//		CATS_CONV, CATS_ACT_LEAKY_RELU, 16, 0, 0, 0, 3, 1,	// CONV1 32ch k3, only 94.7%
-//		CATS_CONV, CATS_ACT_LEAKY_RELU, 32, 0, 0, 0, 3, 1,	// CONV2 32ch k3 99.7%
-
-//		CATS_CONV, CATS_ACT_LEAKY_RELU, 32, 0, 0, 0, 5, 1,	// CONV1 32ch k5, only 97.3%
-		//CATS_MAXPOOL, 0, 32, 0, 0, 0, 2, 2,
-//		CATS_CONV, CATS_ACT_LEAKY_RELU, 64, 0, 0, 0, 3, 1,	// CONV2 32ch k3, only 99.1%
-		//CATS_MAXPOOL, 0, 64, 0, 0, 0, 2, 2,			// 96.1%
-//		CATS_CONV, CATS_ACT_LEAKY_RELU, 128, 0, 0, 0, 3, 1,	// CONV1 32ch k3
-//		CATS_MAXPOOL, 0, 128, 0, 0, 0, 2, 2,
-
-//		CATS_LINEAR, CATS_ACT_SIGMOID, 1, 256, 0, 0, 0, 0,
-		CATS_LINEAR, CATS_ACT_SIGMOID, 1, label, 0, 0, 0, 0,
-	};
-#else
-	// Network in Network 100%/1000[sample] (repeat must be 1000), 72.0% (100 repeat)
-	// 87.45%/2000[sample], 65.89%/3000[sample]
-	/*int u[] = {
-		0, 0, 3, size, 0, 0, 0, 200,				// input 32x32x3, mini batch size is 100 by random
-
-		CATS_CONV, CATS_ACT_LEAKY_RELU, 16, 0, 0, 0, 3, 1,	// CONV1 16ch k3
-		CATS_CONV, CATS_ACT_RELU, 1, 0, 0, 0, 1, 1,		// CCCP1
-		CATS_CONV, CATS_ACT_LEAKY_RELU, 32, 0, 0, 0, 3, 1,	// CONV2 32ch k3
-		CATS_CONV, CATS_ACT_RELU, 1, 0, 0, 0, 1, 1,		// CCCP2
+		CATS_CONV, CATS_ACT_LEAKY_RELU, 48, 0, 0, 0, 3, 1,	// CONV1
+		CATS_CONV, CATS_ACT_RELU, 10, 0, 0, 0, 1, 1,		// CCCP1
+		CATS_CONV, CATS_ACT_LEAKY_RELU, 64, 0, 0, 0, 3, 1,	// CONV2
+		CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP2 92.3%(1000)
 
 		CATS_LINEAR, CATS_ACT_SIGMOID, 1, label, 0, 0, 0, 0,
 	};*/
-	// Network in Network 99%/3000[sample]/1000[repeat], 97.15%/4000, 92.5%/5000
+/*	int u[] = {
+		0, 0, 3, size, 0, 0, 0, 200,				// input 32x32x3, mini batch size is 200 by random
+
+		CATS_CONV, CATS_ACT_LEAKY_RELU, 64, 0, 0, 0, 3, 1,	// CONV1 93.8%(1000)
+		CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP2
+		CATS_CONV, CATS_ACT_LEAKY_RELU, 96, 0, 0, 0, 3, 1,	// CONV3
+		CATS_MAXPOOL, 0, 0, 0, 0, 0, 2, 2,			// POOL4 96.5%(1000)
+
+		CATS_LINEAR, CATS_ACT_SIGMOID, 1, label, 0, 0, 0, 0,
+	};*/
 	int u[] = {
-		0, 0, 3, size, 0, 0, 0, 100,				// input 32x32x3, mini batch size is 100 by random
-
-		/*CATS_CONV, CATS_ACT_LEAKY_RELU, 16, 0, 0, 0, 3, 1,	// CONV1 16ch k3
-		CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP1
-		CATS_CONV, CATS_ACT_LEAKY_RELU, 32, 0, 0, 0, 3, 1,	// CONV2 32ch k3
-		CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP2*/
-
-		// 97.17%/5000
-//		CATS_CONV, CATS_ACT_LEAKY_RELU, 32, 0, 0, 0, 3, 1,	// CONV1 32ch k3, only 96.98%
-//		CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP1
-		//CATS_CONV, CATS_ACT_LEAKY_RELU, 64, 0, 0, 0, 3, 1,	// CONV2 64ch k3
-		//CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP2
-
-		// 97.85%/5000
-//		CATS_CONV, CATS_ACT_LEAKY_RELU, 48, 0, 0, 0, 3, 1,	// CONV1 48ch k3, only 98.17%
-//		CATS_CONV, CATS_ACT_RELU, 10, 0, 0, 0, 1, 1,		// CCCP1
-//		CATS_CONV, CATS_ACT_LEAKY_RELU, 64, 0, 0, 0, 3, 1,	// CONV2 64ch k3
-//		CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP2
-
-		//CATS_CONV, CATS_ACT_LEAKY_RELU, 128, 0, 0, 0, 3, 1,	// CONV1 64ch k3, only 93.15%/10000
-//		CATS_CONV, CATS_ACT_LEAKY_RELU, 64, 0, 0, 0, 3, 1,	// CONV1 64ch k3, only 99.9%/5000, 98.3%/10000
-//		CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP1 80.8%
-//		CATS_CONV, CATS_ACT_LEAKY_RELU, 96, 0, 0, 0, 3, 1,	// CONV2 48.5%/10000
-//		CATS_MAXPOOL, 0, 96, 0, 0, 0, 2, 2,			// POOL2 52.8%/10000(100), 94.8%, 97.8%(1500)
-
-//		CATS_CONV, CATS_ACT_LEAKY_RELU, 64, 0, 0, 0, 3, 1,	// CONV1 52.2%, 93.5%(1000)
-		//CATS_MAXPOOL, 0, 0, 0, 0, 0, 2, 2,			// POOL1 48.7%
-//		CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP1 46.5%
-//		CATS_CONV, CATS_ACT_LEAKY_RELU, 96, 0, 0, 0, 3, 1,	// CONV2 51.8%
-//		CATS_MAXPOOL, 0, 0, 0, 0, 0, 2, 2,			// POOL2 53.6%, 95.5%(1500)
-		//CATS_CONV, CATS_ACT_RELU, 8, 0, 0, 0, 1, 1,		// CCCP1 43.6%
-//		CATS_CONV, CATS_ACT_RELU, 10, 0, 0, 0, 1, 1,		// CCCP1
-//		CATS_CONV, CATS_ACT_LEAKY_RELU, 128, 0, 0, 0, 3, 1,	// CONV3 45.1%
-//		CATS_MAXPOOL, 0, 96, 0, 0, 0, 2, 2,			// POOL2
-		//CATS_CONV, CATS_ACT_RELU, 10, 0, 0, 0, 1, 1,		// CCCP2
-		//CATS_CONV, CATS_ACT_LEAKY_RELU, 128, 0, 0, 0, 3, 1,	// CONV3
-		//CATS_MAXPOOL, 0, 128, 0, 0, 0, 2, 2,			// POOL3 38.2%
+		0, 0, 3, size, 0, 0, 0, 100,				// input 32x32x3
 
 		// N4 https://papers.nips.cc/paper/5636-recursive-training-of-2d-3d-convolutional-networks-for-neuronal-boundary-prediction.pdf
-//		CATS_CONV, CATS_ACT_LEAKY_RELU, 48, 0, 0, 0, 4, 1,	// CONV1
-//		CATS_MAXPOOL, 0, 0, 0, 0, 0, 2, 2,			// POOL1
-//		CATS_CONV, CATS_ACT_LEAKY_RELU, 48, 0, 0, 0, 5, 1,	// CONV2
-//		CATS_MAXPOOL, 0, 0, 0, 0, 0, 2, 2,			// POOL2
-//		CATS_CONV, CATS_ACT_LEAKY_RELU, 48, 0, 0, 0, 4, 1,	// CONV3
+		CATS_CONV, CATS_ACT_LEAKY_RELU, 48, 0, 0, 0, 4, 1,	// CONV1
+		CATS_MAXPOOL, 0, 0, 0, 0, 0, 2, 2,			// POOL1
+		CATS_CONV, CATS_ACT_LEAKY_RELU, 48, 0, 0, 0, 5, 1,	// CONV2
+		CATS_MAXPOOL, 0, 0, 0, 0, 0, 2, 2,			// POOL2
+		CATS_CONV, CATS_ACT_LEAKY_RELU, 48, 0, 0, 0, 4, 1,	// CONV3 66.0%(1000)
 //		CATS_MAXPOOL, 0, 0, 0, 0, 0, 2, 2,			// POOL3
 //		CATS_CONV, CATS_ACT_LEAKY_RELU, 48, 0, 0, 0, 4, 1,	// CONV4
 //		CATS_MAXPOOL, 0, 0, 0, 0, 0, 2, 2,			// POOL4
 //		CATS_CONV, CATS_ACT_LEAKY_RELU, 20, 0, 0, 0, 3, 1,	// CONV5
 //		CATS_LINEAR, CATS_ACT_SIGMOID, 1, 200, 0, 0, 0, 0,
+
+		CATS_LINEAR, CATS_ACT_SIGMOID, 1, label, 0, 0, 0, 0,
+	};
+#else
+	int u[] = {
+		0, 0, 3, size, 0, 0, 0, 100,				// input 32x32x3, mini batch size is 100 by random
 
 		// http://ai-programming.hatenablog.jp/entry/2016/03/04/160243
 /*		CATS_CONV, CATS_ACT_LEAKY_RELU, 32, 0, 0, 0, 3, 1,	// CONV1
@@ -151,7 +108,7 @@ int main()
 
 	// 訓練
 	printf("Starting training using (stochastic) gradient descent\n");
-	CatsEye_train(&cat, x, t, sample, 100/*repeat*/, 0.01);
+	CatsEye_train(&cat, x, t, sample, 1000/*repeat*/, 0.01);
 	printf("Training complete\n");
 //	CatsEye_save(&cat, "cifar10.weights");
 	CatsEye_saveJson(&cat, "cifar10.json");

@@ -108,7 +108,7 @@ uint64_t seed[2];
 void xor128_init(unsigned int s)
 {
 	for (int i=1; i<=2; i++) {
-		seed[i] = s = 1812433253U * ( s ^ ( s >> 30 ) ) + i;
+		seed[i-1] = s = 1812433253U * ( s ^ ( s >> 30 ) ) + i;
 	}
 }
 uint64_t xor128()
@@ -306,12 +306,12 @@ enum CATS_LP {
 #define RANDOM		this->u[STRIDE]
 
 #ifdef CATS_SSE
-#include "catseye_fast.h"
+#include "catseye_simd.h"
 #else
 numerus dot(numerus *vec1, numerus *vec2, int n)
 {
 	numerus s = 0.0;
-//#pragma omp simd reduction(+:s)
+	#pragma omp simd reduction(+:s)
 	for (int i=n; i>0; i--) {
 		s += (*vec1++) * (*vec2++);
 	}
@@ -320,7 +320,7 @@ numerus dot(numerus *vec1, numerus *vec2, int n)
 numerus dotT(numerus *mat1, numerus *vec1, int r, int c)
 {
 	numerus s = 0.0;
-//#pragma omp simd reduction(+:s)
+	#pragma omp simd reduction(+:s)
 	for (int i=r; i>0; i--) {
 		s += *mat1 * (*vec1++);
 		mat1 += c;
@@ -329,13 +329,13 @@ numerus dotT(numerus *mat1, numerus *vec1, int r, int c)
 }
 void muladd(numerus *vec1, numerus *vec2, numerus a, int n)
 {
+	#pragma omp for simd
 	for (int i=0; i<n; i++) {
 		vec1[i] += a * vec2[i];
 	}
 }
 #endif
 
-#define CATS_NO_MINIBATCH
 // calculate forward propagation of input x
 // f(x) = h(scale*x+bias)
 void CatsEye_linear_layer_forward(numerus *x, numerus *w, numerus *z/*no use*/, numerus *o, int u[])
@@ -357,12 +357,7 @@ void CatsEye_linear_layer_backward(numerus *o, numerus *w, numerus *d, numerus *
 	// calculate the error
 	CATS_ACT dact = CatsEye_dact[u[ACT-LPLEN]];
 	for (int i=0; i<=in; i++) {	// bias!!
-#ifdef CATS_NO_MINIBATCH
 		*d++ = dot(&w[i*out], delta, out) * dact(*o++);
-#else
-		*d += dot(&w[i*out], delta, out) * dact(*o++);
-		*d++ *= 0.5;
-#endif
 	}
 }
 void CatsEye_linear_layer_update(numerus eta, numerus *o, numerus *w, numerus *d, int u[])
@@ -477,9 +472,8 @@ void CatsEye_convolutional_layer_backward(numerus *prev_out, numerus *w, numerus
 	int step = u[XSIZE] - ks;
 
 	// calculate the error
-#ifdef CATS_NO_MINIBATCH
 	memset(prev_delta, 0, sizeof(numerus)*ch*ix*iy);
-#endif
+
 #ifdef CATS_FASTCONV
 	numerus *p = prev_delta;
 	step *= ch;
@@ -517,9 +511,6 @@ void CatsEye_convolutional_layer_backward(numerus *prev_out, numerus *w, numerus
 					d = delta;		// out
 					for (int y=sy; y>0; y--) {
 						muladd(p, d, *w, sx);	// *p++ += (*d++) * (*w);
-#ifndef CATS_NO_MINIBATCH
-						muladd(p, d, 0.5, sx);
-#endif
 						p += u[XSIZE];
 						d += sx;
 					}
@@ -671,19 +662,11 @@ void CatsEye_maxpooling_layer_backward(numerus *o, numerus *w, numerus *d, numer
 {
 	CATS_ACT dact = CatsEye_dact[u[ACT-LPLEN]];
 	int *max = (int*)w;
-#ifdef CATS_NO_MINIBATCH
 	memset(d, 0, sizeof(numerus)*u[SIZE-LPLEN]);
 	for (int i=0; i<u[SIZE]; i++) {
 		d[*max] = (*delta++) * dact(o[*max]);
 		max++;
 	}
-#else
-	for (int i=0; i<u[SIZE]; i++) {
-		d[*max] += (*delta++) * dact(o[*max]);
-		d[*max] *= 0.5;
-		max++;
-	}
-#endif
 }
 void CatsEye_none_update(numerus eta, numerus *s, numerus *w, numerus *d, int u[])
 {
@@ -898,6 +881,7 @@ void CatsEye_forward(CatsEye *this, numerus *x)
 	}
 }
 
+#define CATS_NO_MINIBATCH
 // calculate the error of output layer
 void CatsEye_loss_0_1(CatsEye *this, int c, void *t, int n)
 {
@@ -908,7 +892,13 @@ void CatsEye_loss_0_1(CatsEye *this, int c, void *t, int n)
 	int a = ((int*)t)[n];
 	for (int i=0; i<size; i++) {
 		// 0-1 loss function
+#ifdef CATS_NO_MINIBATCH
 		d[i] = a==i ? o[i]-1 : o[i];	// 1-of-K
+#else
+		numerus e = a==i ? o[i]-1 : o[i];	// 1-of-K
+		e += d[i];
+		d[i] = e * 0.5;
+#endif
 	}
 	// Ref.
 	// http://d.hatena.ne.jp/echizen_tm/20110606/1307378609
@@ -1011,17 +1001,16 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 
 			// calculate the error of output layer
 			CatsEye_loss[loss](this, a, t, sample);
-
+#ifndef CATS_NO_MINIBATCH
+		}
+		{
+#endif
 			// calculate the error of hidden layer
 			// t[hidden] += w[1][hidden * out] * d[1][out]
 			// d[hidden] = t[hidden] * dact(o[hidden])
 			for (int i=this->layers-2; i>0; i--) {
 				CatsEye_layer_backward[TYPE(i+1)](this->o[i], this->w[i], this->d[i-1], this->d[i], &this->u[LPLEN*(i+1)]);
 			}
-#ifndef CATS_NO_MINIBATCH
-		}
-		{
-#endif
 			// update the weights of hidden layer
 			// w[0][in] -= eta * o[0][in] * d[0][in * hidden]
 			for (int i=this->layers-2; i>0; i--) {
