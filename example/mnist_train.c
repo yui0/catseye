@@ -12,8 +12,6 @@ int main()
 {
 	int size = 784;	// 入力層ユニット(28x28)
 	int hidden = 200;	// 隠れ層ユニット
-	//int hidden = 100;	// 隠れ層ユニット
-	//int hidden = 64;	// 隠れ層ユニット
 	int label = 10;	// 出力層ユニット(0-9)
 	int sample = 60000;
 
@@ -42,11 +40,11 @@ int main()
 
 	// 多層パーセプトロンの訓練
 	printf("Starting training using (stochastic) gradient descent\n");
-	CatsEye_train(&cat, x, t, sample, 100/*repeat*/, 0.01);
+	CatsEye_train(&cat, x, t, sample, 100/*repeat*/, 0.01);	// 93.0%(100), 97.1%(1000)
 	printf("Training complete\n");
-	CatsEye_save(&cat, "mnist.weights");
+//	CatsEye_save(&cat, "mnist.weights");
 	CatsEye_saveJson(&cat, "mnist.json");
-	CatsEye_saveBin(&cat, "mnist.bin");
+//	CatsEye_saveBin(&cat, "mnist.bin");
 
 	// 結果の表示
 	int r = 0;

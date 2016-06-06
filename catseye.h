@@ -136,16 +136,16 @@ typedef struct {
 	int layers, *u;
 
 	// output layers [o = f(z)]
-	numerus **z, **o;
+	numerus **z, **o, *data_o;
 	// error value
-	numerus **d;
+	numerus **d, *data_d;
 	// weights
-	numerus **w;
+	numerus **w, *data_w;
 	int *wsize;
 
 	// gradient value
-	numerus *e2, *e3, *m2, *v2, *m3, *v3;
-	numerus *dl1, *dl2;
+//	numerus *e2, *e3, *m2, *v2, *m3, *v3;
+//	numerus *dl1, *dl2;
 
 	// deprecated!
 	int in;
@@ -306,7 +306,7 @@ enum CATS_LP {
 #define RANDOM		this->u[STRIDE]
 
 #ifdef CATS_SSE
-#include "catseye_simd.h"
+#include "catseye_simd.h"	// deprecated!
 #else
 numerus dot(numerus *vec1, numerus *vec2, int n)
 {
@@ -330,8 +330,16 @@ numerus dotT(numerus *mat1, numerus *vec1, int r, int c)
 void muladd(numerus *vec1, numerus *vec2, numerus a, int n)
 {
 	#pragma omp for simd
-	for (int i=0; i<n; i++) {
-		vec1[i] += a * vec2[i];
+	for (int i=n; i>0; i--) {
+		*vec1++ += a * (*vec2++);
+	}
+}
+void muladdx(numerus *vec1, numerus *vec2, numerus a, int n)
+{
+	#pragma omp for simd
+	for (int i=n; i>0; i--) {
+		*vec1 += a * (*vec2++) + (*vec1) * 1e-8;
+		vec1++;
 	}
 }
 #endif
@@ -346,6 +354,8 @@ void CatsEye_linear_layer_forward(numerus *x, numerus *w, numerus *z/*no use*/, 
 	CATS_ACT act = CatsEye_act[u[ACT]];
 	for (int i=out; i>0; i--) {
 		*o++ = act(dotT(w++, x, in, out));
+//		*o++ = act(dot(w, x, in));
+//		w += in;
 	}
 }
 // calculate back propagation
@@ -358,6 +368,7 @@ void CatsEye_linear_layer_backward(numerus *o, numerus *w, numerus *d, numerus *
 	CATS_ACT dact = CatsEye_dact[u[ACT-LPLEN]];
 	for (int i=0; i<=in; i++) {	// bias!!
 		*d++ = dot(&w[i*out], delta, out) * dact(*o++);
+//		*d++ = dotT(w++, delta, out, in+1) * dact(*o++);
 	}
 }
 void CatsEye_linear_layer_update(numerus eta, numerus *o, numerus *w, numerus *d, int u[])
@@ -383,8 +394,9 @@ void CatsEye_SVM_layer_update(numerus eta, numerus *o, numerus *w, numerus *d, i
 		// SVM (http://d.hatena.ne.jp/echizen_tm/20110627/1309188711)
 		// ∂loss(w, x, t) / ∂w = ∂(λ - twx + α * w^2 / 2) / ∂w = - tx + αw
 		numerus a = -eta * (*o++);
-		muladd(w, d, a, out);	// *w -= a* (*dd++) + (*w)*1e-8; w++;
+		muladdx(w, d, a, out);	// *w -= a* (*dd++) + (*w)*1e-8; w++;
 		w += out;
+//		muladd(w++, d, a, out);	// *w -= a* (*dd++) + (*w)*1e-8; w++;
 	}
 }
 
@@ -747,65 +759,85 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 
 	// allocate inputs
 	this->z = malloc(sizeof(numerus*)*(this->layers-1));
-	for (int i=0; i<this->layers-1; i++) {
+/*	for (int i=0; i<this->layers-1; i++) {
 		this->z[i] = malloc(sizeof(numerus)*(SIZE(i+1)+1));
-	}
+	}*/
 
 	// allocate outputs
 	this->o = malloc(sizeof(numerus*)*(this->layers));
+	int size = 0;
 	for (int i=0; i<this->layers; i++) {
-		this->o[i] = malloc(sizeof(numerus)*(SIZE(i)+1));
+		this->o[i] = (numerus*)size;
+		size += SIZE(i)+1;
 	}
+	this->data_o = malloc(sizeof(numerus)*size);
+	for (int i=0; i<this->layers; i++) this->o[i] = this->data_o + (int)this->o[i];
+/*	for (int i=0; i<this->layers; i++) {
+		this->o[i] = malloc(sizeof(numerus)*(SIZE(i)+1));
+	}*/
 	this->o3 = this->o[2];	// deprecated!
 
 	// allocate errors
 	this->d = malloc(sizeof(numerus*)*(this->layers-1));
+	size = 0;
 	for (int i=0; i<this->layers-1; i++) {
-		this->d[i] = malloc(sizeof(numerus)*(SIZE(i+1)+1));
+		this->d[i] = (numerus*)size;
+		size += SIZE(i+1)+1;
 	}
+	this->data_d = malloc(sizeof(numerus)*size);
+	for (int i=0; i<this->layers-1; i++) this->d[i] = this->data_d + (int)this->d[i];
+	/*for (int i=0; i<this->layers-1; i++) {
+		this->d[i] = malloc(sizeof(numerus)*(SIZE(i+1)+1));
+	}*/
 
 	// allocate gradient
-	this->e2 = calloc(1, sizeof(numerus)*(SIZE(1)+1));
+/*	this->e2 = calloc(1, sizeof(numerus)*(SIZE(1)+1));
 	this->e3 = calloc(1, sizeof(numerus)*SIZE(2));
 	this->m2 = calloc(1, sizeof(numerus)*(SIZE(1)+1));
 	this->m3 = calloc(1, sizeof(numerus)*SIZE(2));
 	this->v2 = calloc(1, sizeof(numerus)*(SIZE(1)+1));
 	this->v3 = calloc(1, sizeof(numerus)*SIZE(2));
 	this->dl1 = malloc(sizeof(numerus)*(SIZE(0)+1)*SIZE(1));
-	this->dl2 = malloc(sizeof(numerus)*(SIZE(1)+1)*SIZE(2));
+	this->dl2 = malloc(sizeof(numerus)*(SIZE(1)+1)*SIZE(2));*/
 
 	// allocate weights
 	this->w = malloc(sizeof(numerus*)*(this->layers-1));
 	this->wsize = malloc(sizeof(int)*(this->layers-1));
+	int n[this->layers-1], m[this->layers-1];
+	size = 0;
 	for (int i=0; i<this->layers-1; i++) {
-		int n, m;
 		int *u = &this->u[LPLEN*(i+1)]; 
 		switch (u[TYPE]) {
 		case CATS_CONV:
-			n = u[KSIZE] * u[KSIZE];		// kernel size
-			m = u[CHANNEL] * u[CHANNEL-LPLEN];	// channel
-			printf("L%02d: CONV%d-%d (%d[ksize]x%d[ch])\n", i+1, u[KSIZE], u[CHANNEL], n, m);
+			n[i] = u[KSIZE] * u[KSIZE];		// kernel size
+			m[i] = u[CHANNEL] * u[CHANNEL-LPLEN];	// channel
+			printf("L%02d: CONV%d-%d (%d[ksize]x%d[ch])\n", i+1, u[KSIZE], u[CHANNEL], n[i], m[i]);
 			break;
 		case CATS_MAXPOOL:
-			n = SIZE(i);
-			m = 1;
-			printf("L%02d: POOL%d [%d]\n", i+1, u[KSIZE], n);
+			n[i] = SIZE(i);
+			m[i] = 1;
+			printf("L%02d: POOL%d [%d]\n", i+1, u[KSIZE], n[i]);
 			break;
 		default:
-			n = SIZE(i);
-			m = SIZE(i+1);
-			printf("L%02d: LINEAR %d %d\n", i+1, n, m);
+			n[i] = SIZE(i);
+			m[i] = SIZE(i+1);
+			printf("L%02d: LINEAR %d %d\n", i+1, n[i], m[i]);
 		}
-		this->wsize[i] = (n+1)*m;
-
-		this->w[i] = malloc(sizeof(numerus)*(n+1)*m);
-		if (!this->w[i]) printf("memory error at layer %d[%d], size %d!!\n", i+1, u[TYPE], this->wsize[i]);
+		this->wsize[i] = (n[i]+1)*m[i];
+		this->w[i] = (numerus*)size;
+		size += this->wsize[i];
+	}
+	this->data_w = malloc(sizeof(numerus)*size);
+	for (int i=0; i<this->layers-1; i++) {
+		this->w[i] = this->data_w + (int)this->w[i];
+//		this->w[i] = malloc(sizeof(numerus)*(n[i]+1)*m[i]);
+//		if (!this->w[i]) printf("memory error at layer %d[%d], size %d!!\n", i+1, u[TYPE], this->wsize[i]);
 
 		// initialize weights (http://aidiary.hatenablog.com/entry/20150618/1434628272)
 		// range depends on the research of Y. Bengio et al. (2010)
 		xor128_init(time(0));
-		numerus range = sqrt(6)/sqrt(n+m+2);
-		for (int j=0; j<(n+1)*m; j++) {
+		numerus range = sqrt(6)/sqrt(n[i]+m[i]+2);
+		for (int j=0; j<this->wsize[i]; j++) {
 			this->w[i][j] = 2.0*range*frand()-range;
 		}
 	}
@@ -825,20 +857,23 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 void CatsEye__destruct(CatsEye *this)
 {
 	// delete arrays
-	for (int i=0; i<this->layers-1; i++) free(this->z[i]);
+//	for (int i=0; i<this->layers-1; i++) free(this->z[i]);
 	free(this->z);
-	for (int i=0; i<this->layers; i++) free(this->o[i]);
+//	for (int i=0; i<this->layers; i++) free(this->o[i]);
+	free(this->data_o);
 	free(this->o);
-	for (int i=0; i<this->layers-1; i++) free(this->d[i]);
+//	for (int i=0; i<this->layers-1; i++) free(this->d[i]);
+	free(this->data_d);
 	free(this->d);
-	free(this->e2);
+/*	free(this->e2);
 	free(this->e3);
 	free(this->m2);
 	free(this->m3);
 	free(this->v2);
-	free(this->v3);
+	free(this->v3);*/
 	free(this->wsize);
-	for (int i=0; i<this->layers-1; i++) free(this->w[i]);
+//	for (int i=0; i<this->layers-1; i++) free(this->w[i]);
+	free(this->data_w);
 	free(this->w);
 	free(this->u);
 }
