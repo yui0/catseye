@@ -4,8 +4,9 @@
 //		©2016 Yuichiro Nakada
 //---------------------------------------------------------
 
-// gcc mnist_train.c -o mnist_train -lm -Ofast -fopenmp -lgomp
-// clang mnist_train.c -o mnist_train -lm -Ofast
+// gcc mnist_train.c -o mnist_train -lm -Ofast -march=native -funroll-loops -fopenmp -lgomp
+// clang mnist_train.c -o mnist_train -lm -Ofast -march=native -funroll-loops `pkg-config --libs --cflags OpenCL`
+#define CATS_USE_FLOAT
 #include "../catseye.h"
 
 int main()
@@ -18,7 +19,7 @@ int main()
 	CatsEye cat;
 	CatsEye__construct(&cat, size, hidden, label, 0);
 
-	double *x = malloc(sizeof(double)*size*sample);	// 訓練データ
+	numerus *x = malloc(sizeof(numerus)*size*sample);	// 訓練データ
 	int t[sample];			// ラベルデータ
 	unsigned char *data = malloc(sample*size);
 
