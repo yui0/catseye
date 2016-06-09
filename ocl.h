@@ -24,6 +24,12 @@ typedef struct {
 	int write, read;
 } args_t;
 
+typedef struct {
+	char *f;
+	cl_kernel k;
+	args_t *a;
+} ocl_t;
+
 int ocl_device;
 cl_device_id device_id[MAX_DEVICES];
 cl_context context;
@@ -51,7 +57,7 @@ void oclSetup(int platform, int device)
 	command_queue = clCreateCommandQueue(context, device_id[device], 0, &ret);
 }
 
-cl_kernel oclKernel(char *k, char *opt, char *kernel_code, args_t *args)
+void oclKernel(ocl_t *kernel, int n, char *opt, char *kernel_code)
 {
 	cl_int ret;
 	const char* src[1] = { kernel_code };
@@ -66,15 +72,18 @@ cl_kernel oclKernel(char *k, char *opt, char *kernel_code, args_t *args)
 		ret = clGetProgramBuildInfo(program, device_id[ocl_device], CL_PROGRAM_BUILD_LOG, len, buffer, NULL);
 		printf("\n%s\n", buffer);
 	}
-	cl_kernel kernel = clCreateKernel(program, k, &ret);
-	clReleaseProgram(program);
+	for (int i=0; i<n; i++) {
+		kernel->k = clCreateKernel(program, kernel->f, &ret);
 
-	while (args->size) {
-		if (args->type>0) *(cl_mem*)(args->p) = clCreateBuffer(context, args->type, args->size, NULL, &ret);
-		args++;
+		args_t *args = kernel->a;
+		while (args->size) {
+			if (args->type>0) *(cl_mem*)(args->p) = clCreateBuffer(context, args->type, args->size, NULL, &ret);
+			args++;
+		}
+
+		kernel++;
 	}
-
-	return kernel;
+	clReleaseProgram(program);
 }
 
 void oclKernelArgsWrite(args_t *args)
@@ -97,25 +106,33 @@ void oclKernelArgsRead(args_t *args)
 	}
 }
 
-void oclRun(cl_kernel kernel, args_t *args, int dim, size_t *global_work_size, size_t *local_work_size)
+void oclRun(ocl_t *kernel, int dim, size_t *global_work_size, size_t *local_work_size)
 {
 	int n = 0;
+	args_t *args = kernel->a;
 	while (args->size) {
-		if (args->type>0) clSetKernelArg(kernel, n++, sizeof(cl_mem), (void*)args->p);
-		else clSetKernelArg(kernel, n++, sizeof(int), (void*)args->p);
+		if (args->type>0) clSetKernelArg(kernel->k, n++, sizeof(cl_mem), (void*)args->p);
+		else clSetKernelArg(kernel->k, n++, sizeof(int), (void*)args->p);
 		args++;
 	}
 
-	clEnqueueNDRangeKernel(command_queue, kernel, dim, NULL, global_work_size, local_work_size, 0, NULL, NULL);
+	clEnqueueNDRangeKernel(command_queue, kernel->k, dim, NULL, global_work_size, local_work_size, 0, NULL, NULL);
 }
 
-void oclReleaseKernel(cl_kernel kernel, args_t *args)
+void oclReleaseKernel(ocl_t *kernel, int n)
 {
-	while (args->size) {
-		if (args->type>0) clReleaseMemObject(*(cl_mem*)(args->p));
-		args++;
+	for (int i=0; i<n; i++) {
+		args_t *args = kernel->a;
+		while (args->size) {
+			if (args->type>0 && args->p) {
+				clReleaseMemObject(*(cl_mem*)(args->p));
+				args->p = 0;
+			}
+			args++;
+		}
+		clReleaseKernel(kernel->k);
+		kernel++;
 	}
-	clReleaseKernel(kernel);
 }
 
 void oclFinish()

@@ -770,25 +770,26 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 	}*/
 
 	// allocate outputs
+	int size[this->layers];
 	this->o = malloc(sizeof(numerus*)*(this->layers));
 	this->osize = 0;
 	for (int i=0; i<this->layers; i++) {
-		this->o[i] = (numerus*)this->osize;
+		size[i] = this->osize;
 		this->osize += SIZE(i)+1;
 	}
 	this->odata = malloc(sizeof(numerus)*this->osize);
-	for (int i=0; i<this->layers; i++) this->o[i] = this->odata + (int)this->o[i];
+	for (int i=0; i<this->layers; i++) this->o[i] = this->odata + size[i];
 	this->o3 = this->o[2];	// deprecated!
 
 	// allocate errors
 	this->d = malloc(sizeof(numerus*)*(this->layers-1));
 	this->dsize = 0;
 	for (int i=0; i<this->layers-1; i++) {
-		this->d[i] = (numerus*)this->dsize;
+		size[i] = this->dsize;
 		this->dsize += SIZE(i+1)+1;
 	}
 	this->ddata = malloc(sizeof(numerus)*this->dsize);
-	for (int i=0; i<this->layers-1; i++) this->d[i] = this->ddata + (int)this->d[i];
+	for (int i=0; i<this->layers-1; i++) this->d[i] = this->ddata + size[i];
 
 	// allocate gradient
 /*	this->e2 = calloc(1, sizeof(numerus)*(SIZE(1)+1));
@@ -824,12 +825,12 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 			printf("L%02d: LINEAR %d %d\n", i+1, n[i], m[i]);
 		}
 		this->ws[i] = (n[i]+1)*m[i];
-		this->w[i] = (numerus*)this->wsize;
+		size[i] = this->wsize;
 		this->wsize += this->ws[i];
 	}
 	this->wdata = malloc(sizeof(numerus)*this->wsize);
 	for (int i=0; i<this->layers-1; i++) {
-		this->w[i] = this->wdata + (int)this->w[i];
+		this->w[i] = this->wdata + size[i];
 //		this->w[i] = malloc(sizeof(numerus)*(n[i]+1)*m[i]);
 //		if (!this->w[i]) printf("memory error at layer %d[%d], size %d!!\n", i+1, u[TYPE], this->ws[i]);
 
@@ -914,6 +915,16 @@ void CatsEye_forward(CatsEye *this, numerus *x)
 	// o[1][hidden] = act(z[hidden])
 #ifdef CATS_OPENCL
 	CatsEye_clForward(this, this->o[0]);
+/*	for (int i=0; i<200; i++) printf("%f ", this->o[1][i]);
+	printf("\n%d %f\n",SIZE(0),this->o[0][300]);
+	CatsEye_layer_forward[TYPE(1)](this->o[0], this->w[0], this->z[0], this->o[1], &this->u[LPLEN*1]);
+	for (int i=0; i<200; i++) printf("%f ", this->o[1][i]);
+	printf("\n");
+	exit(0);*/
+	for (int i=1; i<this->layers-1; i++) {
+		this->o[i][SIZE(i)] = 1;	// for bias
+		CatsEye_layer_forward[TYPE(i+1)](this->o[i], this->w[i], this->z[i], this->o[i+1], &this->u[LPLEN*(i+1)]);
+	}
 #else
 	CatsEye_layer_forward[TYPE(1)](this->o[0], this->w[0], this->z[0], this->o[1], &this->u[LPLEN*1]);
 	for (int i=1; i<this->layers-1; i++) {
