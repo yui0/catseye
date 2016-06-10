@@ -45,8 +45,17 @@ void oclSetup(int platform, int device)
 
 	ocl_device = device;
 
+	int type = CL_DEVICE_TYPE_ALL;
+	if (getenv("FORCE_GPU")) {
+		type = CL_DEVICE_TYPE_GPU;
+	} else if (getenv("FORCE_CPU")) {
+		type = CL_DEVICE_TYPE_CPU;
+	} else if (getenv("FORCE_ACCELERATOR")) {
+		type = CL_DEVICE_TYPE_ACCELERATOR;
+	}
+
 	ret = clGetPlatformIDs(MAX_PLATFORMS, platform_id, &num_platforms);
-	ret = clGetDeviceIDs(platform_id[platform], CL_DEVICE_TYPE_ALL, MAX_DEVICES, device_id, &num_devices);
+	ret = clGetDeviceIDs(platform_id[platform], type, MAX_DEVICES, device_id, &num_devices);
 
 	// device name (option)
 	size_t size;

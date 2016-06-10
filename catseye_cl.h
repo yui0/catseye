@@ -19,9 +19,13 @@ args_t args[] = {
 	{ 0, 0, 0, 0, 0, 0 },
 };
 ocl_t kernel[] = {
-	{ "linear_forward_identity", 0, {0,0,0,}, args },
-	{ "linear_forward_softmax", 0, {0,0,0,}, args },
-	{ "linear_forward_sigmoid", 0, {0,0,0,}, args },
+	{ "linear_forward_identity",	0, {0,0,0,}, args },
+	{ "linear_forward_softmax",	0, {0,0,0,}, args },
+	{ "linear_forward_sigmoid",	0, {0,0,0,}, args },
+	{ "linear_forward_normal_tanh",	0, {0,0,0,}, args },
+	{ "linear_forward_scaled_tanh",	0, {0,0,0,}, args },
+	{ "linear_forward_relu",	0, {0,0,0,}, args },
+	{ "linear_forward_LeakyReLU",	0, {0,0,0,}, args },
 };
 int ksz = sizeof(kernel)/sizeof(kernel[0]);
 

@@ -3,9 +3,10 @@ OCLSTRINGIFY(
 #define identity(a)	(a)
 #define softmax(a)	(a)	// FIXME
 #define sigmoid(a)	(1.0f / (1 + exp(-a)))
-#define ntanh(a)	(tanh(a))
-#define scaledtanh(a)	(1.7159f * tanh(0.66667f * a))
+#define normal_tanh(a)	(tanh(a))
+#define scaled_tanh(a)	(1.7159f * tanh(0.66667f * a))
 #define relu(a)		(a > 0 ? a : 0)
+#define LeakyReLU(a)	(a > 0 ? a : a * 0.01)
 
 #define LINEAR_FORWARD(act) \
 __kernel void linear_forward_##act(__global float *y, __global float *a, uint8 pa)\
@@ -25,6 +26,10 @@ __kernel void linear_forward_##act(__global float *y, __global float *a, uint8 p
 LINEAR_FORWARD(identity);
 LINEAR_FORWARD(softmax);	// FIXME
 LINEAR_FORWARD(sigmoid);
+LINEAR_FORWARD(normal_tanh);
+LINEAR_FORWARD(scaled_tanh);
+LINEAR_FORWARD(relu);
+LINEAR_FORWARD(LeakyReLU);
 
 
 #define ROW_DIM 0
