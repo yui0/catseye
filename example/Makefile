@@ -7,6 +7,14 @@ CC = clang
 CFLAGS = -Ofast -march=native -funroll-loops
 LDFLAGS = -lm
 
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Linux)
+	CFLAGS += `pkg-config --libs --cflags OpenCL`
+endif
+ifeq ($(UNAME_S),Darwin)
+	CFLAGS += -framework opencl
+endif
+
 .PHONY: all
 all: depend $(PROGRAM)
 

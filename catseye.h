@@ -708,7 +708,7 @@ enum CATS_LAYER_TYPE {
 	CATS_MAXPOOL,
 };
 
-//#define CATS_OPENCL
+#define CATS_OPENCL
 #ifdef CATS_OPENCL
 #include "catseye_cl.h"
 #endif
@@ -914,7 +914,13 @@ void CatsEye_forward(CatsEye *this, numerus *x)
 	// z[hidden] += w[in * hidden] * o[0][in]
 	// o[1][hidden] = act(z[hidden])
 #ifdef CATS_OPENCL
-	CatsEye_clForward(this, this->o[0]);
+	CatsEye_clForward(this);
+/*	for (int i=0; i<200; i++) printf("%f ", this->o[1][i]);
+	printf("\n%d %f\n",SIZE(0),this->o[0][0]);
+	CatsEye_layer_forward[TYPE(1)](this->o[0], this->w[0], this->z[0], this->o[1], &this->u[LPLEN*(1)]);
+	for (int i=0; i<200; i++) printf("%f ", this->o[1][i]);
+	printf("\n");
+	exit(0);*/
 /*	for (int i=0; i<10; i++) printf("%f ", this->o[2][i]);
 	printf("\n%d %f\n",SIZE(0),this->o[1][0]);
 	CatsEye_layer_forward[TYPE(2)](this->o[1], this->w[1], this->z[1], this->o[2], &this->u[LPLEN*(2)]);

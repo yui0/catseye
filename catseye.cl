@@ -1,54 +1,31 @@
 OCLSTRINGIFY(
 
-#define SIGMOID
-//#define LINEAR
-#ifdef TANH
-    #define ACTIVATION_FUNCTION(output) (tanh(output))
-#elif defined SCALEDTANH
-    #define ACTIVATION_FUNCTION(output) (1.7159f * tanh(0.66667f * output))
-#elif defined SIGMOID
-    #define ACTIVATION_FUNCTION(output) (1.0f / (1 + exp(-output)))
-#elif defined RELU
-    #define ACTIVATION_FUNCTION(output) (output> 0 ? output : 0)
-#elif defined LINEAR
-    #define ACTIVATION_FUNCTION(output) (output)
-#endif
-#define act(output)	ACTIVATION_FUNCTION(output)
+#define identity(a)	(a)
+#define softmax(a)	(a)	// FIXME
+#define sigmoid(a)	(1.0f / (1 + exp(-a)))
+#define ntanh(a)	(tanh(a))
+#define scaledtanh(a)	(1.7159f * tanh(0.66667f * a))
+#define relu(a)		(a > 0 ? a : 0)
 
-//__kernel void gemv1(__global const float *a, __global const float *x, __global float *y, int m, int n)
-__kernel void gemv1_act(__global const float *x, __global const float *a, __global float *y, uint4 pa/*int aoff, int yoff, int n, int m*/)
-{
-	int gid = get_global_id(0); // row index
-	if (gid < pa[1]) {
-//		a += aoff;
-//		y += yoff;
-		a += pa[2];
-		y += pa[3];
-
-		float sum = 0;
-		for (int k=0; k<=pa[0]; k++) {
-			sum += a[gid + pa[1]*k] * x[k];
-		}
-		y[gid] = act(sum);
-	} else if (gid == pa[1]) y[gid] = 1;
+#define LINEAR_FORWARD(act) \
+__kernel void linear_forward_##act(__global float *y, __global float *a, uint8 pa)\
+{\
+	int gid = get_global_id(0);\
+	if (gid < pa[1]) {\
+		__global float *x = y + pa[2];\
+		a += pa[3];\
+		y += pa[4];\
+		float sum = 0;\
+		for (int k=0; k<=pa[0]; k++) {\
+			sum += a[gid + pa[1]*k] * x[k];\
+		}\
+		y[gid] = act(sum);\
+	} else if (gid == pa[1]) y[gid] = 1;\
 }
-__kernel void gemv1(__global const float *x, __global const float *a, __global float *y, uint4 pa/*int aoff, int yoff, int n, int m*/)
-{
-	int gid = get_global_id(0); // row index
-	if (gid < pa[1]) {
-x = y;
-		a += pa[2];
-		y += pa[3];
-//if (gid==0) printf("%f\n",x[0]);
-//if (gid==0) printf("%d %d %d %d\n",pa[0],pa[1],pa[2],pa[3]);
+LINEAR_FORWARD(identity);
+LINEAR_FORWARD(softmax);	// FIXME
+LINEAR_FORWARD(sigmoid);
 
-		float sum = 0;
-		for (int k=0; k<=pa[0]; k++) {
-			sum += a[gid + pa[1]*k] * x[k];
-		}
-		y[gid] = sum;
-	} else if (gid == pa[1]) y[gid] = 1;
-}
 
 #define ROW_DIM 0
 #define COL_DIM 1

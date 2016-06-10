@@ -107,7 +107,7 @@ void oclKernelArgsRead(args_t *args)
 	}
 }
 
-void oclRun(ocl_t *kernel/*, int dim, size_t *global_work_size, size_t *local_work_size*/)
+void oclRun(ocl_t *kernel)
 {
 	int n = 0;
 	args_t *args = kernel->a;
@@ -117,9 +117,8 @@ void oclRun(ocl_t *kernel/*, int dim, size_t *global_work_size, size_t *local_wo
 		args++;
 	}
 
-	//clEnqueueNDRangeKernel(command_queue, kernel->k, dim, NULL, global_work_size, local_work_size, 0, NULL, NULL);
-	int r = clEnqueueNDRangeKernel(command_queue, kernel->k, 1, NULL, kernel->global_size, 0, 0, NULL, NULL);
-	if (r<0) printf("Kernel error!! %d\n", r);
+/*	int r = */clEnqueueNDRangeKernel(command_queue, kernel->k, 1, NULL, kernel->global_size, 0, 0, NULL, NULL);
+//	if (r<0) printf("Kernel error!! %d\n", r);
 }
 
 void oclReleaseKernel(ocl_t *kernel, int n)
