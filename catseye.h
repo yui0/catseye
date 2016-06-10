@@ -915,16 +915,12 @@ void CatsEye_forward(CatsEye *this, numerus *x)
 	// o[1][hidden] = act(z[hidden])
 #ifdef CATS_OPENCL
 	CatsEye_clForward(this, this->o[0]);
-/*	for (int i=0; i<200; i++) printf("%f ", this->o[1][i]);
-	printf("\n%d %f\n",SIZE(0),this->o[0][300]);
-	CatsEye_layer_forward[TYPE(1)](this->o[0], this->w[0], this->z[0], this->o[1], &this->u[LPLEN*1]);
-	for (int i=0; i<200; i++) printf("%f ", this->o[1][i]);
+/*	for (int i=0; i<10; i++) printf("%f ", this->o[2][i]);
+	printf("\n%d %f\n",SIZE(0),this->o[1][0]);
+	CatsEye_layer_forward[TYPE(2)](this->o[1], this->w[1], this->z[1], this->o[2], &this->u[LPLEN*(2)]);
+	for (int i=0; i<10; i++) printf("%f ", this->o[2][i]);
 	printf("\n");
 	exit(0);*/
-	for (int i=1; i<this->layers-1; i++) {
-		this->o[i][SIZE(i)] = 1;	// for bias
-		CatsEye_layer_forward[TYPE(i+1)](this->o[i], this->w[i], this->z[i], this->o[i+1], &this->u[LPLEN*(i+1)]);
-	}
 #else
 	CatsEye_layer_forward[TYPE(1)](this->o[0], this->w[0], this->z[0], this->o[1], &this->u[LPLEN*1]);
 	for (int i=1; i<this->layers-1; i++) {

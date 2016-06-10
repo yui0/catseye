@@ -16,31 +16,38 @@ OCLSTRINGIFY(
 #define act(output)	ACTIVATION_FUNCTION(output)
 
 //__kernel void gemv1(__global const float *a, __global const float *x, __global float *y, int m, int n)
-__kernel void gemv1_act(__global const float *x, __global const float *a, __global float *y, int n, int m)
+__kernel void gemv1_act(__global const float *x, __global const float *a, __global float *y, uint4 pa/*int aoff, int yoff, int n, int m*/)
 {
-	int i = get_global_id(0); // row index
-	if (i < m) {
+	int gid = get_global_id(0); // row index
+	if (gid < pa[1]) {
+//		a += aoff;
+//		y += yoff;
+		a += pa[2];
+		y += pa[3];
 
-	float sum = 0;
-	for (int k=0; k<=n; k++) {
-		sum += a[i + m*k] * x[k];
-	}
-	y[i] = act(sum);
-
-	}
+		float sum = 0;
+		for (int k=0; k<=pa[0]; k++) {
+			sum += a[gid + pa[1]*k] * x[k];
+		}
+		y[gid] = act(sum);
+	} else if (gid == pa[1]) y[gid] = 1;
 }
-__kernel void gemv1(__global const float *x, __global const float *a, __global float *y, int n, int m)
+__kernel void gemv1(__global const float *x, __global const float *a, __global float *y, uint4 pa/*int aoff, int yoff, int n, int m*/)
 {
-	int i = get_global_id(0); // row index
-	if (i < m) {
+	int gid = get_global_id(0); // row index
+	if (gid < pa[1]) {
+x = y;
+		a += pa[2];
+		y += pa[3];
+//if (gid==0) printf("%f\n",x[0]);
+//if (gid==0) printf("%d %d %d %d\n",pa[0],pa[1],pa[2],pa[3]);
 
-	float sum = 0;
-	for (int k=0; k<=n; k++) {
-		sum += a[i + m*k] * x[k];
-	}
-	y[i] = sum;
-
-	}
+		float sum = 0;
+		for (int k=0; k<=pa[0]; k++) {
+			sum += a[gid + pa[1]*k] * x[k];
+		}
+		y[gid] = sum;
+	} else if (gid == pa[1]) y[gid] = 1;
 }
 
 #define ROW_DIM 0

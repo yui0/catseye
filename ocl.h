@@ -27,6 +27,7 @@ typedef struct {
 typedef struct {
 	char *f;
 	cl_kernel k;
+	size_t global_size[3];
 	args_t *a;
 } ocl_t;
 
@@ -106,17 +107,19 @@ void oclKernelArgsRead(args_t *args)
 	}
 }
 
-void oclRun(ocl_t *kernel, int dim, size_t *global_work_size, size_t *local_work_size)
+void oclRun(ocl_t *kernel/*, int dim, size_t *global_work_size, size_t *local_work_size*/)
 {
 	int n = 0;
 	args_t *args = kernel->a;
 	while (args->size) {
 		if (args->type>0) clSetKernelArg(kernel->k, n++, sizeof(cl_mem), (void*)args->p);
-		else clSetKernelArg(kernel->k, n++, sizeof(int), (void*)args->p);
+		else clSetKernelArg(kernel->k, n++, args->size, (void*)args->p);
 		args++;
 	}
 
-	clEnqueueNDRangeKernel(command_queue, kernel->k, dim, NULL, global_work_size, local_work_size, 0, NULL, NULL);
+	//clEnqueueNDRangeKernel(command_queue, kernel->k, dim, NULL, global_work_size, local_work_size, 0, NULL, NULL);
+	int r = clEnqueueNDRangeKernel(command_queue, kernel->k, 1, NULL, kernel->global_size, 0, 0, NULL, NULL);
+	if (r<0) printf("Kernel error!! %d\n", r);
 }
 
 void oclReleaseKernel(ocl_t *kernel, int n)

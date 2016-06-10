@@ -7,6 +7,7 @@ Neural network library written in C and Javascript
   - Just include catseye.h and write your model in c. There is nothing to install.
   - Small dependency & simple implementation
 - Fast: [under construction]
+  - OpenCL support (GPGPU)
   - SSE, AVX support (But gcc and clang support SIMD...)
   - OpenMP support
 - Support Deep Learning:

@@ -11,18 +11,17 @@ char kernel_code[] =
 
 cl_mem d_mem[3];
 int in, hid, out;
+unsigned int param[4];
 args_t args[] = {
 	{ CL_MEM_READ_WRITE, 0, &d_mem[0], 0, 1, 0 },	// x
 	{ CL_MEM_READ_WRITE, 0, &d_mem[1], 0, 1, 0 },	// w
 	{ CL_MEM_READ_WRITE, 0, &d_mem[2], 0, 0, 1 },	// o
-	{ 0, sizeof(int), &in, 0, 0, 0 },
-	{ 0, sizeof(int), &hid, 0, 0, 0 },
-//	{ 0, sizeof(int), &out, 0, 0, 0 },
+	{ 0, sizeof(param), &param, 0, 0, 0 },
 	{ 0, 0, 0, 0, 0, 0 },
 };
 ocl_t kernel[] = {
-	{ "gemv1_act", 0, args },
-	{ "gemv1", 0, args },
+	{ "gemv1_act", 0, {0,0,0,}, args },
+	{ "gemv1", 0, {0,0,0,}, args },
 };
 int ksz = sizeof(kernel)/sizeof(kernel[0]);
 
@@ -43,6 +42,9 @@ void CatsEye_clSetup(CatsEye *this)
 	// http://dhruba.name/2012/12/24/opencl-cookbook-10-tips-for-high-performance-kernels/
 	oclSetup(0, 0);
 	oclKernel(kernel, ksz, "-cl-denorms-are-zero -cl-finite-math-only -cl-fast-relaxed-math -Werror", kernel_code);
+
+	kernel[0].global_size[0] = hid;
+	kernel[1].global_size[0] = out;
 }
 
 void CatsEye_clFinish()
@@ -53,13 +55,16 @@ void CatsEye_clFinish()
 
 void CatsEye_clForward(CatsEye *this, numerus *x)
 {
-	int N = 200;
-	int lsz = 256;
-	int gsz = ((N + lsz - 1) / lsz) * lsz;
-	size_t local_item_size[] = { lsz };
-	size_t global_item_size[] = { gsz };
-
 	oclKernelArgsWrite(args);
-	oclRun(&kernel[0], 1, global_item_size, local_item_size);
+	param[0] = in;			// in
+	param[1] = hid;			// out
+	param[2] = 0;			// woff
+	param[3] = 0;			// ooff
+	oclRun(&kernel[0]);
+	param[0] = hid;			// in
+	param[1] = out;			// out
+	param[2] = (in+1) * hid;	// woff
+	param[3] = hid+1;		// ooff
+	oclRun(&kernel[1]);
 	oclKernelArgsRead(args);
 }
