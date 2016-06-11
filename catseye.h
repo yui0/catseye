@@ -708,7 +708,7 @@ enum CATS_LAYER_TYPE {
 	CATS_MAXPOOL,
 };
 
-//#define CATS_OPENCL
+#define CATS_OPENCL
 #ifdef CATS_OPENCL
 #include "catseye_cl.h"
 #endif
@@ -897,11 +897,12 @@ void CatsEye_propagate(CatsEye *this, int n)
 		CatsEye_layer_forward[TYPE(i+1)](this->o[i], this->w[i], this->z[i], this->o[i+1], &this->u[LPLEN*(i+1)]);
 	}
 }
+#ifndef CATS_OPENCL
 // calculate forward propagation of input x
-void CatsEye_forward(CatsEye *this, numerus *x)
+void CatsEye_forward(CatsEye *this, numerus *x, int n)
 {
 	// calculation of input layer
-	memcpy(this->o[0], x, SIZE(0)*sizeof(numerus));
+	memcpy(this->o[0], x+n, SIZE(0)*sizeof(numerus));
 	this->o[0][SIZE(0)] = 1;	// for bias
 #ifdef CATS_DENOISING_AUTOENCODER
 	// Denoising Autoencoder (http://kiyukuta.github.io/2013/08/20/hello_autoencoder.html)
@@ -913,28 +914,13 @@ void CatsEye_forward(CatsEye *this, numerus *x)
 	// caluculation of hidden and output layer [z = wx, o = f(z)]
 	// z[hidden] += w[in * hidden] * o[0][in]
 	// o[1][hidden] = act(z[hidden])
-#ifdef CATS_OPENCL
-	CatsEye_clForward(this);
-/*	for (int i=0; i<200; i++) printf("%f ", this->o[1][i]);
-	printf("\n%d %f\n",SIZE(0),this->o[0][0]);
-	CatsEye_layer_forward[TYPE(1)](this->o[0], this->w[0], this->z[0], this->o[1], &this->u[LPLEN*(1)]);
-	for (int i=0; i<200; i++) printf("%f ", this->o[1][i]);
-	printf("\n");
-	exit(0);*/
-/*	for (int i=0; i<10; i++) printf("%f ", this->o[2][i]);
-	printf("\n%d %f\n",SIZE(0),this->o[1][0]);
-	CatsEye_layer_forward[TYPE(2)](this->o[1], this->w[1], this->z[1], this->o[2], &this->u[LPLEN*(2)]);
-	for (int i=0; i<10; i++) printf("%f ", this->o[2][i]);
-	printf("\n");
-	exit(0);*/
-#else
 	CatsEye_layer_forward[TYPE(1)](this->o[0], this->w[0], this->z[0], this->o[1], &this->u[LPLEN*1]);
 	for (int i=1; i<this->layers-1; i++) {
 		this->o[i][SIZE(i)] = 1;	// for bias
 		CatsEye_layer_forward[TYPE(i+1)](this->o[i], this->w[i], this->z[i], this->o[i+1], &this->u[LPLEN*(i+1)]);
 	}
-#endif
 }
+#endif
 
 #define CATS_NO_MINIBATCH
 // calculate the error of output layer
@@ -1028,13 +1014,12 @@ void (*CatsEye_loss[])(CatsEye *this, int c, void *t, int n) = {
  * eta: learning rate (1e-6 to 1) */
 void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numerus eta)
 {
-	int a = this->layers-1;
-
 	// for random
 	int batch = N;
 	if (RANDOM) batch = RANDOM;
 
-	int loss = this->u[(this->layers-1)*LPLEN+STRIDE];
+	int a = this->layers-1;
+	int loss = this->u[a*LPLEN+STRIDE];
 	if (!loss && x==t) loss = 1;
 
 #ifdef CATS_TIME
@@ -1052,7 +1037,7 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 			int sample = RANDOM ? (frand()*N) : n;
 
 			// forward propagation
-			CatsEye_forward(this, x+sample*SIZE(0));
+			CatsEye_forward(this, x, sample*SIZE(0));
 
 			// calculate the error of output layer
 			CatsEye_loss[loss](this, a, t, sample);
@@ -1105,7 +1090,7 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 int CatsEye_predict(CatsEye *this, numerus *x)
 {
 	// forward propagation
-	CatsEye_forward(this, x);
+	CatsEye_forward(this, x, 0);
 
 	// biggest output means most probable label
 	int a = this->layers-1;

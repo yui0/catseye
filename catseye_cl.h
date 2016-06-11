@@ -10,11 +10,11 @@ char kernel_code[] =
 #include "catseye.cl"
 
 cl_mem d_mem[2];
-int in, hid, out;
 unsigned int param[8];
 args_t args[] = {
 	{ CL_MEM_READ_WRITE, 0, &d_mem[0], 0, 1, 1 },	// x, o
 	{ CL_MEM_READ_WRITE, 0, &d_mem[1], 0, 1, 0 },	// w
+//	{ CL_MEM_READ_WRITE, 0, &d_mem[2], 0, 0, 1 },	// o
 	{ 0, sizeof(param), &param, 0, 0, 0 },
 	{ 0, 0, 0, 0, 0, 0 },
 };
@@ -35,9 +35,6 @@ void CatsEye_clSetup(CatsEye *this)
 	args[0].s = this->odata;
 	args[1].size = sizeof(numerus)*this->wsize;
 	args[1].s = this->wdata;
-	in = this->u[SIZE];
-	hid = this->u[SIZE+LPLEN];
-	out = this->u[SIZE+LPLEN*2];
 //	printf("%d %d %d\n", this->u[SIZE], this->wsize, this->osize);
 //	printf("%d %d %d\n", in, hid, out);
 
@@ -52,38 +49,48 @@ void CatsEye_clFinish()
 	oclFinish();
 }
 
-void CatsEye_clForward(CatsEye *this)
+void CatsEye_forward(CatsEye *this, numerus *x, int n)
 {
+	// calculation of input layer
+	memcpy(this->o[0], x+n, SIZE(0)*sizeof(numerus));
+	this->o[0][SIZE(0)] = 1;	// for bias
+#ifdef CATS_DENOISING_AUTOENCODER
+	// Denoising Autoencoder (http://kiyukuta.github.io/2013/08/20/hello_autoencoder.html)
+	for (int i=0; i<SIZE(0); i++) {
+		this->o[0][i] *= binomial(/*0.7(30%)*/0.5);
+	}
+#endif
+
+
 	oclKernelArgsWrite(args);
 
-/*	param[3] = param[4] = 0;
+	param[3] = param[4] = 0;
 	for (int i=0; i<this->layers-1; i++) {
 		int *u = &this->u[LPLEN*i];
-		int act = u[TYPE+LPLEN];
+		int act = u[ACT+LPLEN];
 		param[0] = u[SIZE];		// in
 		param[1] = u[SIZE+LPLEN];	// out
 		param[2] = param[4];		// xoff
 		param[4] += u[SIZE]+1;		// ooff
 		kernel[act].global_size[0] = u[SIZE];
 		oclRun(&kernel[act]);
-printf("%d %d %d %d %d [%d]\n",param[0],param[1],param[2],param[3],param[4],act);
+//printf("%d %d %d %d %d [%d]\n",param[0],param[1],param[2],param[3],param[4],act);
 		param[3] = this->ws[i];	// woff
-	}*/
-
-	param[0] = in;			// in
-	param[1] = hid;			// out
-	param[2] = 0;			// xoff
-	param[3] = 0;			// woff
-	param[4] = this->u[SIZE]+1;	// ooff
-	kernel[2].global_size[0] = hid;
-	oclRun(&kernel[2]);
-	param[0] = hid;			// in
-	param[1] = out;			// out
-	param[2] = this->u[SIZE]+1;	// xoff
-	param[3] = (in+1) * hid;	// woff
-	param[4] = in+1+hid+1;		// ooff
-	kernel[0].global_size[0] = out;
-	oclRun(&kernel[0]);
+	}
 
 	oclKernelArgsRead(args);
+
+
+/*	for (int i=0; i<200; i++) printf("%f ", this->o[1][i]);
+	printf("\n%d %f\n",SIZE(0),this->o[0][0]);
+	CatsEye_layer_forward[TYPE(1)](this->o[0], this->w[0], this->z[0], this->o[1], &this->u[LPLEN*(1)]);
+	for (int i=0; i<200; i++) printf("%f ", this->o[1][i]);
+	printf("\n");
+	exit(0);*/
+/*	for (int i=0; i<10; i++) printf("%f ", this->o[2][i]);
+	printf("\n%d %f\n",SIZE(0),this->o[1][0]);
+	CatsEye_layer_forward[TYPE(2)](this->o[1], this->w[1], this->z[1], this->o[2], &this->u[LPLEN*(2)]);
+	for (int i=0; i<10; i++) printf("%f ", this->o[2][i]);
+	printf("\n");
+	exit(0);*/
 }

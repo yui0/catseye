@@ -32,6 +32,23 @@ LINEAR_FORWARD(relu);
 LINEAR_FORWARD(LeakyReLU);
 
 
+// pa[0]: in
+// pa[1]: out
+__kernel void linear_forward(__global float *y, __global float *a, uint8 pa)
+{
+	int gid = get_global_id(0);
+	if (gid <= pa[0]) {
+		__global float *x = y + pa[2];
+		a += pa[3];
+		y += pa[4];
+		for (int k=0; k<pa[1]; k++) {
+			y[k] += a[k + pa[0]*pa[1]] * x[gid];
+		}
+	}
+}
+
+
+
 #define ROW_DIM 0
 #define COL_DIM 1
 
