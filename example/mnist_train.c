@@ -19,25 +19,15 @@ int main()
 	CatsEye cat;
 	CatsEye__construct(&cat, size, hidden, label, 0);
 
-	numerus *x = malloc(sizeof(numerus)*size*sample);	// 訓練データ
-	int t[sample];			// ラベルデータ
-	unsigned char *data = malloc(sample*size);
+//	numerus *x = malloc(sizeof(numerus)*size*sample);	// 訓練データ
+//	int t[sample];			// ラベルデータ
+//	unsigned char *data = malloc(sample*size);
 
 	// 訓練データの読み込み
 	printf("Training data:\n");
-	FILE *fp = fopen("train-images-idx3-ubyte", "rb");
-	if (fp==NULL) return -1;
-	fread(data, 16, 1, fp);		// header
-	fread(data, size, sample, fp);	// data
-	for (int i=0; i<sample*size; i++) x[i] = data[i] / 255.0;
-	fclose(fp);
-	fp = fopen("train-labels-idx1-ubyte", "rb");
-	if (fp==NULL) return -1;
-	fread(data, 8, 1, fp);		// header
-	fread(data, 1, sample, fp);	// data
-	for (int i=0; i<sample; i++) t[i] = data[i];
-	fclose(fp);
-	free(data);
+	int *t;
+	numerus *x = CatsEye_loadMnist("train-images-idx3-ubyte", "train-labels-idx1-ubyte", sample, &t);
+
 
 	// 多層パーセプトロンの訓練
 	printf("Starting training using (stochastic) gradient descent\n");

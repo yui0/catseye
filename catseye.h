@@ -1299,6 +1299,34 @@ numerus *CatsEye_loadCifar(char *name, int sample, int **label)
 	return x;
 }
 
+numerus *CatsEye_loadMnist(char *name, char *name2, int sample, int **label)
+{
+	int size = 784;
+	unsigned char *data = malloc((size+1)*sample);		// +1 for label
+	if (!data) return 0;
+	int *t = malloc(sizeof(int)*sample);
+	if (!t) return 0;
+	numerus *x = malloc(sizeof(numerus)*(size+1)*(sample+1));	// +1 for bias
+	if (!x) return 0;
+
+	FILE *fp = fopen(name, "rb");
+	if (!fp) return 0;
+	fread(data, 16, 1, fp);		// header
+	fread(data, size, sample, fp);	// data
+	for (int i=0; i<sample*size; i++) x[i] = data[i] / 255.0;
+	fclose(fp);
+	fp = fopen(name2, "rb");
+	if (!fp) return 0;
+	fread(data, 8, 1, fp);		// header
+	fread(data, 1, sample, fp);	// data
+	for (int i=0; i<sample; i++) t[i] = data[i];
+	fclose(fp);
+	free(data);
+
+	*label = t;
+	return x;
+}
+
 #undef TYPE
 #undef SIZE
 #undef CH

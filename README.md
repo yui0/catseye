@@ -34,6 +34,7 @@ Neural network library written in C and Javascript
 - Loader formats:
   - PNG
   - cifar [https://www.cs.toronto.edu/~kriz/cifar.html]
+  - MNIST
 
 ## Usage
 Just include header files in your project.

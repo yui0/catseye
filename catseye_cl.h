@@ -12,7 +12,7 @@ char kernel_code[] =
 cl_mem d_mem[2];
 unsigned int param[8];
 args_t args[] = {
-	{ CL_MEM_READ_WRITE, 0, &d_mem[0], 0, 1, 1 },	// x, o
+	{ CL_MEM_READ_WRITE, 0, &d_mem[0], 0, -1, 1 },	// x, o
 	{ CL_MEM_READ_WRITE, 0, &d_mem[1], 0, 1, 0 },	// w
 //	{ CL_MEM_READ_WRITE, 0, &d_mem[2], 0, 0, 1 },	// o
 	{ 0, sizeof(param), &param, 0, 0, 0 },
