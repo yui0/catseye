@@ -19,15 +19,10 @@ int main()
 	CatsEye cat;
 	CatsEye__construct(&cat, size, hidden, label, 0);
 
-//	numerus *x = malloc(sizeof(numerus)*size*sample);	// 訓練データ
-//	int t[sample];			// ラベルデータ
-//	unsigned char *data = malloc(sample*size);
-
 	// 訓練データの読み込み
 	printf("Training data:\n");
 	int *t;
 	numerus *x = CatsEye_loadMnist("train-images-idx3-ubyte", "train-labels-idx1-ubyte", sample, &t);
-
 
 	// 多層パーセプトロンの訓練
 	printf("Starting training using (stochastic) gradient descent\n");

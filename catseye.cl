@@ -9,11 +9,14 @@ OCLSTRINGIFY(
 #define LeakyReLU(a)	(a > 0 ? a : a * 0.01)
 
 #define LINEAR_FORWARD(act) \
-__kernel void linear_forward_##act(__global float *y, __global float *a, uint8 pa)\
+__kernel void linear_forward_##act(__global float *x, __global float *a, __global float *y, uint8 pa)\
 {\
 	int gid = get_global_id(0);\
 	if (gid < pa[1]) {\
-		__global float *x = y + pa[2];\
+		/*__global float *x = y + pa[2];*/\
+if (pa[2]) x = y + pa[2];\
+else {x += /*785*59999;*/pa[5];\
+/*if (!gid) for(int i=0;i<785;i++) printf("%f ",x[i]);*/}\
 		a += pa[3];\
 		y += pa[4];\
 		float sum = 0;\
@@ -90,5 +93,25 @@ __kernel void reduce_rows(__global float *y, int m, int p)
 	}
 	y[row] = sum;
 }
+
+// http://stackoverflow.com/questions/15597299/matrix-vector-multiplications-using-opencl
+/*__kernel void matrixVectorMul(__global float* resultVector,
+    __global float* matrixA,
+    __global float* vectorB, 
+    int width_A)
+{
+    int tx = get_global_id(0);
+    __local float vectB[4096*2];
+
+    event_t copy_event = async_work_group_copy(vectB, vectorB, 4096*2, 0);
+    wait_group_events(1,copy_event);
+
+    float value = 0;
+    for (unsigned int k = 0; k < width_A; ++k) {
+        value += matrixA[tx * width_A + k] * vectB[k];
+    }
+
+    resultVector[tx] = value;
+}*/
 
 );

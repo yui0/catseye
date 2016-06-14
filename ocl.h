@@ -101,6 +101,7 @@ void oclKernelArgsWrite(args_t *args)
 	while (args->size) {
 		if (args->write) {
 			clEnqueueWriteBuffer(command_queue, *(cl_mem*)(args->p), CL_TRUE, 0, args->size, args->s, 0, 0, 0);
+			if (args->write<0) args->write++;
 		}
 		args++;
 	}
