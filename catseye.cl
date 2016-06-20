@@ -9,14 +9,11 @@ OCLSTRINGIFY(
 #define LeakyReLU(a)	(a > 0 ? a : a * 0.01)
 
 #define LINEAR_FORWARD(act) \
-__kernel void linear_forward_##act(__global float *x, __global float *a, __global float *y, uint8 pa)\
+__kernel void linear_forward_##act(__global float *y, __global float *a, uint8 pa)\
 {\
 	int gid = get_global_id(0);\
 	if (gid < pa[1]) {\
-		/*__global float *x = y + pa[2];*/\
-if (pa[2]) x = y + pa[2];\
-else {x += /*785*59999;*/pa[5];\
-/*if (!gid) for(int i=0;i<785;i++) printf("%f ",x[i]);*/}\
+		__global float *x = y + pa[2];\
 		a += pa[3];\
 		y += pa[4];\
 		float sum = 0;\
@@ -24,7 +21,7 @@ else {x += /*785*59999;*/pa[5];\
 			sum += a[gid + pa[1]*k] * x[k];\
 		}\
 		y[gid] = act(sum);\
-	} else if (gid == pa[1]) y[gid] = 1;\
+	} /*else if (gid == pa[1]) y[gid] = 1;*/\
 }
 LINEAR_FORWARD(identity);
 LINEAR_FORWARD(softmax);	// FIXME
