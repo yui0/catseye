@@ -1020,12 +1020,11 @@ void (*CatsEye_loss[])(CatsEye *this, int c, void *t, int n) = {
  * eta: learning rate (1e-6 to 1) */
 void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numerus eta)
 {
-	// for random
-	int batch = N;
-	if (RANDOM) batch = RANDOM;
-
 	this->xdata = x;
 	this->xsize = N;
+
+	int batch = N;			// for random
+	if (RANDOM) batch = RANDOM;
 
 	int a = this->layers-1;
 	int loss = this->u[a*LPLEN+STRIDE];
@@ -1322,16 +1321,16 @@ numerus *CatsEye_loadMnist(char *name, char *name2, int sample, int **label)
 	if (!fp) return 0;
 	fread(data, 16, 1, fp);		// header
 	fread(data, size, sample, fp);	// data
-#ifndef CATS_OPENCL
+//#ifndef CATS_OPENCL
 	for (int i=0; i<sample*size; i++) x[i] = data[i] / 255.0;
-#else
+/*#else
 	for (int i=0; i<sample; i++) {
 		for (int j=0; j<size; j++) {
 			x[i*(size+1)+j] = data[i*size+j] / 255.0;
 		}
 		x[i*(size+1)+size] = 1.0;	// bias
 	}
-#endif
+#endif*/
 	fclose(fp);
 	fp = fopen(name2, "rb");
 	if (!fp) return 0;

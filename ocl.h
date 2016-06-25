@@ -87,7 +87,10 @@ void oclKernel(ocl_t *kernel, int n, char *opt, char *kernel_code)
 
 		args_t *args = kernel->a;
 		while (args->size) {
-			if (args->type>0) *(cl_mem*)(args->p) = clCreateBuffer(context, args->type, args->size, NULL, &ret);
+			if (args->type>0) {
+				*(cl_mem*)(args->p) = clCreateBuffer(context, args->type, args->size, NULL, &ret);
+				if (!args->p) printf("clCreateBuffer error!!\n");
+			}
 			args++;
 		}
 

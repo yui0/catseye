@@ -9,12 +9,12 @@
 char kernel_code[] =
 #include "catseye.cl"
 
-cl_mem d_mem[2];
+cl_mem d_mem[4];
 unsigned int param[8];
 args_t args[] = {
-	{ CL_MEM_READ_WRITE, 0, &d_mem[0], 0, 1, 1 },	// x, o
+	{ CL_MEM_READ_WRITE, 0, &d_mem[0], 0, -1, 0 },	// x
 	{ CL_MEM_READ_WRITE, 0, &d_mem[1], 0, 1, 0 },	// w
-//	{ CL_MEM_READ_WRITE, 0, &d_mem[2], 0, 0, 1 },	// o
+	{ CL_MEM_READ_WRITE, 0, &d_mem[2], 0, -1, 1 },	// o
 	{ 0, sizeof(param), &param, 0, 0, 0 },
 	{ 0, 0, 0, 0, 0, 0 },
 };
@@ -31,10 +31,12 @@ int ksz = sizeof(kernel)/sizeof(kernel[0]);
 
 void CatsEye_clSetup(CatsEye *this)
 {
-	args[0].size = sizeof(numerus)*this->osize;
-	args[0].s = this->odata;
+//	args[0].s = this->xdata;
+	args[0].size = sizeof(numerus)*(SIZE(0)+1)*60000;
 	args[1].size = sizeof(numerus)*this->wsize;
 	args[1].s = this->wdata;
+	args[2].size = sizeof(numerus)*this->osize;
+	args[2].s = this->odata;
 //	printf("%d %d %d\n", this->u[SIZE], this->wsize, this->osize);
 //	printf("%d %d %d\n", in, hid, out);
 
@@ -51,9 +53,7 @@ void CatsEye_clFinish()
 
 void CatsEye_forward(CatsEye *this, numerus *x, int n)
 {
-	if (n<0) { n = (x-1 - this->xdata)/SIZE(0)*(SIZE(0)+1); x = this->xdata; }
-	else n = n/SIZE(0)*(SIZE(0)+1);
-
+#if 0
 	// calculation of input layer
 	memcpy(this->o[0], x+n, SIZE(0)*sizeof(numerus));
 	this->o[0][SIZE(0)] = 1;	// for bias
@@ -63,7 +63,16 @@ void CatsEye_forward(CatsEye *this, numerus *x, int n)
 		this->o[0][i] *= binomial(/*0.7(30%)*/0.5);
 	}
 #endif
+#endif
 
+
+//	if (n<0) { n = (x-1 - this->xdata)/SIZE(0)*(SIZE(0)+1); x = this->xdata; }
+//	else n = n/SIZE(0)*(SIZE(0)+1);
+	if (n<0) { n = x-1 - this->xdata; x = this->xdata; }
+
+	args[0].s = this->xdata;
+	//args[0].size = sizeof(numerus)*(SIZE(0)+1)*60000;
+	param[5] = n;
 
 	oclKernelArgsWrite(args);
 
@@ -82,6 +91,8 @@ void CatsEye_forward(CatsEye *this, numerus *x, int n)
 	}
 
 	oclKernelArgsRead(args);
+
+	memcpy(this->o[0], x+n, (SIZE(0)+1)*sizeof(numerus));
 
 
 /*	for (int i=0; i<200; i++) printf("%f ", this->o[1][i]);

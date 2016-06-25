@@ -9,19 +9,22 @@ OCLSTRINGIFY(
 #define LeakyReLU(a)	(a > 0 ? a : a * 0.01)
 
 #define LINEAR_FORWARD(act) \
-__kernel void linear_forward_##act(__global float *y, __global float *a, uint8 pa)\
+__kernel void linear_forward_##act(__global const float *x, __global const float *a, __global float *y, uint8 pa)\
 {\
 	int gid = get_global_id(0);\
 	if (gid < pa[1]) {\
-		__global float *x = y + pa[2];\
+		/*__global float *x = y + pa[2];*/\
+		if (pa[2]) x = y + pa[2];\
+		else x += pa[5];\
 		a += pa[3];\
 		y += pa[4];\
 		float sum = 0;\
-		for (int k=0; k<=pa[0]; k++) {\
+		for (int k=0; k<pa[0]; k++) {\
 			sum += a[gid + pa[1]*k] * x[k];\
 		}\
+		sum += a[gid + pa[1]*pa[0]];\
 		y[gid] = act(sum);\
-	} /*else if (gid == pa[1]) y[gid] = 1;*/\
+	}\
 }
 LINEAR_FORWARD(identity);
 LINEAR_FORWARD(softmax);	// FIXME
@@ -32,17 +35,32 @@ LINEAR_FORWARD(relu);
 LINEAR_FORWARD(LeakyReLU);
 
 
+void loss_0_1(__global const float *x, __global const float *a, __global float *y, uint8 pa)
+{
+}
+
+
+__kernel void memset_uint4(__global uint4 *mem, __private uint4 val)
+{
+	mem[get_global_id(0)] = val;
+}
+__kernel void memset_float(__global float *mem, __private float val)
+{
+	mem[get_global_id(0)] = val;
+}
 // pa[0]: in
 // pa[1]: out
-__kernel void linear_forward(__global float *y, __global float *a, uint8 pa)
+__kernel void linear_forward(__global float *x, __global float *a, __global float *y, uint8 pa)
 {
 	int gid = get_global_id(0);
 	if (gid <= pa[0]) {
-		__global float *x = y + pa[2];
+		if (pa[2]) x = y + pa[2];
+		else x += pa[5];
 		a += pa[3];
 		y += pa[4];
+		int c = pa[0]*pa[1];
 		for (int k=0; k<pa[1]; k++) {
-			y[k] += a[k + pa[0]*pa[1]] * x[gid];
+			y[k] += a[k + c] * x[gid];
 		}
 	}
 }
