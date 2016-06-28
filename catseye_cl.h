@@ -26,6 +26,7 @@ ocl_t kernel[] = {
 	{ "linear_forward_scaled_tanh",	0, {0,0,0,}, args },
 	{ "linear_forward_relu",	0, {0,0,0,}, args },
 	{ "linear_forward_LeakyReLU",	0, {0,0,0,}, args },
+	{ "forward",	0, {0,0,0,}, args },
 };
 int ksz = sizeof(kernel)/sizeof(kernel[0]);
 
@@ -66,17 +67,14 @@ void CatsEye_forward(CatsEye *this, numerus *x, int n)
 #endif
 
 
-//	if (n<0) { n = (x-1 - this->xdata)/SIZE(0)*(SIZE(0)+1); x = this->xdata; }
-//	else n = n/SIZE(0)*(SIZE(0)+1);
 	if (n<0) { n = x-1 - this->xdata; x = this->xdata; }
-
 	args[0].s = this->xdata;
 	//args[0].size = sizeof(numerus)*(SIZE(0)+1)*60000;
 	param[5] = n;
 
 	oclKernelArgsWrite(args);
 
-	param[3] = param[4] = 0;
+/*	param[3] = param[4] = 0;
 	for (int i=0; i<this->layers-1; i++) {
 		int *u = &this->u[LPLEN*i];
 		int act = u[ACT+LPLEN];
@@ -88,11 +86,14 @@ void CatsEye_forward(CatsEye *this, numerus *x, int n)
 		oclRun(&kernel[act]);
 //printf("%d %d %d %d %d [%d]\n",param[0],param[1],param[2],param[3],param[4],act);
 		param[3] = this->ws[i];	// woff
-	}
+	}*/
+	kernel[7].global_size[0] = 1024;
+	oclRun(&kernel[7]);
 
 	oclKernelArgsRead(args);
 
-	memcpy(this->o[0], x+n, (SIZE(0)+1)*sizeof(numerus));
+//	memcpy(this->o[0], x+n, (SIZE(0)+1)*sizeof(numerus));
+	memcpy(this->o[0], x+n, SIZE(0)*sizeof(numerus));
 
 
 /*	for (int i=0; i<200; i++) printf("%f ", this->o[1][i]);

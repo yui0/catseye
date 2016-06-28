@@ -711,7 +711,7 @@ enum CATS_LAYER_TYPE {
 	CATS_MAXPOOL,
 };
 
-#define CATS_OPENCL
+//#define CATS_OPENCL
 #ifdef CATS_OPENCL
 #include "catseye_cl.h"
 #endif
@@ -778,13 +778,10 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 	this->osize = 0;
 	for (int i=0; i<this->layers; i++) {
 		size[i] = this->osize;
-		this->osize += SIZE(i)+1;
+		this->osize += SIZE(i);//+1;
 	}
 	this->odata = malloc(sizeof(numerus)*this->osize);
-	for (int i=0; i<this->layers; i++) {
-		this->o[i] = this->odata + size[i];
-		this->o[i][SIZE(i)] = 1.0;	// bias
-	}
+	for (int i=0; i<this->layers; i++) this->o[i] = this->odata + size[i];
 	this->o3 = this->o[2];	// deprecated!
 
 	// allocate errors
@@ -1321,16 +1318,7 @@ numerus *CatsEye_loadMnist(char *name, char *name2, int sample, int **label)
 	if (!fp) return 0;
 	fread(data, 16, 1, fp);		// header
 	fread(data, size, sample, fp);	// data
-//#ifndef CATS_OPENCL
 	for (int i=0; i<sample*size; i++) x[i] = data[i] / 255.0;
-/*#else
-	for (int i=0; i<sample; i++) {
-		for (int j=0; j<size; j++) {
-			x[i*(size+1)+j] = data[i*size+j] / 255.0;
-		}
-		x[i*(size+1)+size] = 1.0;	// bias
-	}
-#endif*/
 	fclose(fp);
 	fp = fopen(name2, "rb");
 	if (!fp) return 0;
