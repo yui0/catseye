@@ -8,29 +8,20 @@ OCLSTRINGIFY(
 #define relu(a)		(a > 0 ? a : 0)
 #define LeakyReLU(a)	(a > 0 ? a : a * 0.01)
 
-// a[0]: in
-// a[1]: out
-// a[2]: offset of y for x
-// a[3]: offset of a
-// a[4]: offset of y
-// a[5]: offset of x
 #define LINEAR_FORWARD(act) \
-__kernel void linear_forward_##act(__global const float *x, __global const float *a, __global float *y, uint8 pa)\
+void linear_forward_##act(__global const float *x, __global const float *w, __global float *o, uint is, uint os)\
 {\
-	int gid = get_global_id(0);\
-	if (gid < pa[1]) {\
-		/*__global float *x = y + pa[2];*/\
-		if (pa[2]) x = y + pa[2];\
-		else x += pa[5];\
-		a += pa[3];\
-		y += pa[4];\
+	for (int i=get_local_id(0); i<os; i+=get_local_size(0)) {\
+		w += i;\
 		float sum = 0;\
-		for (int k=0; k<pa[0]; k++) {\
-			sum += a[gid + pa[1]*k] * x[k];\
+		for (int k=0; k<is; k++) {\
+			/*sum += w[os*k] * x[k];*/\
+			sum = fma(w[k*os], x[k], sum);\
 		}\
-		sum += a[gid + pa[1]*pa[0]];\
-		y[gid] = act(sum);\
+		sum += w[is*os];\
+		o[i] = act(sum);\
 	}\
+	barrier(CLK_LOCAL_MEM_FENCE);\
 }
 LINEAR_FORWARD(identity);
 LINEAR_FORWARD(softmax);	// FIXME
@@ -39,6 +30,19 @@ LINEAR_FORWARD(normal_tanh);
 LINEAR_FORWARD(scaled_tanh);
 LINEAR_FORWARD(relu);
 LINEAR_FORWARD(LeakyReLU);
+
+__kernel void forward(__global const float *x, __global float *w, __global float *o, __global float *d, uint8 args)
+{
+	linear_forward_sigmoid(x+args[5], w, o+784, 784, 200);
+//	barrier(CLK_GLOBAL_MEM_FENCE);
+/*if (!get_global_id(0)) {
+	//for (int i=0; i<784; i++) printf("%f ", x[i+a[5]]);
+	for (int i=0; i<200; i++) printf("%f ", o[784+i]);
+	printf("\n");
+}*/
+	linear_forward_identity(o+784, w+785*200, o+784+200, 200, 10);
+}
+
 
 // a[0]: out
 // a[1]: in+1 (bias)
@@ -117,53 +121,6 @@ __kernel void memset_float(__global float *mem, __private float val)
 		}
 	}
 }*/
-
-
-
-void linear_forward_s(__global const float *x, __global const float *w, __global float *o, uint is, uint os)
-{
-	for (int i=get_local_id(0); i<os; i+=get_local_size(0)) {
-		float sum = 0;
-		for (int k=0; k<is; k++) {
-			sum += w[i + os*k] * x[k];
-		}
-		sum += w[i + is*os];	// bias
-		o[i] = sigmoid(sum);//act(sum);
-//printf("%f[%d] ", sum,i);
-//printf("\n");
-	}
-	barrier(CLK_LOCAL_MEM_FENCE);
-}
-void linear_forward(__global const float *x, __global const float *w, __global float *o, uint is, uint os)
-{
-	for (int i=get_local_id(0); i<os; i+=get_local_size(0)) {
-		float sum = 0;
-		for (int k=0; k<is; k++) {
-			sum += w[i + os*k] * x[k];
-		}
-		sum += w[i + is*os];	// bias
-		o[i] = sum;//act(sum);
-//printf("%f[%d] ", sum,i);
-//printf("\n");
-	}
-	barrier(CLK_LOCAL_MEM_FENCE);
-}
-//__kernel void forward(__global float *x, __global float *o, __global float *w, __global float *d, uint8 args)
-__kernel void forward(__global float *x, __global float *w, __global float *o, uint8 args)
-{
-//	uint8 a = (784, 200, 0, 0, 784+1, args[5], 0, 0);
-//	linear_forward(x+args[5], w, o+784, 785, 200);
-	linear_forward_s(x+args[5], w, o+784, 784, 200);
-	barrier(CLK_GLOBAL_MEM_FENCE);
-/*if (!get_global_id(0)) {
-	//for (int i=0; i<784; i++) printf("%f ", x[i+a[5]]);
-	for (int i=0; i<200; i++) printf("%f ", o[784+i]);
-	printf("\n");
-}*/
-//	uint8 a2 = (200, 10, 784+1, 785*200, 200+1, 0, 0, 0);
-//	linear_forward(o+784+1, w+785*200, o+785+201, 200, 10);
-	linear_forward(o+784, w+785*200, o+784+200, 200, 10);
-}
 
 
 #define ROW_DIM 0
