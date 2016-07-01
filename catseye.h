@@ -24,10 +24,6 @@
 #endif
 
 #define CATS_SIGMOID
-//#define CATS_TANH
-//#define CATS_SCALEDTANH
-//#define CATS_RELU
-//#define CATS_ABS
 
 //#define CATS_SIGMOID_CROSSENTROPY
 #ifdef CATS_SIGMOID_CROSSENTROPY

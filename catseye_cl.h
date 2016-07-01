@@ -9,31 +9,35 @@
 char kernel_code[] =
 #include "catseye.cl"
 
-cl_mem d_mem[4];
+cl_mem d_mem[5];
 unsigned int param[8];
 args_t args[] = {
 	{ CL_MEM_READ_WRITE, 0, &d_mem[0], 0, -1, 0 },	// x
 	{ CL_MEM_READ_WRITE, 0, &d_mem[1], 0, 1, 0 },	// w
 	{ CL_MEM_READ_WRITE, 0, &d_mem[2], 0, -1, 1 },	// o
 	{ CL_MEM_READ_WRITE, 0, &d_mem[3], 0, -1, 0 },	// d
+	{ CL_MEM_READ_WRITE, 0, &d_mem[4], 0, -1, 0 },	// t
 	{ 0, sizeof(param), &param, 0, 0, 0 },
 	{ 0, 0, 0, 0, 0, 0 },
 };
 ocl_t kernel[] = {
 	{ "forward",	0, {0,0,0,}, args },
+	{ "train",	0, {0,0,0,}, args },
 };
 int ksz = sizeof(kernel)/sizeof(kernel[0]);
 
 void CatsEye_clSetup(CatsEye *this)
 {
 	args[0].size = sizeof(numerus)*(SIZE(0)+1)*60000;
-//	args[0].s = this->xdata;
+	//args[0].s = this->xdata;
 	args[1].size = sizeof(numerus)*this->wsize;
 	args[1].s = this->wdata;
 	args[2].size = sizeof(numerus)*this->osize;
 	args[2].s = this->odata;
 	args[3].size = sizeof(numerus)*this->dsize;
 	args[3].s = this->ddata;
+	args[4].size = sizeof(numerus)*60000;
+	//args[4].s = this->ddata;//FIXME
 //	printf("%d %d %d\n", this->u[SIZE], this->wsize, this->osize);
 //	printf("%d %d %d\n", in, hid, out);
 
