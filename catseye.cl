@@ -65,6 +65,7 @@ void linear_backward_##dact(__global const float *o, __global const float *w, __
 {\
 	if (!get_group_id(0))\
 	for (int i=get_local_id(0); i<=is; i+=get_local_size(0)) {\
+		w += i * os;\
 		float s = 0;\
 		for (int k=0; k<os; k++) {\
 			/*s += (*w++) * delta[k];*/\
@@ -131,7 +132,6 @@ void loss_0_1(__global const float *o, __global float *d, uint a, uint n)
 	if (!get_group_id(0))
 	for (int i=get_local_id(0); i<n; i+=get_local_size(0)) {
 		d[i] = a==i ? o[i]-1 : o[i];	// 1-of-K
-//		printf("%f/%d-%f ", d[i],i,o[i]);
 	}
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
@@ -153,17 +153,8 @@ __kernel void train(__global const float *x, __global float *w, __global float *
 	ptr.fp = t;
 
 	forward(x, w, o, d, t, args);
-//	barrier(CLK_GLOBAL_MEM_FENCE);
 	loss_0_1(o+784+200, d+200+1, ptr.ip[args[0]], 10);
-/*	if (!get_global_id(0)) {
-		printf("cl:%d  ",t[args[0]]);
-		for (int i=0; i<10; i++) {
-			printf("%f ", d[200+1+i]);
-		}
-		printf("\n");
-	}*/
-	//dactivate_sigmoid(o+784, 200);
-	linear_backward_sigmoid(o+784+200, w+785*200, d, d+200+1, 200, 10);
+	linear_backward_identity(o+784, w+785*200, d, d+200+1, 200, 10);
 //	linear_update(o, w, d, 200, 784);
 //	linear_update(o+784, w+785*200, d+200+1, 10, 200);
 }
