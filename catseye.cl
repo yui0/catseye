@@ -83,15 +83,17 @@ LINEAR_BACKWARD(scaled_tanh)
 LINEAR_BACKWARD(relu)
 LINEAR_BACKWARD(LeakyReLU)
 
-#define ETA 1e-8
-void linear_update(__global const float *o, __global float *w, __global const float *d, uint is, uint os)
+void linear_update(float eta, __global const float *o, __global float *w, __global const float *d, uint is, uint os)
 {
+	if (!get_group_id(0))
 	for (int i=get_local_id(0); i<=is; i+=get_local_size(0)) {
-		float a = -ETA * o[i];
+		__global float *p = w + i*os;
+//		float a = eta * o[i];
+		float a = -eta * o[i];
 		for (int k=0; k<os; k++) {
-			//*w++ -= a * d[k];
-			*w = fma(a, d[k], *w);
-			w++;
+//			*p++ -= a * d[k];
+			*p = fma(a, d[k], *p);
+			p++;
 		}
 	}
 	barrier(CLK_LOCAL_MEM_FENCE);
@@ -147,16 +149,17 @@ void loss_mse(__global const float *o, __global float *d, __global const float *
 __kernel void train(__global const float *x, __global float *w, __global float *o, __global float *d, __global float *t, uint8 args)
 {
 	union {
-		__global uint		*ip;
-		__global float	*fp;
+		__global uint *ip;
+		__global float *fp;
 	} ptr;
 	ptr.fp = t;
 
 	forward(x, w, o, d, t, args);
+
 	loss_0_1(o+784+200, d+200+1, ptr.ip[args[0]], 10);
 	linear_backward_identity(o+784, w+785*200, d, d+200+1, 200, 10);
-//	linear_update(o, w, d, 200, 784);
-//	linear_update(o+784, w+785*200, d+200+1, 10, 200);
+//	linear_update(args[1], o, w, d, 784, 200);
+	linear_update(args[1], o+784, w+785*200, d+200+1, 200, 10);
 }
 
 
