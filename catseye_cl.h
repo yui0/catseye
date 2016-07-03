@@ -157,9 +157,9 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 			// calculate the error of hidden layer
 			// t[hidden] += w[1][hidden * out] * d[1][out]
 			// d[hidden] = t[hidden] * dact(o[hidden])
-			for (int i=this->layers-2; i>0; i--) {
+/*			for (int i=this->layers-2; i>0; i--) {
 				CatsEye_layer_backward[TYPE(i+1)](this->o[i], this->w[i], this->d[i-1], this->d[i], &this->u[LPLEN*(i+1)]);
-			}
+			}*/
 			// update the weights of hidden layer
 			// w[0][in] -= eta * o[0][in] * d[0][in * hidden]
 			for (int i=this->layers-2; i>0; i--) {

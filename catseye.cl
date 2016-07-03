@@ -153,7 +153,7 @@ __kernel void train(__global const float *x, __global float *w, __global float *
 	ptr.fp = t;
 
 	forward(x, w, o, d, t, args);
-	barrier(CLK_GLOBAL_MEM_FENCE);
+//	barrier(CLK_GLOBAL_MEM_FENCE);
 	loss_0_1(o+784+200, d+200+1, ptr.ip[args[0]], 10);
 /*	if (!get_global_id(0)) {
 		printf("cl:%d  ",t[args[0]]);
@@ -163,7 +163,7 @@ __kernel void train(__global const float *x, __global float *w, __global float *
 		printf("\n");
 	}*/
 	//dactivate_sigmoid(o+784, 200);
-//	linear_backward_sigmoid(o+784+200, w+785*200, d, d+200+1, 200, 10);
+	linear_backward_sigmoid(o+784+200, w+785*200, d, d+200+1, 200, 10);
 //	linear_update(o, w, d, 200, 784);
 //	linear_update(o+784, w+785*200, d+200+1, 10, 200);
 }
