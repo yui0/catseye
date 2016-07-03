@@ -707,7 +707,7 @@ enum CATS_LAYER_TYPE {
 	CATS_MAXPOOL,
 };
 
-#define CATS_OPENCL
+//#define CATS_OPENCL
 #ifdef CATS_OPENCL
 #include "catseye_cl.h"
 #endif
@@ -919,7 +919,6 @@ void CatsEye_forward(CatsEye *this, numerus *x, int n)
 		CatsEye_layer_forward[TYPE(i+1)](this->o[i], this->w[i], this->z[i], this->o[i+1], &this->u[LPLEN*(i+1)]);
 	}
 }
-#endif
 
 #define CATS_NO_MINIBATCH
 // calculate the error of output layer
@@ -1086,6 +1085,7 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 		printf("\n");
 	}
 }
+#endif
 
 // return most probable label to the input x
 int CatsEye_predict(CatsEye *this, numerus *x)

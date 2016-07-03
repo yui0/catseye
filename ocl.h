@@ -28,6 +28,7 @@ typedef struct {
 	char *f;
 	cl_kernel k;
 	size_t global_size[3];
+	size_t local_size[3];
 	args_t *a;
 } ocl_t;
 
@@ -85,6 +86,12 @@ void oclKernel(ocl_t *kernel, int n, char *opt, char *kernel_code)
 	for (int i=0; i<n; i++) {
 		kernel->k = clCreateKernel(program, kernel->f, &ret);
 
+		if (!kernel->global_size[0]) {
+			size_t *local = kernel->global_size;
+			clGetKernelWorkGroupInfo(kernel->k, device_id[ocl_device], CL_KERNEL_WORK_GROUP_SIZE, sizeof(size_t)*3, local, NULL);
+			printf("CL_KERNEL_WORK_GROUP_SIZE: %zu\n", local[0]);
+		}
+
 		args_t *args = kernel->a;
 		while (args->size) {
 			if (args->type>0) {
@@ -130,7 +137,7 @@ void oclRun(ocl_t *kernel)
 		args++;
 	}
 
-/*	int r = */clEnqueueNDRangeKernel(command_queue, kernel->k, 1, NULL, kernel->global_size, 0, 0, NULL, NULL);
+/*	int r = */clEnqueueNDRangeKernel(command_queue, kernel->k, 1, NULL, kernel->global_size, kernel->local_size, 0, NULL, NULL);
 //	if (r<0) printf("Kernel error!! %d\n", r);
 }
 
