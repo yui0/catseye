@@ -131,27 +131,6 @@ void loss_mse(global const float *o, global float *d, global const float *a, uin
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
-/*int rand(int *seed) // 1 <= *seed < m
-{
-	const int a = 16807; // ie 7**5
-	const int m = 2147483647; // ie 2**31-1
-	*seed = (*seed * a) % m;
-	return *seed;
-}
-
-kernel void random_number_kernel(global int *seed_memory)
-{
-	int gid = get_global_id(0);
-
-	// Since the Park-Miller PRNG generates a SEQUENCE of random numbers
-	// we have to keep track of the previous random number, because the next
-	// random number will be generated using the previous one.
-	int seed = seed_memory[gid];
-
-	int random_number = rand(&seed); // Generate the next random number in the sequence.
-
-	seed_memory[gid] = seed; // Save the seed for the next time this kernel gets enqueued.
-}*/
 uint xorshift_int(local uint4 *ctx)
 {
 	uint t = ctx->x ^ (ctx->x << 11);
@@ -160,10 +139,19 @@ uint xorshift_int(local uint4 *ctx)
 
 	return ctx->w;
 }
-
-float xorshift_float(local uint4 *ctx)
+/*float xorshift_float(local uint4 *ctx)
 {
 	return xorshift_int(ctx) * 2.3283064e-10;
+}*/
+// http://www.reedbeta.com/blog/2013/01/12/quick-and-easy-gpu-random-numbers-in-d3d11/
+uint wang_hash(uint seed)
+{
+	seed = (seed ^ 61) ^ (seed >> 16);
+	seed *= 9;
+	seed = seed ^ (seed >> 4);
+	seed *= 0x27d4eb2d;
+	seed = seed ^ (seed >> 15);
+	return seed;
 }
 
 kernel void train(global const float *x, global float *w, global float *o, global float *d, global float *t, uint8 args)
@@ -174,23 +162,24 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 	} ptr;
 	ptr.fp = t;
 
-	int lid = get_local_id(0);
-	local uint4 seed[256];
-	local uint r[256];
-	seed[lid] = lid;
-	r[lid] = xorshift_int(seed+lid) % 60000;
-	barrier(CLK_LOCAL_MEM_FENCE);
-/*if (!get_global_id(0)) {
-	for (int i=0; i<256; i++) {
-		printf("%d ", r[i]);
-	}
-}*/
-
-	for (int n=0; n</*args[1]*/256; n++) {
+	local uint seed;
+//	seed = args[2];
+	local uint4 r;
+	r.x = args[2];
+	r.y = args[2];
+	r.z = args[2];
+	r.w = args[2];
+	for (int n=args[1]; n>0; n--) {
 //		args[5] = n*784;
 //		args[0] = n;
-		args[5] = r[n]*784;
-		args[0] = r[n];
+
+//		if (!get_global_id(0)) seed = wang_hash(seed) % 60000;
+		if (!get_global_id(0)) seed = xorshift_int(&r) % 60000;
+//		if (!get_global_id(0)) printf("%d ",seed);
+		barrier(CLK_LOCAL_MEM_FENCE);
+//printf("%d ",seed);
+		args[5] = seed*784;
+		args[0] = seed;
 
 		forward(x, w, o, d, t, args);
 
@@ -226,6 +215,13 @@ kernel void memset_float(global float *mem, __private float val)
 			y[k] += a[k + c] * x[gid];
 		}
 	}
+}*/
+
+/*uint clock_time()
+{
+	uint clock_time;
+	asm("mov.u32 %0, %%clock;" : "=r"(clock_time));
+	return clock_time;
 }*/
 
 

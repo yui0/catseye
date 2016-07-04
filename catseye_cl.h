@@ -120,6 +120,7 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 	args[4].s = t;
 //	param[0] = sample;
 	param[1] = batch;
+	param[2] = xor128();
 //	param[5] = sample*SIZE(0);
 	oclKernelArgsWrite(args);
 	oclRun(&kernel[1]);
