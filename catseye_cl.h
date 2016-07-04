@@ -22,7 +22,8 @@ args_t args[] = {
 };
 ocl_t kernel[] = {
 	{ "forward",	0, {256,0,0,},{256,0,0,}, args },
-	{ "train",	0, {256,0,0,},{256,0,0,}, args },
+//	{ "train",	0, {256,0,0,},{256,0,0,}, args },
+	{ "train",	0, {1024,0,0,},{0,0,0,}, args },
 };
 int ksz = sizeof(kernel)/sizeof(kernel[0]);
 
@@ -124,6 +125,7 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 	oclRun(&kernel[1]);
 	oclKernelArgsRead(args);
 	memcpy(this->o[0], x+param[5], SIZE(0)*sizeof(numerus));
+	this->o[0][SIZE(0)] = 1;
 
 			// forward propagation
 //			CatsEye_forward(this, x, sample*SIZE(0));
@@ -139,9 +141,13 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 			}*/
 			// update the weights of hidden layer
 			// w[0][in] -= eta * o[0][in] * d[0][in * hidden]
-			for (int i=this->layers-2; i>0; i--) {
+/*			for (int i=this->layers-2; i>0; i--) {
 				CatsEye_layer_update[TYPE(i)](eta, this->o[i-1], this->w[i-1], this->d[i-1], &this->u[LPLEN*i]);
 			}
+		for (int n=784*200; n<784*200+100; n++) {
+			printf("%f ", this->w[0][n]);
+		}
+		printf("\n");*/
 
 			// update the weights of output layer
 //			CatsEye_layer_update[TYPE(a)](eta, this->o[a-1], this->w[a-1], this->d[a-1], &this->u[LPLEN*a]);

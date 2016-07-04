@@ -707,7 +707,7 @@ enum CATS_LAYER_TYPE {
 	CATS_MAXPOOL,
 };
 
-#define CATS_OPENCL
+//#define CATS_OPENCL
 #ifdef CATS_OPENCL
 #include "catseye_cl.h"
 #endif
@@ -774,7 +774,7 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 	this->osize = 0;
 	for (int i=0; i<this->layers; i++) {
 		size[i] = this->osize;
-		this->osize += SIZE(i);//+1;
+		this->osize += SIZE(i)+1;	// bias
 	}
 	this->odata = malloc(sizeof(numerus)*this->osize);
 	for (int i=0; i<this->layers; i++) this->o[i] = this->odata + size[i];
@@ -785,7 +785,7 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 	this->dsize = 0;
 	for (int i=0; i<this->layers-1; i++) {
 		size[i] = this->dsize;
-		this->dsize += SIZE(i+1)+1;
+		this->dsize += SIZE(i+1)+1;	// bias
 	}
 	this->ddata = malloc(sizeof(numerus)*this->dsize);
 	for (int i=0; i<this->layers-1; i++) this->d[i] = this->ddata + size[i];

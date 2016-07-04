@@ -15,6 +15,7 @@ OCLSTRINGIFY(
 #define LeakyReLU(a)		(a > 0 ? a : a * 0.01)
 #define d_LeakyReLU(a)		(a > 0 ? 1.0 : 0.01)
 
+#if 0
 #define ACTIVATION_FUNCTION(act) \
 inline void activate_##act(__global float *o, int n)\
 {\
@@ -35,6 +36,7 @@ inline void dactivate_##dact(__global float *o, int n)\
 	barrier(CLK_LOCAL_MEM_FENCE);\
 }
 DACTIVATION_FUNCTION(sigmoid)
+#endif
 
 #define LINEAR_FORWARD(act) \
 void linear_forward_##act(__global const float *x, __global const float *w, __global float *o, uint is, uint os)\
@@ -49,6 +51,7 @@ void linear_forward_##act(__global const float *x, __global const float *w, __gl
 		}\
 		s += w[is*os];\
 		o[i] = act(s);\
+		w -= i;\
 	}\
 	barrier(CLK_LOCAL_MEM_FENCE);\
 }
@@ -65,13 +68,14 @@ void linear_backward_##dact(__global const float *o, __global const float *w, __
 {\
 	if (!get_group_id(0))\
 	for (int i=get_local_id(0); i<=is; i+=get_local_size(0)) {\
-		w += i * os;\
+		w += i*os;\
 		float s = 0;\
 		for (int k=0; k<os; k++) {\
 			/*s += (*w++) * delta[k];*/\
 			s = fma(*w++, delta[k], s);\
 		}\
 		d[i] = s * dact(o[i]);\
+		w -= (i*os + os);\
 	}\
 	barrier(CLK_LOCAL_MEM_FENCE);\
 }
@@ -101,32 +105,13 @@ void linear_update(float eta, __global const float *o, __global float *w, __glob
 
 __kernel void forward(__global const float *x, __global float *w, __global float *o, __global float *d, __global float *t, uint8 args)
 {
-	linear_forward_sigmoid(x+args[5], w, o+784, 784, 200);
+	linear_forward_sigmoid(x+args[5], w, o+784+1, 784, 200);
 	/*if (!get_global_id(0)) {
 		//for (int i=0; i<784; i++) printf("%f ", x[i+a[5]]);
 		for (int i=0; i<200; i++) printf("%f ", o[784+i]);
 		printf("\n");
 	}*/
-
-/*	linear_forward_identity(x+args[5], w, o, 784, 200);
-	activate_sigmoid(o, 200);
-//	barrier(CLK_GLOBAL_MEM_FENCE);
-//	barrier(CLK_LOCAL_MEM_FENCE);
-	if (!get_global_id(0)) {
-		for (int i=0; i<200; i++) {
-			if (o[i]!=o[784+i]) printf("%f-%f/%d ", o[i], o[784+i], i);
-		}
-		printf("\n");
-	}*/
-
-//	linear_forward_identity(x+args[5], w, o+784, 784, 200);
-//	activate_sigmoid(o+784, 200);
-	/*if (!get_global_id(0)) {
-		for (int i=0; i<200; i++) printf("%f ", o[784+i]);
-		printf("\n");
-	}*/
-	//barrier(CLK_GLOBAL_MEM_FENCE);
-	linear_forward_identity(o+784, w+785*200, o+784+200, 200, 10);
+	linear_forward_identity(o+784+1, w+785*200, o+784+1+200+1, 200, 10);
 }
 
 void loss_0_1(__global const float *o, __global float *d, uint a, uint n)
@@ -156,10 +141,17 @@ __kernel void train(__global const float *x, __global float *w, __global float *
 
 	forward(x, w, o, d, t, args);
 
-	loss_0_1(o+784+200, d+200+1, ptr.ip[args[0]], 10);
-	linear_backward_identity(o+784, w+785*200, d, d+200+1, 200, 10);
-//	linear_update(args[1], o, w, d, 784, 200);
-	linear_update(args[1], o+784, w+785*200, d+200+1, 200, 10);
+	loss_0_1(o+784+1+200+1, d+200+1, ptr.ip[args[0]], 10);
+	o[784+1+200] = 1;
+	linear_backward_identity(o+784+1, w+785*200, d, d+200+1, 200, 10);
+	linear_update(/*args[1]*/0.01, x+args[5], w, d, 784, 200);
+/*	if (!get_global_id(0)) {
+		for (int n=784*200; n<784*200+100; n++) {
+			printf("%f ", w[n]);
+		}
+		printf("\n");
+	}*/
+	linear_update(/*args[1]*/0.01, o+784+1, w+785*200, d+200+1, 200, 10);
 }
 
 
