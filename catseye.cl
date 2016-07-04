@@ -17,7 +17,7 @@ OCLSTRINGIFY(
 
 #if 0
 #define ACTIVATION_FUNCTION(act) \
-inline void activate_##act(__global float *o, int n)\
+inline void activate_##act(global float *o, int n)\
 {\
 	if (!get_group_id(0))\
 	for (int i=get_local_id(0); i<n; i+=get_local_size(0)) {\
@@ -28,7 +28,7 @@ inline void activate_##act(__global float *o, int n)\
 ACTIVATION_FUNCTION(sigmoid)
 
 #define DACTIVATION_FUNCTION(dact) \
-inline void dactivate_##dact(__global float *o, int n)\
+inline void dactivate_##dact(global float *o, int n)\
 {\
 	for (int i=get_local_id(0); i<n; i+=get_local_size(0)) {\
 		o[i] = d_##dact(o[i]);\
@@ -39,7 +39,7 @@ DACTIVATION_FUNCTION(sigmoid)
 #endif
 
 #define LINEAR_FORWARD(act) \
-void linear_forward_##act(__global const float *x, __global const float *w, __global float *o, uint is, uint os)\
+void linear_forward_##act(global const float *x, global const float *w, global float *o, uint is, uint os)\
 {\
 	if (!get_group_id(0))\
 	for (int i=get_local_id(0); i<os; i+=get_local_size(0)) {\
@@ -64,7 +64,7 @@ LINEAR_FORWARD(relu)
 LINEAR_FORWARD(LeakyReLU)
 
 #define LINEAR_BACKWARD(dact) \
-void linear_backward_##dact(__global const float *o, __global const float *w, __global float *d, __global const float *delta, uint is, uint os)\
+void linear_backward_##dact(global const float *o, global const float *w, global float *d, global const float *delta, uint is, uint os)\
 {\
 	if (!get_group_id(0))\
 	for (int i=get_local_id(0); i<=is; i+=get_local_size(0)) {\
@@ -87,11 +87,11 @@ LINEAR_BACKWARD(scaled_tanh)
 LINEAR_BACKWARD(relu)
 LINEAR_BACKWARD(LeakyReLU)
 
-void linear_update(float eta, __global const float *o, __global float *w, __global const float *d, uint is, uint os)
+void linear_update(float eta, global const float *o, global float *w, global const float *d, uint is, uint os)
 {
 	if (!get_group_id(0))
 	for (int i=get_local_id(0); i<=is; i+=get_local_size(0)) {
-		__global float *p = w + i*os;
+		global float *p = w + i*os;
 //		float a = eta * o[i];
 		float a = -eta * o[i];
 		for (int k=0; k<os; k++) {
@@ -103,7 +103,7 @@ void linear_update(float eta, __global const float *o, __global float *w, __glob
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
-__kernel void forward(__global const float *x, __global float *w, __global float *o, __global float *d, __global float *t, uint8 args)
+kernel void forward(global const float *x, global float *w, global float *o, global float *d, global float *t, uint8 args)
 {
 	linear_forward_sigmoid(x+args[5], w, o+784+1, 784, 200);
 	/*if (!get_global_id(0)) {
@@ -114,7 +114,7 @@ __kernel void forward(__global const float *x, __global float *w, __global float
 	linear_forward_identity(o+784+1, w+785*200, o+784+1+200+1, 200, 10);
 }
 
-void loss_0_1(__global const float *o, __global float *d, uint a, uint n)
+void loss_0_1(global const float *o, global float *d, uint a, uint n)
 {
 	if (!get_group_id(0))
 	for (int i=get_local_id(0); i<n; i+=get_local_size(0)) {
@@ -123,7 +123,7 @@ void loss_0_1(__global const float *o, __global float *d, uint a, uint n)
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
-void loss_mse(__global const float *o, __global float *d, __global const float *a, uint n)
+void loss_mse(global const float *o, global float *d, global const float *a, uint n)
 {
 	for (int i=get_local_id(0); i<n; i+=get_local_size(0)) {
 		d[i] = o[i] - a[i];
@@ -131,41 +131,89 @@ void loss_mse(__global const float *o, __global float *d, __global const float *
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
-__kernel void train(__global const float *x, __global float *w, __global float *o, __global float *d, __global float *t, uint8 args)
+/*int rand(int *seed) // 1 <= *seed < m
+{
+	const int a = 16807; // ie 7**5
+	const int m = 2147483647; // ie 2**31-1
+	*seed = (*seed * a) % m;
+	return *seed;
+}
+
+kernel void random_number_kernel(global int *seed_memory)
+{
+	int gid = get_global_id(0);
+
+	// Since the Park-Miller PRNG generates a SEQUENCE of random numbers
+	// we have to keep track of the previous random number, because the next
+	// random number will be generated using the previous one.
+	int seed = seed_memory[gid];
+
+	int random_number = rand(&seed); // Generate the next random number in the sequence.
+
+	seed_memory[gid] = seed; // Save the seed for the next time this kernel gets enqueued.
+}*/
+uint xorshift_int(local uint4 *ctx)
+{
+	uint t = ctx->x ^ (ctx->x << 11);
+	*ctx = ctx->yzww;
+	ctx->w = ctx->w ^ (ctx->w >> 19) ^ (t ^ (t >> 8));
+
+	return ctx->w;
+}
+
+float xorshift_float(local uint4 *ctx)
+{
+	return xorshift_int(ctx) * 2.3283064e-10;
+}
+
+kernel void train(global const float *x, global float *w, global float *o, global float *d, global float *t, uint8 args)
 {
 	union {
-		__global uint *ip;
-		__global float *fp;
+		global uint *ip;
+		global float *fp;
 	} ptr;
 	ptr.fp = t;
 
-	forward(x, w, o, d, t, args);
+	int lid = get_local_id(0);
+	local uint4 seed[256];
+	local uint r[256];
+	seed[lid] = lid;
+	r[lid] = xorshift_int(seed+lid) % 60000;
+	barrier(CLK_LOCAL_MEM_FENCE);
+/*if (!get_global_id(0)) {
+	for (int i=0; i<256; i++) {
+		printf("%d ", r[i]);
+	}
+}*/
 
-	loss_0_1(o+784+1+200+1, d+200+1, ptr.ip[args[0]], 10);
-	o[784+1+200] = 1;
-	linear_backward_identity(o+784+1, w+785*200, d, d+200+1, 200, 10);
-	linear_update(/*args[1]*/0.01, x+args[5], w, d, 784, 200);
-/*	if (!get_global_id(0)) {
-		for (int n=784*200; n<784*200+100; n++) {
-			printf("%f ", w[n]);
-		}
-		printf("\n");
-	}*/
-	linear_update(/*args[1]*/0.01, o+784+1, w+785*200, d+200+1, 200, 10);
+	for (int n=0; n</*args[1]*/256; n++) {
+//		args[5] = n*784;
+//		args[0] = n;
+		args[5] = r[n]*784;
+		args[0] = r[n];
+
+		forward(x, w, o, d, t, args);
+
+		loss_0_1(o+784+1+200+1, d+200+1, ptr.ip[args[0]], 10);
+		o[784+1+200] = 1;
+		linear_backward_identity(o+784+1, w+785*200, d, d+200+1, 200, 10);
+		linear_update(/*args[1]*/0.01, x+args[5], w, d, 784, 200);
+		linear_update(/*args[1]*/0.01, o+784+1, w+785*200, d+200+1, 200, 10);
+	}
 }
 
 
-__kernel void memset_uint4(__global uint4 *mem, __private uint4 val)
+kernel void memset_uint4(global uint4 *mem, __private uint4 val)
 {
 	mem[get_global_id(0)] = val;
 }
-__kernel void memset_float(__global float *mem, __private float val)
+kernel void memset_float(global float *mem, __private float val)
 {
 	mem[get_global_id(0)] = val;
 }
 // pa[0]: in
 // pa[1]: out
-/*__kernel void linear_forward(__global float *x, __global float *a, __global float *y, uint8 pa)
+/*kernel void linear_forward(global float *x, global float *a, global float *y, uint8 pa)
 {
 	int gid = get_global_id(0);
 	if (gid <= pa[0]) {
@@ -187,8 +235,8 @@ __kernel void memset_float(__global float *mem, __private float val)
 // http://www.bealto.com/gpu-gemv_v3.html
 // P threads per row compute 1/P-th of each dot product.
 // WORK has N/P entries.
-__kernel void gemv(__global const float *a, __global const float *x, __global float *y,
-	__local float *work, int m, int n)
+kernel void gemv(global const float *a, global const float *x, global float *y,
+	local float *work, int m, int n)
 {
 	// Load a slice of X in WORK, using all available threads
 	int ncols = n / get_global_size(COL_DIM); // nb values to load
@@ -213,7 +261,7 @@ __kernel void gemv(__global const float *a, __global const float *x, __global fl
 
 // Reduce M = get_global_size(0) rows of P values in matrix Y.
 // Stores the result in first column of Y.
-__kernel void reduce_rows(__global float *y, int m, int p)
+kernel void reduce_rows(global float *y, int m, int p)
 {
 	int row = get_global_id(0);
 	float sum = (float)0;
@@ -224,13 +272,13 @@ __kernel void reduce_rows(__global float *y, int m, int p)
 }
 
 // http://stackoverflow.com/questions/15597299/matrix-vector-multiplications-using-opencl
-/*__kernel void matrixVectorMul(__global float* resultVector,
-    __global float* matrixA,
-    __global float* vectorB, 
+/*kernel void matrixVectorMul(global float* resultVector,
+    global float* matrixA,
+    global float* vectorB, 
     int width_A)
 {
     int tx = get_global_id(0);
-    __local float vectB[4096*2];
+    local float vectB[4096*2];
 
     event_t copy_event = async_work_group_copy(vectB, vectorB, 4096*2, 0);
     wait_group_events(1,copy_event);
