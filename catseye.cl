@@ -47,7 +47,8 @@ void linear_forward_##act(global const float *x, global const float *w, global f
 		float s = 0;\
 		for (int k=0; k<is; k++) {\
 			/*sum += w[os*k] * x[k];*/\
-			s = fma(w[k*os], *x++, s);\
+			/*s = fma(w[k*os], *x++, s);*/\
+			s = mad(w[k*os], *x++, s);\
 		}\
 		s += w[is*os];\
 		o[i] = act(s);\
@@ -63,6 +64,7 @@ LINEAR_FORWARD(scaled_tanh)
 LINEAR_FORWARD(relu)
 LINEAR_FORWARD(LeakyReLU)
 
+#if 1
 #define LINEAR_BACKWARD(dact) \
 void linear_backward_##dact(global const float *o, global const float *w, global float *d, global const float *delta, uint is, uint os)\
 {\
@@ -72,13 +74,56 @@ void linear_backward_##dact(global const float *o, global const float *w, global
 		float s = 0;\
 		for (int k=0; k<os; k++) {\
 			/*s += (*w++) * delta[k];*/\
-			s = fma(*w++, delta[k], s);\
+			/*s = fma(*w++, delta[k], s);*/\
+			s = mad(*w++, delta[k], s);\
 		}\
 		d[i] = s * dact(o[i]);\
 		w -= (i*os + os);\
 	}\
 	barrier(CLK_LOCAL_MEM_FENCE);\
 }
+#else
+// http://developer.amd.com/community/blog/2012/07/05/efficient-dot-product-implementation-using-persistent-threads/
+void dot_local_reduce_kernel(global const float *x, global const float *y, global float *r, uint n)
+{
+	uint gid = get_global_id(0);
+	uint lid = get_local_id(0);
+	float priv_acc = 0; // accumulator in private memory
+	local float lcl_acc[256]; // accumulators in local memory
+
+	if (gid < n) {
+		priv_acc = lcl_acc[lid] = x[gid] * y[gid]; // multiply elements, store product
+	}
+	barrier(CLK_LOCAL_MEM_FENCE); // Find the sum of the accumulators.
+
+	uint dist = 256;
+	while (dist > 1) {
+		dist >>= 1;
+		if (lid < dist) {
+			// Private memory accumulator avoids extra local memory read.
+			priv_acc += lcl_acc[lid + dist];
+			lcl_acc[lid] = priv_acc;
+		}
+		barrier(CLK_LOCAL_MEM_FENCE);
+	}
+
+	// Store the result (the sum for the local work group).
+	if (lid == 0) {
+		r[get_group_id(0)] = priv_acc;
+	}
+}
+#define LINEAR_BACKWARD(dact) \
+void linear_backward_##dact(global const float *o, global const float *w, global float *d, global const float *delta, uint is, uint os)\
+{\
+	/*if (!get_group_id(0))*/\
+	for (int i=0; i<=is; i++) {\
+		dot_local_reduce_kernel(w, delta, d+i, os);\
+		d[i] = d[i] * dact(o[i]);\
+		w += os;\
+	}\
+	barrier(CLK_LOCAL_MEM_FENCE);\
+}
+#endif
 LINEAR_BACKWARD(identity)
 LINEAR_BACKWARD(softmax)		// FIXME
 LINEAR_BACKWARD(sigmoid)
@@ -96,7 +141,8 @@ void linear_update(float eta, global const float *o, global float *w, global con
 		float a = -eta * o[i];
 		for (int k=0; k<os; k++) {
 //			*p++ -= a * d[k];
-			*p = fma(a, d[k], *p);
+//			*p = fma(a, d[k], *p);
+			*p = mad(a, d[k], *p);
 			p++;
 		}
 	}
@@ -143,16 +189,6 @@ uint xorshift_int(local uint4 *ctx)
 {
 	return xorshift_int(ctx) * 2.3283064e-10;
 }*/
-// http://www.reedbeta.com/blog/2013/01/12/quick-and-easy-gpu-random-numbers-in-d3d11/
-uint wang_hash(uint seed)
-{
-	seed = (seed ^ 61) ^ (seed >> 16);
-	seed *= 9;
-	seed = seed ^ (seed >> 4);
-	seed *= 0x27d4eb2d;
-	seed = seed ^ (seed >> 15);
-	return seed;
-}
 
 kernel void train(global const float *x, global float *w, global float *o, global float *d, global float *t, uint8 args)
 {
@@ -163,21 +199,11 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 	ptr.fp = t;
 
 	local uint seed;
-//	seed = args[2];
 	local uint4 r;
-	r.x = args[2];
-	r.y = args[2];
-	r.z = args[2];
-	r.w = args[2];
+	r.xyzw = args[2];
 	for (int n=args[1]; n>0; n--) {
-//		args[5] = n*784;
-//		args[0] = n;
-
-//		if (!get_global_id(0)) seed = wang_hash(seed) % 60000;
 		if (!get_global_id(0)) seed = xorshift_int(&r) % 60000;
-//		if (!get_global_id(0)) printf("%d ",seed);
 		barrier(CLK_LOCAL_MEM_FENCE);
-//printf("%d ",seed);
 		args[5] = seed*784;
 		args[0] = seed;
 
@@ -192,16 +218,37 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 }
 
 
-kernel void memset_uint4(global uint4 *mem, __private uint4 val)
+/*void sum_reduce_and_store(local float *sdata, global float *store_arr, float value, int store_off)
+{
+	uint lsz = get_local_size(0);
+	uint lid = get_local_id(0);
+	sdata[lid] = value;
+	barrier(CLK_LOCAL_MEM_FENCE);
+
+	// do reduction in shared mem
+	if (lsz != 1) {
+		if (lsz >= 512) { if (lid < 256) { sdata[lid] += sdata[lid + 256]; } barrier(CLK_LOCAL_MEM_FENCE); }
+		if (lsz >= 256) { if (lid < 128) { sdata[lid] += sdata[lid + 128]; } barrier(CLK_LOCAL_MEM_FENCE); }
+		if (lsz >= 128) { if (lid <  64) { sdata[lid] += sdata[lid +  64]; } barrier(CLK_LOCAL_MEM_FENCE); }
+
+		// Avoid extra if statements by only using local size >= 64
+		if (lid < 32) { sdata[lid] += sdata[lid + 32]; } barrier(CLK_LOCAL_MEM_FENCE);
+		if (lid < 16) { sdata[lid] += sdata[lid + 16]; } barrier(CLK_LOCAL_MEM_FENCE);
+		if (lid < 8) { sdata[lid] += sdata[lid + 8]; } barrier(CLK_LOCAL_MEM_FENCE);
+		if (lid < 4) { sdata[lid] += sdata[lid + 4]; } barrier(CLK_LOCAL_MEM_FENCE);
+		if (lid < 2) { sdata[lid] += sdata[lid + 2]; } barrier(CLK_LOCAL_MEM_FENCE);
+		if (lid < 1) { sdata[lid] += sdata[lid + 1]; } barrier(CLK_LOCAL_MEM_FENCE);
+	}
+}*/
+
+/*kernel void memset_uint4(global uint4 *mem, __private uint4 val)
 {
 	mem[get_global_id(0)] = val;
 }
 kernel void memset_float(global float *mem, __private float val)
 {
 	mem[get_global_id(0)] = val;
-}
-// pa[0]: in
-// pa[1]: out
+}*/
 /*kernel void linear_forward(global float *x, global float *a, global float *y, uint8 pa)
 {
 	int gid = get_global_id(0);
@@ -216,75 +263,10 @@ kernel void memset_float(global float *mem, __private float val)
 		}
 	}
 }*/
-
 /*uint clock_time()
 {
 	uint clock_time;
 	asm("mov.u32 %0, %%clock;" : "=r"(clock_time));
 	return clock_time;
 }*/
-
-
-#define ROW_DIM 0
-#define COL_DIM 1
-
-// http://www.bealto.com/gpu-gemv_v3.html
-// P threads per row compute 1/P-th of each dot product.
-// WORK has N/P entries.
-kernel void gemv(global const float *a, global const float *x, global float *y,
-	local float *work, int m, int n)
-{
-	// Load a slice of X in WORK, using all available threads
-	int ncols = n / get_global_size(COL_DIM); // nb values to load
-	int col0 = ncols * get_global_id(COL_DIM); // first value to load
-	for (int k=0; k<ncols; k+=get_local_size(ROW_DIM)) {
-		int col = k+get_local_id(ROW_DIM);
-		if (col < ncols) {
-			work[col] = x[col0+col];
-		}
-	}
-	barrier(CLK_LOCAL_MEM_FENCE); // sync group
-
-	// Compute partial dot product
-	float sum = (float)0;
-	for (int k=0; k<ncols; k++) {
-		sum += a[get_global_id(ROW_DIM)+m*(col0+k)] * work[k];
-	}
-
-	// Store in Y (P columns per row)
-	y[get_global_id(ROW_DIM)+m*get_global_id(COL_DIM)] = sum;
-}
-
-// Reduce M = get_global_size(0) rows of P values in matrix Y.
-// Stores the result in first column of Y.
-kernel void reduce_rows(global float *y, int m, int p)
-{
-	int row = get_global_id(0);
-	float sum = (float)0;
-	for (int col=0; col<p; col++) {
-		sum += y[row + m*col];
-	}
-	y[row] = sum;
-}
-
-// http://stackoverflow.com/questions/15597299/matrix-vector-multiplications-using-opencl
-/*kernel void matrixVectorMul(global float* resultVector,
-    global float* matrixA,
-    global float* vectorB, 
-    int width_A)
-{
-    int tx = get_global_id(0);
-    local float vectB[4096*2];
-
-    event_t copy_event = async_work_group_copy(vectB, vectorB, 4096*2, 0);
-    wait_group_events(1,copy_event);
-
-    float value = 0;
-    for (unsigned int k = 0; k < width_A; ++k) {
-        value += matrixA[tx * width_A + k] * vectB[k];
-    }
-
-    resultVector[tx] = value;
-}*/
-
 );
