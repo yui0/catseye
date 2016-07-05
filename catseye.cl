@@ -38,11 +38,13 @@ inline void dactivate_##dact(global float *o, int n)\
 DACTIVATION_FUNCTION(sigmoid)
 #endif
 
+#if 1
 #define LINEAR_FORWARD(act) \
 void linear_forward_##act(global const float *x, global const float *w, global float *o, uint is, uint os)\
 {\
 	if (!get_group_id(0))\
 	for (int i=get_local_id(0); i<os; i+=get_local_size(0)) {\
+	/*for (int i=get_global_id(0); i<os; i+=get_global_size(0)) {*/\
 		w += i;\
 		float s = 0;\
 		for (int k=0; k<is; k++) {\
@@ -56,6 +58,48 @@ void linear_forward_##act(global const float *x, global const float *w, global f
 	}\
 	barrier(CLK_LOCAL_MEM_FENCE);\
 }
+#else
+// http://developer.amd.com/community/blog/2012/07/05/efficient-dot-product-implementation-using-persistent-threads/
+void dot_local_reduce_kernel(global const float *x, global const float *y, global float *r, uint n)
+{
+	uint gid = get_global_id(0);
+	uint lid = get_local_id(0);
+	float priv_acc = 0; // accumulator in private memory
+	local float lcl_acc[256]; // accumulators in local memory
+
+	if (gid < n) {
+		priv_acc = lcl_acc[lid] = x[gid] * y[gid]; // multiply elements, store product
+	}
+	barrier(CLK_LOCAL_MEM_FENCE); // Find the sum of the accumulators.
+
+	uint dist = 256;
+	while (dist > 1) {
+		dist >>= 1;
+		if (lid < dist) {
+			// Private memory accumulator avoids extra local memory read.
+			priv_acc += lcl_acc[lid + dist];
+			lcl_acc[lid] = priv_acc;
+		}
+		barrier(CLK_LOCAL_MEM_FENCE);
+	}
+
+	// Store the result (the sum for the local work group).
+	if (lid == 0) {
+		r[get_group_id(0)] = priv_acc;
+	}
+}
+#define LINEAR_FORWARD(act) \
+void linear_forward_##act(global const float *x, global const float *w, global float *o, uint is, uint os)\
+{\
+	/*if (!get_group_id(0))*/\
+	for (int i=0; i<os; i++) {\
+		dot_local_reduce_kernel(&w[os], x, o+i, is);\
+		o[i] = act(o[i] + w[is*os]);\
+		w++;\
+	}\
+	barrier(CLK_LOCAL_MEM_FENCE);\
+}
+#endif
 LINEAR_FORWARD(identity)
 LINEAR_FORWARD(softmax)			// FIXME
 LINEAR_FORWARD(sigmoid)
@@ -70,6 +114,7 @@ void linear_backward_##dact(global const float *o, global const float *w, global
 {\
 	if (!get_group_id(0))\
 	for (int i=get_local_id(0); i<=is; i+=get_local_size(0)) {\
+	/*for (int i=get_global_id(0); i<=is; i+=get_global_size(0)) {*/\
 		w += i*os;\
 		float s = 0;\
 		for (int k=0; k<os; k++) {\
@@ -132,10 +177,11 @@ LINEAR_BACKWARD(scaled_tanh)
 LINEAR_BACKWARD(relu)
 LINEAR_BACKWARD(LeakyReLU)
 
-void linear_update(float eta, global const float *o, global float *w, global const float *d, uint is, uint os)
+inline void linear_update(float eta, global const float *o, global float *w, global const float *d, uint is, uint os)
 {
 	if (!get_group_id(0))
 	for (int i=get_local_id(0); i<=is; i+=get_local_size(0)) {
+//	for (int i=get_global_id(0); i<=is; i+=get_global_size(0)) {
 		global float *p = w + i*os;
 //		float a = eta * o[i];
 		float a = -eta * o[i];
@@ -146,7 +192,8 @@ void linear_update(float eta, global const float *o, global float *w, global con
 			p++;
 		}
 	}
-	barrier(CLK_LOCAL_MEM_FENCE);
+//	barrier(CLK_LOCAL_MEM_FENCE);
+//	barrier(CLK_GLOBAL_MEM_FENCE);
 }
 
 kernel void forward(global const float *x, global float *w, global float *o, global float *d, global float *t, uint8 args)
@@ -198,22 +245,26 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 	} ptr;
 	ptr.fp = t;
 
+	o[784+1+200] = 1;
+
 	local uint seed;
 	local uint4 r;
 	r.xyzw = args[2];
 	for (int n=args[1]; n>0; n--) {
 		if (!get_global_id(0)) seed = xorshift_int(&r) % 60000;
 		barrier(CLK_LOCAL_MEM_FENCE);
-		args[5] = seed*784;
-		args[0] = seed;
 
-		forward(x, w, o, d, t, args);
+//		args[5] = seed*784;
+//		forward(x, w, o, d, t, args);
+		global float *p = x + seed*784;
+		linear_forward_sigmoid(p, w, o+784+1, 784, 200);
+		linear_forward_identity(o+784+1, w+785*200, o+784+1+200+1, 200, 10);
 
-		loss_0_1(o+784+1+200+1, d+200+1, ptr.ip[args[0]], 10);
-		o[784+1+200] = 1;
+		loss_0_1(o+784+1+200+1, d+200+1, ptr.ip[seed], 10);
+//		o[784+1+200] = 1;
 		linear_backward_identity(o+784+1, w+785*200, d, d+200+1, 200, 10);
-		linear_update(/*args[1]*/0.01, x+args[5], w, d, 784, 200);
-		linear_update(/*args[1]*/0.01, o+784+1, w+785*200, d+200+1, 200, 10);
+		linear_update(/*eta*/0.01, p, w, d, 784, 200);
+		linear_update(/*eta*/0.01, o+784+1, w+785*200, d+200+1, 200, 10);
 	}
 }
 
