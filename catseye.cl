@@ -38,18 +38,16 @@ inline void dactivate_##dact(global float *o, int n)\
 DACTIVATION_FUNCTION(sigmoid)
 #endif
 
-#if 1
 #define LINEAR_FORWARD(act) \
 void linear_forward_##act(global const float *x, global const float *w, global float *o, uint is, uint os)\
 {\
-	if (!get_group_id(0))\
-	for (int i=get_local_id(0); i<os; i+=get_local_size(0)) {\
-	/*for (int i=get_global_id(0); i<os; i+=get_global_size(0)) {*/\
+/*	if (!get_group_id(0))*/\
+/*	for (int i=get_local_id(0); i<os; i+=get_local_size(0)) {*/\
+	for (int i=get_global_id(0); i<os; i+=get_global_size(0)) {\
 		w += i;\
 		float s = 0;\
 		for (int k=0; k<is; k++) {\
 			/*sum += w[os*k] * x[k];*/\
-			/*s = fma(w[k*os], *x++, s);*/\
 			s = mad(w[k*os], *x++, s);\
 		}\
 		s += w[is*os];\
@@ -58,48 +56,6 @@ void linear_forward_##act(global const float *x, global const float *w, global f
 	}\
 	barrier(CLK_LOCAL_MEM_FENCE);\
 }
-#else
-// http://developer.amd.com/community/blog/2012/07/05/efficient-dot-product-implementation-using-persistent-threads/
-void dot_local_reduce_kernel(global const float *x, global const float *y, global float *r, uint n)
-{
-	uint gid = get_global_id(0);
-	uint lid = get_local_id(0);
-	float priv_acc = 0; // accumulator in private memory
-	local float lcl_acc[256]; // accumulators in local memory
-
-	if (gid < n) {
-		priv_acc = lcl_acc[lid] = x[gid] * y[gid]; // multiply elements, store product
-	}
-	barrier(CLK_LOCAL_MEM_FENCE); // Find the sum of the accumulators.
-
-	uint dist = 256;
-	while (dist > 1) {
-		dist >>= 1;
-		if (lid < dist) {
-			// Private memory accumulator avoids extra local memory read.
-			priv_acc += lcl_acc[lid + dist];
-			lcl_acc[lid] = priv_acc;
-		}
-		barrier(CLK_LOCAL_MEM_FENCE);
-	}
-
-	// Store the result (the sum for the local work group).
-	if (lid == 0) {
-		r[get_group_id(0)] = priv_acc;
-	}
-}
-#define LINEAR_FORWARD(act) \
-void linear_forward_##act(global const float *x, global const float *w, global float *o, uint is, uint os)\
-{\
-	/*if (!get_group_id(0))*/\
-	for (int i=0; i<os; i++) {\
-		dot_local_reduce_kernel(&w[os], x, o+i, is);\
-		o[i] = act(o[i] + w[is*os]);\
-		w++;\
-	}\
-	barrier(CLK_LOCAL_MEM_FENCE);\
-}
-#endif
 LINEAR_FORWARD(identity)
 LINEAR_FORWARD(softmax)			// FIXME
 LINEAR_FORWARD(sigmoid)
@@ -108,18 +64,16 @@ LINEAR_FORWARD(scaled_tanh)
 LINEAR_FORWARD(relu)
 LINEAR_FORWARD(LeakyReLU)
 
-#if 1
 #define LINEAR_BACKWARD(dact) \
 void linear_backward_##dact(global const float *o, global const float *w, global float *d, global const float *delta, uint is, uint os)\
 {\
-	if (!get_group_id(0))\
-	for (int i=get_local_id(0); i<=is; i+=get_local_size(0)) {\
-	/*for (int i=get_global_id(0); i<=is; i+=get_global_size(0)) {*/\
+/*	if (!get_group_id(0))*/\
+/*	for (int i=get_local_id(0); i<=is; i+=get_local_size(0)) {*/\
+	for (int i=get_global_id(0); i<=is; i+=get_global_size(0)) {\
 		w += i*os;\
 		float s = 0;\
 		for (int k=0; k<os; k++) {\
 			/*s += (*w++) * delta[k];*/\
-			/*s = fma(*w++, delta[k], s);*/\
 			s = mad(*w++, delta[k], s);\
 		}\
 		d[i] = s * dact(o[i]);\
@@ -127,48 +81,6 @@ void linear_backward_##dact(global const float *o, global const float *w, global
 	}\
 	barrier(CLK_LOCAL_MEM_FENCE);\
 }
-#else
-// http://developer.amd.com/community/blog/2012/07/05/efficient-dot-product-implementation-using-persistent-threads/
-void dot_local_reduce_kernel(global const float *x, global const float *y, global float *r, uint n)
-{
-	uint gid = get_global_id(0);
-	uint lid = get_local_id(0);
-	float priv_acc = 0; // accumulator in private memory
-	local float lcl_acc[256]; // accumulators in local memory
-
-	if (gid < n) {
-		priv_acc = lcl_acc[lid] = x[gid] * y[gid]; // multiply elements, store product
-	}
-	barrier(CLK_LOCAL_MEM_FENCE); // Find the sum of the accumulators.
-
-	uint dist = 256;
-	while (dist > 1) {
-		dist >>= 1;
-		if (lid < dist) {
-			// Private memory accumulator avoids extra local memory read.
-			priv_acc += lcl_acc[lid + dist];
-			lcl_acc[lid] = priv_acc;
-		}
-		barrier(CLK_LOCAL_MEM_FENCE);
-	}
-
-	// Store the result (the sum for the local work group).
-	if (lid == 0) {
-		r[get_group_id(0)] = priv_acc;
-	}
-}
-#define LINEAR_BACKWARD(dact) \
-void linear_backward_##dact(global const float *o, global const float *w, global float *d, global const float *delta, uint is, uint os)\
-{\
-	/*if (!get_group_id(0))*/\
-	for (int i=0; i<=is; i++) {\
-		dot_local_reduce_kernel(w, delta, d+i, os);\
-		d[i] = d[i] * dact(o[i]);\
-		w += os;\
-	}\
-	barrier(CLK_LOCAL_MEM_FENCE);\
-}
-#endif
 LINEAR_BACKWARD(identity)
 LINEAR_BACKWARD(softmax)		// FIXME
 LINEAR_BACKWARD(sigmoid)
@@ -182,15 +94,16 @@ inline void linear_update(float eta, global const float *o, global float *w, glo
 	if (!get_group_id(0))
 	for (int i=get_local_id(0); i<=is; i+=get_local_size(0)) {
 //	for (int i=get_global_id(0); i<=is; i+=get_global_size(0)) {
+//if (get_group_id(0)) printf("%d ",i);
 		global float *p = w + i*os;
-//		float a = eta * o[i];
 		float a = -eta * o[i];
 		for (int k=0; k<os; k++) {
-//			*p++ -= a * d[k];
-//			*p = fma(a, d[k], *p);
+//			*p++ += a * d[k];
+//printf("%f ",p[0]);
 			*p = mad(a, d[k], *p);
 			p++;
 		}
+//printf("%d ",p-w);
 	}
 //	barrier(CLK_LOCAL_MEM_FENCE);
 //	barrier(CLK_GLOBAL_MEM_FENCE);
@@ -239,6 +152,13 @@ uint xorshift_int(local uint4 *ctx)
 
 kernel void train(global const float *x, global float *w, global float *o, global float *d, global float *t, uint8 args)
 {
+	/*if (!get_global_id(0)) {
+		printf("OpenCL training start!!\n");
+		printf("group size: %d\n", get_num_groups(0));
+		printf("global size: %d\n", get_global_size(0));
+		printf("local size: %d\n", get_local_size(0));
+	}*/
+
 	union {
 		global uint *ip;
 		global float *fp;
@@ -269,29 +189,6 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 }
 
 
-/*void sum_reduce_and_store(local float *sdata, global float *store_arr, float value, int store_off)
-{
-	uint lsz = get_local_size(0);
-	uint lid = get_local_id(0);
-	sdata[lid] = value;
-	barrier(CLK_LOCAL_MEM_FENCE);
-
-	// do reduction in shared mem
-	if (lsz != 1) {
-		if (lsz >= 512) { if (lid < 256) { sdata[lid] += sdata[lid + 256]; } barrier(CLK_LOCAL_MEM_FENCE); }
-		if (lsz >= 256) { if (lid < 128) { sdata[lid] += sdata[lid + 128]; } barrier(CLK_LOCAL_MEM_FENCE); }
-		if (lsz >= 128) { if (lid <  64) { sdata[lid] += sdata[lid +  64]; } barrier(CLK_LOCAL_MEM_FENCE); }
-
-		// Avoid extra if statements by only using local size >= 64
-		if (lid < 32) { sdata[lid] += sdata[lid + 32]; } barrier(CLK_LOCAL_MEM_FENCE);
-		if (lid < 16) { sdata[lid] += sdata[lid + 16]; } barrier(CLK_LOCAL_MEM_FENCE);
-		if (lid < 8) { sdata[lid] += sdata[lid + 8]; } barrier(CLK_LOCAL_MEM_FENCE);
-		if (lid < 4) { sdata[lid] += sdata[lid + 4]; } barrier(CLK_LOCAL_MEM_FENCE);
-		if (lid < 2) { sdata[lid] += sdata[lid + 2]; } barrier(CLK_LOCAL_MEM_FENCE);
-		if (lid < 1) { sdata[lid] += sdata[lid + 1]; } barrier(CLK_LOCAL_MEM_FENCE);
-	}
-}*/
-
 /*kernel void memset_uint4(global uint4 *mem, __private uint4 val)
 {
 	mem[get_global_id(0)] = val;
@@ -299,20 +196,6 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 kernel void memset_float(global float *mem, __private float val)
 {
 	mem[get_global_id(0)] = val;
-}*/
-/*kernel void linear_forward(global float *x, global float *a, global float *y, uint8 pa)
-{
-	int gid = get_global_id(0);
-	if (gid <= pa[0]) {
-		if (pa[2]) x = y + pa[2];
-		else x += pa[5];
-		a += pa[3];
-		y += pa[4];
-		int c = pa[0]*pa[1];
-		for (int k=0; k<pa[1]; k++) {
-			y[k] += a[k + c] * x[gid];
-		}
-	}
 }*/
 /*uint clock_time()
 {

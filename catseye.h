@@ -920,7 +920,6 @@ void CatsEye_forward(CatsEye *this, numerus *x, int n)
 	}
 }
 
-#define CATS_NO_MINIBATCH
 // calculate the error of output layer
 void CatsEye_loss_0_1(CatsEye *this, int c, void *t, int n)
 {
@@ -931,13 +930,7 @@ void CatsEye_loss_0_1(CatsEye *this, int c, void *t, int n)
 	int a = ((int*)t)[n];
 	for (int i=0; i<size; i++) {
 		// 0-1 loss function
-#ifdef CATS_NO_MINIBATCH
 		d[i] = a==i ? o[i]-1 : o[i];	// 1-of-K
-#else
-		numerus e = a==i ? o[i]-1 : o[i];	// 1-of-K
-		e += d[i];
-		d[i] = e * 0.5;
-#endif
 	}
 	// Ref.
 	// http://d.hatena.ne.jp/echizen_tm/20110606/1307378609
@@ -1010,6 +1003,7 @@ void (*CatsEye_loss[])(CatsEye *this, int c, void *t, int n) = {
  * N: data size
  * repeat: repeat times
  * eta: learning rate (1e-6 to 1) */
+#define CATS_NO_MINIBATCH
 void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numerus eta)
 {
 	this->xdata = x;
@@ -1041,16 +1035,17 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 
 			// calculate the error of output layer
 			CatsEye_loss[loss](this, a, t, sample);
-#ifndef CATS_NO_MINIBATCH
-		}
-		{
-#endif
+
 			// calculate the error of hidden layer
 			// t[hidden] += w[1][hidden * out] * d[1][out]
 			// d[hidden] = t[hidden] * dact(o[hidden])
 			for (int i=this->layers-2; i>0; i--) {
 				CatsEye_layer_backward[TYPE(i+1)](this->o[i], this->w[i], this->d[i-1], this->d[i], &this->u[LPLEN*(i+1)]);
 			}
+#ifndef CATS_NO_MINIBATCH
+		}
+		{
+#endif
 			// update the weights of hidden layer
 			// w[0][in] -= eta * o[0][in] * d[0][in * hidden]
 			for (int i=this->layers-2; i>0; i--) {
