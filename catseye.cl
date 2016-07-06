@@ -41,9 +41,9 @@ DACTIVATION_FUNCTION(sigmoid)
 #define LINEAR_FORWARD(act) \
 void linear_forward_##act(global const float *x, global const float *w, global float *o, uint is, uint os)\
 {\
-/*	if (!get_group_id(0))*/\
-/*	for (int i=get_local_id(0); i<os; i+=get_local_size(0)) {*/\
-	for (int i=get_global_id(0); i<os; i+=get_global_size(0)) {\
+	if (!get_group_id(0))\
+	for (int i=get_local_id(0); i<os; i+=get_local_size(0)) {\
+/*	for (int i=get_global_id(0); i<os; i+=get_global_size(0)) {*/\
 		w += i;\
 		float s = 0;\
 		for (int k=0; k<is; k++) {\
@@ -67,9 +67,9 @@ LINEAR_FORWARD(LeakyReLU)
 #define LINEAR_BACKWARD(dact) \
 void linear_backward_##dact(global const float *o, global const float *w, global float *d, global const float *delta, uint is, uint os)\
 {\
-/*	if (!get_group_id(0))*/\
-/*	for (int i=get_local_id(0); i<=is; i+=get_local_size(0)) {*/\
-	for (int i=get_global_id(0); i<=is; i+=get_global_size(0)) {\
+	if (!get_group_id(0))\
+	for (int i=get_local_id(0); i<=is; i+=get_local_size(0)) {\
+/*	for (int i=get_global_id(0); i<=is; i+=get_global_size(0)) {*/\
 		w += i*os;\
 		float s = 0;\
 		for (int k=0; k<os; k++) {\
@@ -89,24 +89,30 @@ LINEAR_BACKWARD(scaled_tanh)
 LINEAR_BACKWARD(relu)
 LINEAR_BACKWARD(LeakyReLU)
 
-inline void linear_update(float eta, global const float *o, global float *w, global const float *d, uint is, uint os)
+/*void linear_update(float eta, global const float *o, global float *w, global const float *d, uint is, uint os)
 {
 	if (!get_group_id(0))
 	for (int i=get_local_id(0); i<=is; i+=get_local_size(0)) {
 //	for (int i=get_global_id(0); i<=is; i+=get_global_size(0)) {
-//if (get_group_id(0)) printf("%d ",i);
 		global float *p = w + i*os;
 		float a = -eta * o[i];
 		for (int k=0; k<os; k++) {
 //			*p++ += a * d[k];
-//printf("%f ",p[0]);
 			*p = mad(a, d[k], *p);
 			p++;
 		}
-//printf("%d ",p-w);
 	}
 //	barrier(CLK_LOCAL_MEM_FENCE);
 //	barrier(CLK_GLOBAL_MEM_FENCE);
+}*/
+void linear_update(float eta, global const float *o, global float *w, global const float *d, uint is, uint os)
+{
+	if (!get_group_id(0))
+	for (int i=get_local_id(0); i<os; i+=get_local_size(0)) {
+		for (int k=0; k<=is; k++) {
+			w[i+k*os] = mad(-eta * o[k], d[i], w[i+k*os]);
+		}
+	}
 }
 
 kernel void forward(global const float *x, global float *w, global float *o, global float *d, global float *t, uint8 args)
@@ -172,6 +178,7 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 	r.xyzw = args[2];
 	for (int n=args[1]; n>0; n--) {
 		if (!get_global_id(0)) seed = xorshift_int(&r) % 60000;
+//		if (!get_local_id(0)) seed = xorshift_int(&r) % 60000;
 		barrier(CLK_LOCAL_MEM_FENCE);
 
 //		args[5] = seed*784;
@@ -181,7 +188,6 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 		linear_forward_identity(o+784+1, w+785*200, o+784+1+200+1, 200, 10);
 
 		loss_0_1(o+784+1+200+1, d+200+1, ptr.ip[seed], 10);
-//		o[784+1+200] = 1;
 		linear_backward_identity(o+784+1, w+785*200, d, d+200+1, 200, 10);
 		linear_update(/*eta*/0.01, p, w, d, 784, 200);
 		linear_update(/*eta*/0.01, o+784+1, w+785*200, d+200+1, 200, 10);
