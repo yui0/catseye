@@ -83,7 +83,6 @@ void CatsEye_forward(CatsEye *this, numerus *x, int n)
 #endif
 #endif
 
-
 	if (n<0) { n = x-1 - this->xdata; x = this->xdata; }
 	args[0].s = this->xdata;
 	//args[0].size = sizeof(numerus)*(SIZE(0)+1)*60000;
@@ -94,7 +93,6 @@ void CatsEye_forward(CatsEye *this, numerus *x, int n)
 	oclKernelArgsRead(args);
 
 	memcpy(this->o[0], x+n, SIZE(0)*sizeof(numerus));
-
 
 /*	for (int i=0; i<200; i++) printf("%f ", this->o[1][i]);
 	printf("\n%d %f\n",SIZE(0),this->o[0][0]);

@@ -138,8 +138,7 @@ void oclRun(ocl_t *kernel)
 	}
 
 	size_t *local = kernel->local_size[0] ? kernel->local_size : 0;
-/*	int r = */clEnqueueNDRangeKernel(command_queue, kernel->k, 1, NULL, kernel->global_size, local, 0, NULL, NULL);
-//	if (r<0) printf("Kernel error!! %d\n", r);
+	clEnqueueNDRangeKernel(command_queue, kernel->k, 1, NULL, kernel->global_size, local, 0, NULL, NULL);
 }
 
 void oclReleaseKernel(ocl_t *kernel, int n)

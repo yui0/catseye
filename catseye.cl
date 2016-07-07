@@ -89,7 +89,7 @@ LINEAR_BACKWARD(scaled_tanh)
 LINEAR_BACKWARD(relu)
 LINEAR_BACKWARD(LeakyReLU)
 
-/*void linear_update(float eta, global const float *o, global float *w, global const float *d, uint is, uint os)
+void linear_update(float eta, global const float *o, global float *w, global const float *d, uint is, uint os)
 {
 	if (!get_group_id(0))
 	for (int i=get_local_id(0); i<=is; i+=get_local_size(0)) {
@@ -104,16 +104,18 @@ LINEAR_BACKWARD(LeakyReLU)
 	}
 //	barrier(CLK_LOCAL_MEM_FENCE);
 //	barrier(CLK_GLOBAL_MEM_FENCE);
-}*/
-void linear_update(float eta, global const float *o, global float *w, global const float *d, uint is, uint os)
+}
+// for GPU, not for CPU
+/*void linear_update(float eta, global const float *o, global float *w, global const float *d, uint is, uint os)
 {
 	if (!get_group_id(0))
 	for (int i=get_local_id(0); i<os; i+=get_local_size(0)) {
-		for (int k=0; k<=is; k++) {
+		for (int k=0; k<is; k++) {
 			w[i+k*os] = mad(-eta * o[k], d[i], w[i+k*os]);
 		}
+		w[i+is*os] = mad(-eta, d[i], w[i+is*os]);
 	}
-}
+}*/
 
 kernel void forward(global const float *x, global float *w, global float *o, global float *d, global float *t, uint8 args)
 {
@@ -158,7 +160,7 @@ uint xorshift_int(local uint4 *ctx)
 
 kernel void train(global const float *x, global float *w, global float *o, global float *d, global float *t, uint8 args)
 {
-	/*if (!get_global_id(0)) {
+/*	if (!get_global_id(0)) {
 		printf("OpenCL training start!!\n");
 		printf("group size: %d\n", get_num_groups(0));
 		printf("global size: %d\n", get_global_size(0));
@@ -171,6 +173,10 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 	} ptr;
 	ptr.fp = t;
 
+/*#ifdef __CPU__
+	int time;
+	if (get_global_id(0)==1) time = clock();
+#endif*/
 	o[784+1+200] = 1;
 
 	local uint seed;
@@ -192,21 +198,10 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 		linear_update(/*eta*/0.01, p, w, d, 784, 200);
 		linear_update(/*eta*/0.01, o+784+1, w+785*200, d+200+1, 200, 10);
 	}
+
+/*#ifdef __CPU__
+	if (get_global_id(0)==1) printf(" [%.2fs]\n", (clock()-time)/1000.0/1000.0);
+#endif*/
 }
 
-
-/*kernel void memset_uint4(global uint4 *mem, __private uint4 val)
-{
-	mem[get_global_id(0)] = val;
-}
-kernel void memset_float(global float *mem, __private float val)
-{
-	mem[get_global_id(0)] = val;
-}*/
-/*uint clock_time()
-{
-	uint clock_time;
-	asm("mov.u32 %0, %%clock;" : "=r"(clock_time));
-	return clock_time;
-}*/
 );
