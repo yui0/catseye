@@ -95,8 +95,9 @@ void oclKernel(ocl_t *kernel, int n, char *opt, char *kernel_code)
 		args_t *args = kernel->a;
 		while (args->size) {
 			if (args->type>0) {
-				*(cl_mem*)(args->p) = clCreateBuffer(context, args->type, args->size, NULL, &ret);
-				if (!args->p) printf("clCreateBuffer error!!\n");
+				cl_mem *p = args->p;
+				if (!*p) *p = clCreateBuffer(context, args->type, args->size, NULL, &ret);
+				if (!*p) printf("clCreateBuffer error!!\n");
 			}
 			args++;
 		}
@@ -148,7 +149,7 @@ void oclReleaseKernel(ocl_t *kernel, int n)
 		while (args->size) {
 			if (args->type>0 && args->p) {
 				clReleaseMemObject(*(cl_mem*)(args->p));
-				args->p = 0;
+				*(cl_mem*)args->p = 0;
 			}
 			args++;
 		}

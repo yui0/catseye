@@ -31,10 +31,20 @@ args_t train_args[] = {
 	{ 0, sizeof(param), &param, 0, 0, 0 },
 	{ 0, 0, 0, 0, 0, 0 },
 };
+args_t forward_args[] = {
+	{ CL_MEM_READ_WRITE, 0, &d_mem[0], 0, -1, 0 },	// x
+	{ CL_MEM_READ_WRITE, 0, &d_mem[1], 0, 0, 0 },	// w
+	{ CL_MEM_READ_WRITE, 0, &d_mem[2], 0, 0, 1 },	// o
+	{ 0, sizeof(param), &param, 0, 0, 0 },
+	{ 0, 0, 0, 0, 0, 0 },
+};
 ocl_t kernel[] = {
 	{ "forward",	0, {256,0,0,},{256,0,0,}, args },
 //	{ "train",	0, {256,0,0,},{256,0,0,}, args },
 	{ "train",	0, {1024,0,0,},{0,0,0,}, /*train_*/args },
+
+	{ "_linear_forward_identity",	0, {1024,0,0,},{0,0,0,}, forward_args },
+	{ "_linear_forward_sigmoid",	0, {1024,0,0,},{0,0,0,}, forward_args },
 };
 int ksz = sizeof(kernel)/sizeof(kernel[0]);
 
@@ -57,6 +67,11 @@ void CatsEye_clSetup(CatsEye *this)
 	train_args[2].size = sizeof(numerus)*this->osize;
 	train_args[3].size = sizeof(numerus)*this->dsize;
 	train_args[4].size = sizeof(numerus)*60000;*/
+
+	forward_args[0].size = sizeof(numerus)*(SIZE(0)+1)*60000;
+	forward_args[1].size = sizeof(numerus)*this->wsize;
+	forward_args[2].size = sizeof(numerus)*this->osize;
+	forward_args[2].s = this->odata;
 
 	// http://dhruba.name/2012/12/24/opencl-cookbook-10-tips-for-high-performance-kernels/
 	oclSetup(0, 0);
@@ -83,16 +98,34 @@ void CatsEye_forward(CatsEye *this, numerus *x, int n)
 #endif
 #endif
 
-	if (n<0) { n = x-1 - this->xdata; x = this->xdata; }
-	args[0].s = this->xdata;
+	if (n<0) n = x-1 - this->xdata;
+/*	args[0].s = this->xdata;
 	//args[0].size = sizeof(numerus)*(SIZE(0)+1)*60000;
-	param[5] = n;
+	param[0] = n;
 
 	oclKernelArgsWrite(args);
 	oclRun(&kernel[0]);
-	oclKernelArgsRead(args);
+	oclKernelArgsRead(args);*/
 
-	memcpy(this->o[0], x+n, SIZE(0)*sizeof(numerus));
+	forward_args[0].s = this->xdata;
+	oclKernelArgsWrite(forward_args);
+	param[0] = 1;
+	param[1] = n;
+	param[2] = 0;
+	param[3] = 784+1;
+	param[4] = 784;
+	param[5] = 200;
+	oclRun(&kernel[3]);
+	param[0] = 0;
+	param[1] = 784+1;
+	param[2] = 785*200;
+	param[3] = 784+1+200+1;
+	param[4] = 200;
+	param[5] = 10;
+	oclRun(&kernel[2]);
+	oclKernelArgsRead(forward_args);
+
+//	memcpy(this->o[0], x+n, SIZE(0)*sizeof(numerus));
 
 /*	for (int i=0; i<200; i++) printf("%f ", this->o[1][i]);
 	printf("\n%d %f\n",SIZE(0),this->o[0][0]);
