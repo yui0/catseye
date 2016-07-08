@@ -140,6 +140,8 @@ void oclRun(ocl_t *kernel)
 
 	size_t *local = kernel->local_size[0] ? kernel->local_size : 0;
 	clEnqueueNDRangeKernel(command_queue, kernel->k, 1, NULL, kernel->global_size, local, 0, NULL, NULL);
+	//cl_event e;
+	//clEnqueueNDRangeKernel(command_queue, kernel->k, 1, NULL, kernel->global_size, local, 0, NULL, &e);
 }
 
 void oclReleaseKernel(ocl_t *kernel, int n)

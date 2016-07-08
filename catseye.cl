@@ -56,7 +56,7 @@ void linear_forward_##act(global const float *x, global const float *w, global f
 	}\
 	barrier(CLK_LOCAL_MEM_FENCE);\
 }\
-kernel void _linear_forward_##act(global const float *x, global const float *w, global float *o, uint8 args)\
+kernel void _linear_forward_##act(global const float *x, global float *w, global float *o, global float *d, global float *t, global int *sync, uint8 args)\
 {\
 	linear_forward_##act(args[0] ? x+args[1] : o+args[1], w+args[2], o+args[3], args[4], args[5]);\
 }
@@ -69,7 +69,7 @@ LINEAR_FORWARD(relu)
 LINEAR_FORWARD(LeakyReLU)
 
 #define LINEAR_BACKWARD(dact) \
-kernel void linear_backward_##dact(global const float *o, global const float *w, global float *d, global const float *delta, uint is, uint os)\
+void linear_backward_##dact(global const float *o, global const float *w, global float *d, global const float *delta, uint is, uint os)\
 {\
 	if (!get_group_id(0))\
 	for (int i=get_local_id(0); i<=is; i+=get_local_size(0)) {\
@@ -84,6 +84,10 @@ kernel void linear_backward_##dact(global const float *o, global const float *w,
 		w -= (i*os + os);\
 	}\
 	barrier(CLK_LOCAL_MEM_FENCE);\
+}\
+kernel void _linear_backward_##dact(global const float *x, global float *w, global float *o, global float *d, global float *t, global int *sync, uint8 args)\
+{\
+	linear_backward_##dact(o+args[0], w+args[1], d+args[2], d+args[3], args[4], args[5]);\
 }
 LINEAR_BACKWARD(identity)
 LINEAR_BACKWARD(softmax)		// FIXME
@@ -93,7 +97,7 @@ LINEAR_BACKWARD(scaled_tanh)
 LINEAR_BACKWARD(relu)
 LINEAR_BACKWARD(LeakyReLU)
 
-kernel void linear_update(float eta, global const float *o, global float *w, global const float *d, uint is, uint os)
+void linear_update(float eta, global const float *o, global float *w, global const float *d, uint is, uint os)
 {
 	if (!get_group_id(0))
 	for (int i=get_local_id(0); i<=is; i+=get_local_size(0)) {
@@ -107,7 +111,25 @@ kernel void linear_update(float eta, global const float *o, global float *w, glo
 		}
 	}
 //	barrier(CLK_LOCAL_MEM_FENCE);
-//	barrier(CLK_GLOBAL_MEM_FENCE);
+}
+kernel void _linear_update(global const float *x, global float *w, global float *o, global float *d, global float *t, global int *sync, uint8 args)
+{
+	//linear_update(0.01, args[0] ? x+args[1] : o+args[1], w+args[2], d+args[3], args[4], args[5]);
+	o = args[0] ? x+args[1] : o+args[1];
+	w += args[2];
+	d += args[3];
+	uint is = args[4];
+	uint os = args[5];
+	float eta = 0.01;
+
+	for (int i=get_global_id(0); i<=is; i+=get_global_size(0)) {
+		global float *p = w + i*os;
+		float a = -eta * o[i];
+		for (int k=0; k<os; k++) {
+			*p = mad(a, d[k], *p);
+			p++;
+		}
+	}
 }
 // for GPU, not for CPU
 /*void linear_update(float eta, global const float *o, global float *w, global const float *d, uint is, uint os)
@@ -121,7 +143,7 @@ kernel void linear_update(float eta, global const float *o, global float *w, glo
 	}
 }*/
 
-kernel void forward(global const float *x, global float *w, global float *o, global float *d, global float *t, uint8 args)
+kernel void forward(global const float *x, global float *w, global float *o, global float *d, global float *t, global int *sync, uint8 args)
 {
 	linear_forward_sigmoid(x+args[0], w, o+784+1, 784, 200);
 	/*if (!get_global_id(0)) {
@@ -132,7 +154,7 @@ kernel void forward(global const float *x, global float *w, global float *o, glo
 	linear_forward_identity(o+784+1, w+785*200, o+784+1+200+1, 200, 10);
 }
 
-kernel void loss_0_1(global const float *o, global float *d, uint a, uint n)
+void loss_0_1(global const float *o, global float *d, uint a, uint n)
 {
 	if (!get_group_id(0))
 	for (int i=get_local_id(0); i<n; i+=get_local_size(0)) {
@@ -140,8 +162,12 @@ kernel void loss_0_1(global const float *o, global float *d, uint a, uint n)
 	}
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
+kernel void _loss_0_1(global const float *x, global float *w, global float *o, global float *d, global float *t, global int *sync, uint8 args)
+{
+	loss_0_1(o+args[0], d+args[1], args[2], args[3]);
+}
 
-kernel void loss_mse(global const float *o, global float *d, global const float *a, uint n)
+void loss_mse(global const float *o, global float *d, global const float *a, uint n)
 {
 	for (int i=get_local_id(0); i<n; i+=get_local_size(0)) {
 		d[i] = o[i] - a[i];
@@ -162,7 +188,59 @@ uint xorshift_int(local uint4 *ctx)
 	return xorshift_int(ctx) * 2.3283064e-10;
 }*/
 
-kernel void train(global const float *x, global float *w, global float *o, global float *d, global float *t, uint8 args)
+// http://synergy.cs.vt.edu/pubs/papers/xiao-ipdps2010-gpusync.pdf
+// http://stackoverflow.com/questions/34476631/opencl-and-gpu-global-synchronization
+/*void global_sync(uint goalVal, global int *syncIn, global int *syncOut)
+{
+	int tid_in_blk = get_local_id(0) * get_local_size(1) + get_local_id(1);
+	int nBlockNum = get_num_groups(0) * get_num_groups(1);
+	int bid = get_group_id(0) * get_num_groups(1) + get_group_id(1);
+
+//	printf("%d/%d ",tid_in_blk,bid);
+	// only thread 0 is used for synchronization
+	if (tid_in_blk == 0) syncIn[bid] = goalVal;
+
+	if (bid == 1) {
+		if (tid_in_blk < nBlockNum) {
+			while (syncIn[tid_in_blk] != goalVal) ;
+		}
+		barrier(CLK_LOCAL_MEM_FENCE);
+
+		if (tid_in_blk < nBlockNum) syncOut[tid_in_blk] = goalVal;
+	}
+
+	if (tid_in_blk == 0) {
+		while (syncOut[bid] != goalVal) ;
+	}
+	barrier(CLK_LOCAL_MEM_FENCE);
+}*/
+// http://industrybestpractice.blogspot.jp/2012/07/global-synchronisation-in-opencl.html
+void global_sync(volatile global int *flags)
+{
+	const size_t thread_id = get_local_id(0);
+	const size_t workgroup_id = get_group_id(0);
+
+	if (thread_id == 0) {
+		flags[workgroup_id] = 1;
+	}
+
+	if (workgroup_id == 0) {
+		if (thread_id < get_num_groups(0)) {
+			while (flags[thread_id] != 1) ;
+		}
+		barrier(CLK_GLOBAL_MEM_FENCE);
+
+		if (thread_id < get_num_groups(0)) {
+			flags[thread_id] = 0;
+		}
+	}
+
+	if (thread_id == 0) {
+		while (flags[workgroup_id] != 0) ;
+	}
+	barrier(CLK_GLOBAL_MEM_FENCE);
+}
+kernel void train(global const float *x, global float *w, global float *o, global float *d, global float *t, global int *sync, uint8 args)
 {
 /*	if (!get_global_id(0)) {
 		printf("OpenCL training start!!\n");
@@ -201,6 +279,9 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 		linear_backward_identity(o+784+1, w+785*200, d, d+200+1, 200, 10);
 		linear_update(/*eta*/0.01, p, w, d, 784, 200);
 		linear_update(/*eta*/0.01, o+784+1, w+785*200, d+200+1, 200, 10);
+
+//		global_sync(n, sync, sync+1024);
+//		global_sync(sync);
 	}
 
 /*#ifdef __CPU__

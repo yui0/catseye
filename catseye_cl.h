@@ -9,42 +9,29 @@
 char kernel_code[] =
 #include "catseye.cl"
 
-cl_mem d_mem[5];
+cl_mem d_mem[6];
 unsigned int param[8];
 args_t args[] = {
 	{ CL_MEM_READ_WRITE, 0, &d_mem[0], 0, -1, 0 },	// x
 	{ CL_MEM_READ_WRITE, 0, &d_mem[1], 0, 1, 1 },	// w
 	{ CL_MEM_READ_WRITE, 0, &d_mem[2], 0, -1, 1 },	// o
-//	{ CL_MEM_READ_WRITE, 0, &d_mem[2], 0, 0, 0 },	// o
 	{ CL_MEM_READ_WRITE, 0, &d_mem[3], 0, 1, 1 },	// d
-//	{ CL_MEM_READ_WRITE, 0, &d_mem[3], 0, 0, 0 },	// d
 	{ CL_MEM_READ_WRITE, 0, &d_mem[4], 0, -1, 0 },	// t
-	{ 0, sizeof(param), &param, 0, 0, 0 },
-	{ 0, 0, 0, 0, 0, 0 },
-};
-args_t train_args[] = {
-	{ CL_MEM_READ_WRITE, 0, &d_mem[0], 0, -1, 0 },	// x
-	{ CL_MEM_READ_WRITE, 0, &d_mem[1], 0, 0, 1 },	// w
-	{ CL_MEM_READ_WRITE, 0, &d_mem[2], 0, 0, 0 },	// o
-	{ CL_MEM_READ_WRITE, 0, &d_mem[3], 0, 0, 0 },	// d
-	{ CL_MEM_READ_WRITE, 0, &d_mem[4], 0, -1, 0 },	// t
-	{ 0, sizeof(param), &param, 0, 0, 0 },
-	{ 0, 0, 0, 0, 0, 0 },
-};
-args_t forward_args[] = {
-	{ CL_MEM_READ_WRITE, 0, &d_mem[0], 0, -1, 0 },	// x
-	{ CL_MEM_READ_WRITE, 0, &d_mem[1], 0, 0, 0 },	// w
-	{ CL_MEM_READ_WRITE, 0, &d_mem[2], 0, 0, 1 },	// o
+	{ CL_MEM_READ_WRITE, 0, &d_mem[5], 0, 0, 0 },	// sync
 	{ 0, sizeof(param), &param, 0, 0, 0 },
 	{ 0, 0, 0, 0, 0, 0 },
 };
 ocl_t kernel[] = {
 	{ "forward",	0, {256,0,0,},{256,0,0,}, args },
 //	{ "train",	0, {256,0,0,},{256,0,0,}, args },
-	{ "train",	0, {1024,0,0,},{0,0,0,}, /*train_*/args },
+	{ "train",	0, {1024,0,0,},{0,0,0,}, args },
 
-	{ "_linear_forward_identity",	0, {1024,0,0,},{0,0,0,}, forward_args },
-	{ "_linear_forward_sigmoid",	0, {1024,0,0,},{0,0,0,}, forward_args },
+	{ "_linear_forward_identity",	0, {1024,0,0,},{0,0,0,}, args },
+	{ "_linear_forward_sigmoid",	0, {1024,0,0,},{0,0,0,}, args },
+	{ "_linear_backward_identity",	0, {1024,0,0,},{0,0,0,}, args },
+	{ "_linear_backward_sigmoid",	0, {1024,0,0,},{0,0,0,}, args },
+	{ "_linear_update",		0, {1024,0,0,},{0,0,0,}, args },
+	{ "_loss_0_1",			0, {1024,0,0,},{0,0,0,}, args },
 };
 int ksz = sizeof(kernel)/sizeof(kernel[0]);
 
@@ -60,18 +47,7 @@ void CatsEye_clSetup(CatsEye *this)
 	args[3].s = this->ddata;
 	args[4].size = sizeof(numerus)*60000;
 	//args[4].s = this->ddata;
-
-/*	train_args[0].size = sizeof(numerus)*(SIZE(0)+1)*60000;
-	train_args[1].size = sizeof(numerus)*this->wsize;
-	train_args[1].s = this->wdata;
-	train_args[2].size = sizeof(numerus)*this->osize;
-	train_args[3].size = sizeof(numerus)*this->dsize;
-	train_args[4].size = sizeof(numerus)*60000;*/
-
-	forward_args[0].size = sizeof(numerus)*(SIZE(0)+1)*60000;
-	forward_args[1].size = sizeof(numerus)*this->wsize;
-	forward_args[2].size = sizeof(numerus)*this->osize;
-	forward_args[2].s = this->odata;
+	args[5].size = sizeof(cl_int)*1024*2;
 
 	// http://dhruba.name/2012/12/24/opencl-cookbook-10-tips-for-high-performance-kernels/
 	oclSetup(0, 0);
@@ -99,16 +75,15 @@ void CatsEye_forward(CatsEye *this, numerus *x, int n)
 #endif
 
 	if (n<0) n = x-1 - this->xdata;
-/*	args[0].s = this->xdata;
+	args[0].s = this->xdata;
 	//args[0].size = sizeof(numerus)*(SIZE(0)+1)*60000;
-	param[0] = n;
+/*	param[0] = n;
 
 	oclKernelArgsWrite(args);
 	oclRun(&kernel[0]);
 	oclKernelArgsRead(args);*/
 
-	forward_args[0].s = this->xdata;
-	oclKernelArgsWrite(forward_args);
+	oclKernelArgsWrite(args);
 	param[0] = 1;
 	param[1] = n;
 	param[2] = 0;
@@ -123,7 +98,7 @@ void CatsEye_forward(CatsEye *this, numerus *x, int n)
 	param[4] = 200;
 	param[5] = 10;
 	oclRun(&kernel[2]);
-	oclKernelArgsRead(forward_args);
+	oclKernelArgsRead(args);
 
 //	memcpy(this->o[0], x+n, SIZE(0)*sizeof(numerus));
 
@@ -165,6 +140,66 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 		oclKernelArgsWrite(args);
 		oclRun(&kernel[1]);
 		oclKernelArgsRead(args);
+
+/*		oclKernelArgsWrite(args);
+		for (int n=0; n<batch; n++) {
+			int sample = RANDOM ? (frand()*N) : n;
+
+			args[0].s = this->xdata;
+			args[4].s = t;
+			param[1] = 1;
+			param[2] = sample;
+			oclRun(&kernel[1]);
+		}
+		oclKernelArgsRead(args);*/
+
+		/*oclKernelArgsWrite(args);
+		for (int n=0; n<batch; n++) {
+			int sample = RANDOM ? (frand()*N) : n;
+			param[0] = 1;
+			param[1] = sample*784;
+			param[2] = 0;
+			param[3] = 784+1;
+			param[4] = 784;
+			param[5] = 200;
+			oclRun(&kernel[3]);
+			param[0] = 0;
+			param[1] = 784+1;
+			param[2] = 785*200;
+			param[3] = 784+1+200+1;
+			param[4] = 200;
+			param[5] = 10;
+			oclRun(&kernel[2]);
+
+			param[0] = 784+1+200+1;
+			param[1] = 200+1;
+			param[2] = ((int*)t)[sample];
+			param[3] = 10;
+			oclRun(&kernel[7]);
+			param[0] = 784+1;
+			param[1] = 785*200;
+			param[2] = 0;
+			param[3] = 200+1;
+			param[4] = 200;
+			param[5] = 10;
+			oclRun(&kernel[4]);
+
+			param[0] = 1;
+			param[1] = sample*784;
+			param[2] = 0;
+			param[3] = 0;
+			param[4] = 784;
+			param[5] = 200;
+			oclRun(&kernel[6]);
+			param[0] = 0;
+			param[1] = 784+1;
+			param[2] = 785*200;
+			param[3] = 200+1;
+			param[4] = 200;
+			param[5] = 10;
+			oclRun(&kernel[6]);
+		}
+		oclKernelArgsRead(args);*/
 
 #ifdef CATS_AUTOENCODER
 			// tied weight
