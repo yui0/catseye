@@ -1,5 +1,9 @@
 OCLSTRINGIFY(
 
+//#define mmad(x,y,z)		(x+y*z)
+#define mmad(x,y,z)		mad(x,y,z)
+//#define mmad(x,y,z)		fma(x,y,z)
+
 #define identity(a)		(a)
 #define d_identity(a)		(1.0)
 #define softmax(a)		(a)	// FIXME
@@ -48,7 +52,7 @@ void linear_forward_##act(global const float *x, global const float *w, global f
 		float s = 0;\
 		for (int k=0; k<is; k++) {\
 			/*sum += w[os*k] * x[k];*/\
-			s = mad(w[k*os], *x++, s);\
+			s = mmad(w[k*os], *x++, s);\
 		}\
 		s += w[is*os];\
 		o[i] = act(s);\
@@ -78,7 +82,7 @@ void linear_backward_##dact(global const float *o, global const float *w, global
 		float s = 0;\
 		for (int k=0; k<os; k++) {\
 			/*s += (*w++) * delta[k];*/\
-			s = mad(*w++, delta[k], s);\
+			s = mmad(*w++, delta[k], s);\
 		}\
 		d[i] = s * dact(o[i]);\
 		w -= (i*os + os);\
@@ -106,7 +110,7 @@ void linear_update(float eta, global const float *o, global float *w, global con
 		float a = -eta * o[i];
 		for (int k=0; k<os; k++) {
 //			*p++ += a * d[k];
-			*p = mad(a, d[k], *p);
+			*p = mmad(a, d[k], *p);
 			p++;
 		}
 	}
@@ -126,7 +130,7 @@ kernel void _linear_update(global const float *x, global float *w, global float 
 		global float *p = w + i*os;
 		float a = -eta * o[i];
 		for (int k=0; k<os; k++) {
-			*p = mad(a, d[k], *p);
+			*p = mmad(a, d[k], *p);
 			p++;
 		}
 	}
@@ -137,9 +141,9 @@ kernel void _linear_update(global const float *x, global float *w, global float 
 	if (!get_group_id(0))
 	for (int i=get_local_id(0); i<os; i+=get_local_size(0)) {
 		for (int k=0; k<is; k++) {
-			w[i+k*os] = mad(-eta * o[k], d[i], w[i+k*os]);
+			w[i+k*os] = mmad(-eta * o[k], d[i], w[i+k*os]);
 		}
-		w[i+is*os] = mad(-eta, d[i], w[i+is*os]);
+		w[i+is*os] = mmad(-eta, d[i], w[i+is*os]);
 	}
 }*/
 
@@ -215,31 +219,47 @@ uint xorshift_int(local uint4 *ctx)
 	barrier(CLK_LOCAL_MEM_FENCE);
 }*/
 // http://industrybestpractice.blogspot.jp/2012/07/global-synchronisation-in-opencl.html
-void global_sync(volatile global int *flags)
+/*void global_sync(volatile global int *flags)
 {
 	const size_t thread_id = get_local_id(0);
 	const size_t workgroup_id = get_group_id(0);
 
 	if (thread_id == 0) {
 		flags[workgroup_id] = 1;
+//		atomic_or(&flags[workgroup_id], 1);
 	}
 
 	if (workgroup_id == 0) {
 		if (thread_id < get_num_groups(0)) {
 			while (flags[thread_id] != 1) ;
+//			while (atomic_or(&flags[thread_id], 0)) ;
 		}
 		barrier(CLK_GLOBAL_MEM_FENCE);
 
 		if (thread_id < get_num_groups(0)) {
 			flags[thread_id] = 0;
+//			atomic_or(&flags[thread_id], 0);
 		}
 	}
 
 	if (thread_id == 0) {
 		while (flags[workgroup_id] != 0) ;
+//		while (atomic_or(&flags[workgroup_id], 0)) ;
 	}
 	barrier(CLK_GLOBAL_MEM_FENCE);
+}*/
+void global_sync(global int *goalVal)
+{
+//	barrier(CLK_LOCAL_MEM_FENCE);
+	barrier(CLK_GLOBAL_MEM_FENCE);
+	if (!get_local_id(0)) {
+		atomic_sub(goalVal, 1);
+		while (*goalVal) ;
+	}
+//	barrier(CLK_LOCAL_MEM_FENCE);
+	barrier(CLK_GLOBAL_MEM_FENCE);
 }
+#if 0
 kernel void train(global const float *x, global float *w, global float *o, global float *d, global float *t, global int *sync, uint8 args)
 {
 /*	if (!get_global_id(0)) {
@@ -265,6 +285,8 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 	local uint4 r;
 	r.xyzw = args[2];
 	for (int n=args[1]; n>0; n--) {
+//		if (!get_global_id(0)) *sync = get_num_groups(0);
+
 		if (!get_global_id(0)) seed = xorshift_int(&r) % 60000;
 //		if (!get_local_id(0)) seed = xorshift_int(&r) % 60000;
 		barrier(CLK_LOCAL_MEM_FENCE);
@@ -288,5 +310,61 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 	if (get_global_id(0)==1) printf(" [%.2fs]\n", (clock()-time)/1000.0/1000.0);
 #endif*/
 }
+#else
+// http://www.chokkan.org/research/survey/Minibatch%20and%20Parallelization%20for%20Online%20Large%20Margin%20Structured%20Learning.pdf
+kernel void train(global const float *x, global float *w, global float *o, global float *d, global float *t, global int *sync, uint8 args)
+{
+	union {
+		global uint *ip;
+		global float *fp;
+	} ptr;
+	ptr.fp = t;
+
+/*#ifdef __CPU__
+	int time;
+	if (get_global_id(0)==1) time = clock();
+#endif*/
+	o[784+1+200] = 1;
+
+#define MINIBATCH	1
+	local uint seed[MINIBATCH];
+	local uint4 r;
+	r.xyzw = args[2];
+	for (int n=args[1]/MINIBATCH; n>0; n--) {
+		for (int m=MINIBATCH-1; m>=0; m--) {
+			if (!get_global_id(0)) seed[m] = xorshift_int(&r) % 60000;
+			barrier(CLK_LOCAL_MEM_FENCE);
+			global float *p = x + seed[m]*784;
+
+			int dd = m*(200+1+10+1);
+			int oo = m*(784+1+200+1+10+1);
+//			if (!get_local_id(0)) sync[m] = seed[m]*784;
+			barrier(CLK_GLOBAL_MEM_FENCE);
+
+			linear_forward_sigmoid(p, w, o+oo+784+1, 784, 200);
+			linear_forward_identity(o+oo+784+1, w+785*200, o+oo+784+1+200+1, 200, 10);
+
+			loss_0_1(o+oo+784+1+200+1, d+dd+200+1, ptr.ip[seed[m]], 10);
+			linear_backward_identity(o+oo+784+1, w+785*200, d+dd, d+dd+200+1, 200, 10);
+
+//			linear_update(0.01, p, w, d+dd, 784, 200);
+//			linear_update(0.01, o+oo+784+1, w+785*200, d+dd+200+1, 200, 10);
+		}
+		for (int m=MINIBATCH-1; m>=0; m--) {
+			global float *p = x + seed[m]*784;//sync[m];
+			int dd = m*(200+1+10+1);
+			int oo = m*(784+1+200+1+10+1);
+			barrier(CLK_GLOBAL_MEM_FENCE);
+
+			linear_update(0.01, p, w, d+dd, 784, 200);
+			linear_update(0.01, o+oo+784+1, w+785*200, d+dd+200+1, 200, 10);
+		}
+	}
+
+/*#ifdef __CPU__
+	if (get_global_id(0)==1) printf(" [%.2fs]\n", (clock()-time)/1000.0/1000.0);
+#endif*/
+}
+#endif
 
 );

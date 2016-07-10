@@ -23,7 +23,6 @@
 #define numerus		double
 #endif
 
-#define CATS_NO_MINIBATCH
 #define CATS_SIGMOID
 
 //#define CATS_SIGMOID_CROSSENTROPY
@@ -369,11 +368,7 @@ void CatsEye_linear_layer_backward(numerus *o, numerus *w, numerus *d, numerus *
 	// calculate the error
 	CATS_ACT dact = CatsEye_dact[u[ACT-LPLEN]];
 	for (int i=0; i<=in; i++) {	// bias!!
-#ifdef CATS_NO_MINIBATCH
 		*d++ = dot(&w[i*out], delta, out) * dact(*o++);
-#else
-		*d++ += dot(&w[i*out], delta, out) * dact(*o++);
-#endif
 //		*d++ = dotT(w++, delta, out, in+1) * dact(*o++);
 	}
 }
@@ -712,7 +707,7 @@ enum CATS_LAYER_TYPE {
 	CATS_MAXPOOL,
 };
 
-//#define CATS_OPENCL
+#define CATS_OPENCL
 #ifdef CATS_OPENCL
 #include "catseye_cl.h"
 #endif
@@ -781,7 +776,7 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 		size[i] = this->osize;
 		this->osize += SIZE(i)+1;	// bias
 	}
-	this->odata = malloc(sizeof(numerus)*this->osize);
+	this->odata = malloc(sizeof(numerus)*this->osize *100/*MINIBATCH*/);
 	for (int i=0; i<this->layers; i++) {
 		this->o[i] = this->odata + size[i];
 		this->odata[SIZE(i)] = 1;	// bias
@@ -795,7 +790,7 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 		size[i] = this->dsize;
 		this->dsize += SIZE(i+1)+1;	// bias
 	}
-	this->ddata = malloc(sizeof(numerus)*this->dsize);
+	this->ddata = malloc(sizeof(numerus)*this->dsize *100/*MINIBATCH*/);
 	for (int i=0; i<this->layers-1; i++) this->d[i] = this->ddata + size[i];
 
 	// allocate gradient
@@ -938,11 +933,7 @@ void CatsEye_loss_0_1(CatsEye *this, int c, void *t, int n)
 	int a = ((int*)t)[n];
 	for (int i=0; i<size; i++) {
 		// 0-1 loss function
-#ifdef CATS_NO_MINIBATCH
 		d[i] = a==i ? o[i]-1 : o[i];	// 1-of-K
-#else
-		d[i] += a==i ? o[i]-1 : o[i];	// 1-of-K
-#endif
 	}
 	// Ref.
 	// http://d.hatena.ne.jp/echizen_tm/20110606/1307378609
@@ -1015,6 +1006,7 @@ void (*CatsEye_loss[])(CatsEye *this, int c, void *t, int n) = {
  * N: data size
  * repeat: repeat times
  * eta: learning rate (1e-6 to 1) */
+#define CATS_NO_MINIBATCH
 void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numerus eta)
 {
 	this->xdata = x;
@@ -1036,10 +1028,6 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 		memset(this->e3, 0, sizeof(numerus)*SIZE(2));
 		memset(this->e2, 0, sizeof(numerus)*SIZE(1));
 #endif*/
-#ifndef CATS_NO_MINIBATCH
-		memset(this->ddata, 0, sizeof(numerus)*this->dsize);
-//#pragma omp parallel
-#endif
 		for (int n=0; n<batch; n++) {
 			int sample = RANDOM ? (frand()*N) : n;
 
@@ -1057,8 +1045,6 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 			}
 #ifndef CATS_NO_MINIBATCH
 		}
-		for (int n=0; n<this->dsize; n++) this->ddata[n] /= batch;
-//		eta /= batch;
 		{
 #endif
 			// update the weights of hidden layer
