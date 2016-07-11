@@ -45,7 +45,7 @@ DACTIVATION_FUNCTION(sigmoid)
 #define LINEAR_FORWARD(act) \
 void linear_forward_##act(global const float *x, global const float *w, global float *o, uint is, uint os)\
 {\
-	if (!get_group_id(0))\
+/*	if (!get_group_id(0))*/\
 	for (int i=get_local_id(0); i<os; i+=get_local_size(0)) {\
 /*	for (int i=get_global_id(0); i<os; i+=get_global_size(0)) {*/\
 		w += i;\
@@ -75,7 +75,7 @@ LINEAR_FORWARD(LeakyReLU)
 #define LINEAR_BACKWARD(dact) \
 void linear_backward_##dact(global const float *o, global const float *w, global float *d, global const float *delta, uint is, uint os)\
 {\
-	if (!get_group_id(0))\
+/*	if (!get_group_id(0))*/\
 	for (int i=get_local_id(0); i<=is; i+=get_local_size(0)) {\
 /*	for (int i=get_global_id(0); i<=is; i+=get_global_size(0)) {*/\
 		w += i*os;\
@@ -103,7 +103,7 @@ LINEAR_BACKWARD(LeakyReLU)
 
 void linear_update(float eta, global const float *o, global float *w, global const float *d, uint is, uint os)
 {
-	if (!get_group_id(0))
+//	if (!get_group_id(0))
 	for (int i=get_local_id(0); i<=is; i+=get_local_size(0)) {
 //	for (int i=get_global_id(0); i<=is; i+=get_global_size(0)) {
 		global float *p = w + i*os;
@@ -160,7 +160,7 @@ kernel void forward(global const float *x, global float *w, global float *o, glo
 
 void loss_0_1(global const float *o, global float *d, uint a, uint n)
 {
-	if (!get_group_id(0))
+//	if (!get_group_id(0))
 	for (int i=get_local_id(0); i<n; i+=get_local_size(0)) {
 		d[i] = a==i ? o[i]-1 : o[i];	// 1-of-K
 	}
@@ -284,6 +284,7 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 	local uint seed;
 	local uint4 r;
 	r.xyzw = args[2];
+	if (!get_group_id(0))
 	for (int n=args[1]; n>0; n--) {
 //		if (!get_global_id(0)) *sync = get_num_groups(0);
 
@@ -324,15 +325,20 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 	int time;
 	if (get_global_id(0)==1) time = clock();
 #endif*/
-	o[784+1+200] = 1;
+//	o[784+1+200] = 1;
 
-#define MINIBATCH	1
-	local uint seed[MINIBATCH];
+	int MINIBATCH = get_num_groups(0);
+	local uint seed[16];
+//#define MINIBATCH	5
+//	local uint seed[MINIBATCH];
 	local uint4 r;
 	r.xyzw = args[2];
 	for (int n=args[1]/MINIBATCH; n>0; n--) {
-		for (int m=MINIBATCH-1; m>=0; m--) {
-			if (!get_global_id(0)) seed[m] = xorshift_int(&r) % 60000;
+//		if (!get_group_id(0))
+//		for (int m=MINIBATCH-1; m>=0; m--) {
+			{int m = get_group_id(0);
+//			if (!get_global_id(0)) seed[m] = xorshift_int(&r) % 60000;
+			if (!get_local_id(0)) seed[m] = xorshift_int(&r) % 60000;
 			barrier(CLK_LOCAL_MEM_FENCE);
 			global float *p = x + seed[m]*784;
 
@@ -350,7 +356,9 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 //			linear_update(0.01, p, w, d+dd, 784, 200);
 //			linear_update(0.01, o+oo+784+1, w+785*200, d+dd+200+1, 200, 10);
 		}
-		for (int m=MINIBATCH-1; m>=0; m--) {
+//		if (!get_group_id(0))
+//		for (int m=MINIBATCH-1; m>=0; m--) {
+			{int m = get_group_id(0);
 			global float *p = x + seed[m]*784;//sync[m];
 			int dd = m*(200+1+10+1);
 			int oo = m*(784+1+200+1+10+1);

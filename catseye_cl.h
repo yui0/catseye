@@ -41,9 +41,9 @@ void CatsEye_clSetup(CatsEye *this)
 	//args[0].s = this->xdata;
 	args[1].size = sizeof(numerus)*this->wsize;
 	args[1].s = this->wdata;
-	args[2].size = sizeof(numerus)*this->osize *100;
+	args[2].size = sizeof(numerus)*this->osize *16;
 	args[2].s = this->odata;
-	args[3].size = sizeof(numerus)*this->dsize *100;
+	args[3].size = sizeof(numerus)*this->dsize *16;
 	args[3].s = this->ddata;
 	args[4].size = sizeof(numerus)*60000;
 	//args[4].s = this->ddata;
