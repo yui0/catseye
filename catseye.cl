@@ -219,7 +219,7 @@ uint xorshift_int(local uint4 *ctx)
 	barrier(CLK_LOCAL_MEM_FENCE);
 }*/
 // http://industrybestpractice.blogspot.jp/2012/07/global-synchronisation-in-opencl.html
-/*void global_sync(volatile global int *flags)
+void global_sync(volatile global int *flags)
 {
 	const size_t thread_id = get_local_id(0);
 	const size_t workgroup_id = get_group_id(0);
@@ -231,8 +231,10 @@ uint xorshift_int(local uint4 *ctx)
 
 	if (workgroup_id == 0) {
 		if (thread_id < get_num_groups(0)) {
-			while (flags[thread_id] != 1) ;
-//			while (atomic_or(&flags[thread_id], 0)) ;
+//printf("%d ",get_group_id(0));
+//			while (flags[thread_id] != 1) ;
+			while (atomic_or(&flags[thread_id], 0) != 1) ;
+//printf("%d ",get_group_id(0));
 		}
 		barrier(CLK_GLOBAL_MEM_FENCE);
 
@@ -243,22 +245,52 @@ uint xorshift_int(local uint4 *ctx)
 	}
 
 	if (thread_id == 0) {
-		while (flags[workgroup_id] != 0) ;
-//		while (atomic_or(&flags[workgroup_id], 0)) ;
+//printf("[%d] ",get_group_id(0));
+//		while (flags[workgroup_id] != 0) ;
+		while (atomic_or(&flags[workgroup_id], 0) != 0) ;
 	}
 	barrier(CLK_GLOBAL_MEM_FENCE);
-}*/
-void global_sync(global int *goalVal)
+}
+/*void global_sync(global int *goalVal)
 {
 //	barrier(CLK_LOCAL_MEM_FENCE);
 	barrier(CLK_GLOBAL_MEM_FENCE);
 	if (!get_local_id(0)) {
-		atomic_sub(goalVal, 1);
-		while (*goalVal) ;
+//		atomic_sub(goalVal, 1);
+		atomic_dec(goalVal);
+printf("%d/%d ", *goalVal, get_group_id(0));
+		while (*goalVal>0) ;
+//		while (atomic_or(goalVal, 0)) ;
+//printf("%d ",get_group_id(0));
 	}
 //	barrier(CLK_LOCAL_MEM_FENCE);
+	if (!get_global_id(0)) *goalVal = get_num_groups(0);
 	barrier(CLK_GLOBAL_MEM_FENCE);
-}
+}*/
+
+// http://www.openclblog.com/2011/04/eureka.html
+//#pragma OPENCL EXTENSION cl_khr_global_int32_base_atomics : enable
+/*#define LOCK(a) atom_cmpxchg(a, 0, 1)
+#define UNLOCK(a) atom_xchg(a, 0)
+kernel void mutex_sync(global int *count, global int *mutex)
+{
+	if (!get_local_id(0)) {
+		// Increment the count
+		while (LOCK(mutex)) ;
+		*count += 1;
+		UNLOCK(mutex);
+
+		// Wait for everyone else to increment the count
+		int waiting = 1;
+		while (waiting) {
+			while (LOCK(mutex)) ;
+			if (*count == get_num_groups(0)) waiting = 0;
+			UNLOCK(mutex);
+		}
+	}
+	//if (!get_global_id(0)) *count = 0;
+}*/
+
 #if 0
 kernel void train(global const float *x, global float *w, global float *o, global float *d, global float *t, global int *sync, uint8 args)
 {
@@ -305,6 +337,7 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 
 //		global_sync(n, sync, sync+1024);
 //		global_sync(sync);
+//		mutex_sync(sync, sync+1);
 	}
 
 /*#ifdef __CPU__
@@ -329,6 +362,7 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 
 	int MINIBATCH = get_num_groups(0);
 	local uint seed[16];
+//	global int *seed = sync+10;
 //#define MINIBATCH	5
 //	local uint seed[MINIBATCH];
 	local uint4 r;
@@ -367,6 +401,8 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 			linear_update(0.01, p, w, d+dd, 784, 200);
 			linear_update(0.01, o+oo+784+1, w+785*200, d+dd+200+1, 200, 10);
 		}
+//mutex_sync(sync, sync+1);
+		global_sync(sync);
 	}
 
 /*#ifdef __CPU__
