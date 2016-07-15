@@ -29,57 +29,9 @@ void global_sync(volatile global int *flags)
 	barrier(CLK_GLOBAL_MEM_FENCE);
 }
 
-//http://developer.amd.com/community/blog/2012/07/05/efficient-dot-product-implementation-using-persistent-threads/
-/*#define LOCAL_GROUP_XDIM 256
-kernel __attribute__((reqd_work_group_size(LOCAL_GROUP_XDIM, 1, 1)))
-void dot_persist_kernel(
-	global const float *x, // input vector
-	global const float *y, // input vector
-	global float *r, // result vector
-	uint n_per_group, // elements processed per group
-	uint n_per_work_item, // elements processed per work item
-	uint n // input vector size
-)
-{
-	uint lid = get_local_id(0);
-	uint yid = get_group_id(0);
-	float priv_acc = 0; // accumulator in private memory
-	local float acc[LOCAL_GROUP_XDIM]; // accumulators in local memory
-
-	uint grp_off = mul24(n_per_group, yid); // group offset
-	uint loff = grp_off + lid; // local offset
-
-	// Accumulate products over n_per_work_item elements.
-	for (uint i=0; i < n_per_work_item; i++, loff += LOCAL_GROUP_XDIM) {
-		// Be wary of out of range offsets, just add 0 if out of range.
-		// This code uses conditional expressions rather than ifs for efficiency.
-		bool in_range = ( loff < n );
-		uint loff2 = ( in_range ) ? loff : 0;
-		float priv_val = x[loff2] * y[loff2]; // multiply elements
-		priv_acc += ( in_range ) ? priv_val : 0; // accumulate result
-	}
-	// Store result accumulated so far to local accumulator.
-	acc[lid] = priv_acc;
-	barrier(CLK_LOCAL_MEM_FENCE);
-
-	// Find the sum of the accumulated products.
-	uint dist = LOCAL_GROUP_XDIM; // i.e., get_local_size(0);
-	while (dist > 1) {
-		dist >>= 1;
-		if (lid < dist) {
-			// Private memory accumulator avoids extra local memory read.
-			priv_acc += acc[lid + dist];
-			acc[lid] = priv_acc;
-		}
-		barrier(CLK_LOCAL_MEM_FENCE);
-	}
-
-	// Store the result.
-	if (lid == 0) r[yid] = priv_acc;
-}*/
 void vdot(global const float *x, global const float *y, global float *r, uint n)
 {
-	local float acc[256];
+	local float acc[1024];
 	float priv_acc = 0;
 	uint lid = get_local_id(0);
 	uint yid = get_group_id(0);
@@ -110,10 +62,10 @@ void vdot(global const float *x, global const float *y, global float *r, uint n)
 }
 void vdotT(global const float *x, global const float *y, global float *r, uint n, uint m)
 {
-	local float acc[256];
-	float priv_acc = 0;
 	uint lid = get_local_id(0);
 	uint yid = get_group_id(0);
+	local float acc[1024];
+	float priv_acc = 0;
 
 	acc[lid] = 0;
 	for (uint i=lid; i<n; i+=get_local_size(0)) {
@@ -327,12 +279,11 @@ kernel void _linear_update(global const float *x, global float *w, global float 
 kernel void forward(global const float *x, global float *w, global float *o, global float *d, global float *t, global int *sync, uint8 args)
 {
 	linear_forward_sigmoid(x+args[0], w, o+784+1, 784, 200);
-	/*if (!get_global_id(0)) {
-		//for (int i=0; i<784; i++) printf("%f ", x[i+a[5]]);
-		for (int i=0; i<200; i++) printf("%f ", o[784+i]);
-		printf("\n");
-	}*/
 	linear_forward_identity(o+784+1, w+785*200, o+784+1+200+1, 200, 10);
+
+//	___linear_forward_sigmoid(x+args[0], w, o+784+1, 784, 200);
+//	global_sync(sync);
+//	linear_forward_identity(o+784+1, w+785*200, o+784+1+200+1, 200, 10);
 }
 
 void loss_0_1(global const float *o, global float *d, uint a, uint n)
