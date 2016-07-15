@@ -77,13 +77,13 @@ void CatsEye_forward(CatsEye *this, numerus *x, int n)
 	if (n<0) n = x-1 - this->xdata;
 	args[0].s = this->xdata;
 	//args[0].size = sizeof(numerus)*(SIZE(0)+1)*60000;
-/*	param[0] = n;
+	param[0] = n;
 
 	oclKernelArgsWrite(args);
 	oclRun(&kernel[0]);
-	oclKernelArgsRead(args);*/
+	oclKernelArgsRead(args);
 
-	oclKernelArgsWrite(args);
+/*	oclKernelArgsWrite(args);
 	param[0] = 1;
 	param[1] = n;
 	param[2] = 0;
@@ -98,7 +98,7 @@ void CatsEye_forward(CatsEye *this, numerus *x, int n)
 	param[4] = 200;
 	param[5] = 10;
 	oclRun(&kernel[2]);
-	oclKernelArgsRead(args);
+	oclKernelArgsRead(args);*/
 
 //	memcpy(this->o[0], x+n, SIZE(0)*sizeof(numerus));
 

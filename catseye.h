@@ -309,7 +309,7 @@ enum CATS_LP {
 #ifdef CATS_SSE
 #include "catseye_simd.h"	// deprecated!
 #else
-numerus dot(numerus *vec1, numerus *vec2, int n)
+numerus vdot(numerus *vec1, numerus *vec2, int n)
 {
 	numerus s = 0.0;
 	#pragma omp simd reduction(+:s)
@@ -318,7 +318,7 @@ numerus dot(numerus *vec1, numerus *vec2, int n)
 	}
 	return s;
 }
-numerus dotT(numerus *mat1, numerus *vec1, int r, int c)
+numerus vdotT(numerus *mat1, numerus *vec1, int r, int c)
 {
 	numerus s = 0.0;
 	#pragma omp simd reduction(+:s)
@@ -354,8 +354,8 @@ void CatsEye_linear_layer_forward(numerus *x, numerus *w, numerus *z/*no use*/, 
 
 	CATS_ACT act = CatsEye_act[u[ACT]];
 	for (int i=out; i>0; i--) {
-		*o++ = act(dotT(w++, x, in, out));
-//		*o++ = act(dot(w, x, in));
+		*o++ = act(vdotT(w++, x, in, out));
+//		*o++ = act(vdot(w, x, in));
 //		w += in;
 	}
 }
@@ -368,8 +368,8 @@ void CatsEye_linear_layer_backward(numerus *o, numerus *w, numerus *d, numerus *
 	// calculate the error
 	CATS_ACT dact = CatsEye_dact[u[ACT-LPLEN]];
 	for (int i=0; i<=in; i++) {	// bias!!
-		*d++ = dot(&w[i*out], delta, out) * dact(*o++);
-//		*d++ = dotT(w++, delta, out, in+1) * dact(*o++);
+		*d++ = vdot(&w[i*out], delta, out) * dact(*o++);
+//		*d++ = vdotT(w++, delta, out, in+1) * dact(*o++);
 	}
 }
 void CatsEye_linear_layer_update(numerus eta, numerus *o, numerus *w, numerus *d, int u[])
@@ -591,8 +591,8 @@ void CatsEye_convolutional_layer_update(numerus eta, numerus *prev_out, numerus 
 					d = curr_delta;	// out
 					numerus a = 0;
 					for (int y=sy; y>0; y--) {
-						a += dot(d, p, sx);
-//						a -= dot(d, p, sx) * eta;
+						a += vdot(d, p, sx);
+//						a -= vdot(d, p, sx) * eta;
 						p += u[XSIZE];
 						d += sx;
 /*						for (int x=sx; x>0; x--) {
@@ -707,7 +707,7 @@ enum CATS_LAYER_TYPE {
 	CATS_MAXPOOL,
 };
 
-//#define CATS_OPENCL
+#define CATS_OPENCL
 #ifdef CATS_OPENCL
 #include "catseye_cl.h"
 #endif

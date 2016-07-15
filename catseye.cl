@@ -1,5 +1,145 @@
 OCLSTRINGIFY(
 
+// http://industrybestpractice.blogspot.jp/2012/07/global-synchronisation-in-opencl.html
+void global_sync(volatile global int *flags)
+{
+	const size_t thread_id = get_local_id(0);
+	const size_t workgroup_id = get_group_id(0);
+
+	if (thread_id == 0) {
+		flags[workgroup_id] = 1;
+	}
+
+	if (workgroup_id == 0) {
+		if (thread_id < get_num_groups(0)) {
+//			while (flags[thread_id] != 1) ;
+			while (atomic_or(&flags[thread_id], 0) != 1) ;
+		}
+		barrier(CLK_GLOBAL_MEM_FENCE);
+
+		if (thread_id < get_num_groups(0)) {
+			flags[thread_id] = 0;
+		}
+	}
+
+	if (thread_id == 0) {
+//		while (flags[workgroup_id] != 0) ;
+		while (atomic_or(&flags[workgroup_id], 0) != 0) ;
+	}
+	barrier(CLK_GLOBAL_MEM_FENCE);
+}
+
+//http://developer.amd.com/community/blog/2012/07/05/efficient-dot-product-implementation-using-persistent-threads/
+/*#define LOCAL_GROUP_XDIM 256
+kernel __attribute__((reqd_work_group_size(LOCAL_GROUP_XDIM, 1, 1)))
+void dot_persist_kernel(
+	global const float *x, // input vector
+	global const float *y, // input vector
+	global float *r, // result vector
+	uint n_per_group, // elements processed per group
+	uint n_per_work_item, // elements processed per work item
+	uint n // input vector size
+)
+{
+	uint lid = get_local_id(0);
+	uint yid = get_group_id(0);
+	float priv_acc = 0; // accumulator in private memory
+	local float acc[LOCAL_GROUP_XDIM]; // accumulators in local memory
+
+	uint grp_off = mul24(n_per_group, yid); // group offset
+	uint loff = grp_off + lid; // local offset
+
+	// Accumulate products over n_per_work_item elements.
+	for (uint i=0; i < n_per_work_item; i++, loff += LOCAL_GROUP_XDIM) {
+		// Be wary of out of range offsets, just add 0 if out of range.
+		// This code uses conditional expressions rather than ifs for efficiency.
+		bool in_range = ( loff < n );
+		uint loff2 = ( in_range ) ? loff : 0;
+		float priv_val = x[loff2] * y[loff2]; // multiply elements
+		priv_acc += ( in_range ) ? priv_val : 0; // accumulate result
+	}
+	// Store result accumulated so far to local accumulator.
+	acc[lid] = priv_acc;
+	barrier(CLK_LOCAL_MEM_FENCE);
+
+	// Find the sum of the accumulated products.
+	uint dist = LOCAL_GROUP_XDIM; // i.e., get_local_size(0);
+	while (dist > 1) {
+		dist >>= 1;
+		if (lid < dist) {
+			// Private memory accumulator avoids extra local memory read.
+			priv_acc += acc[lid + dist];
+			acc[lid] = priv_acc;
+		}
+		barrier(CLK_LOCAL_MEM_FENCE);
+	}
+
+	// Store the result.
+	if (lid == 0) r[yid] = priv_acc;
+}*/
+void vdot(global const float *x, global const float *y, global float *r, uint n)
+{
+	local float acc[256];
+	float priv_acc = 0;
+	uint lid = get_local_id(0);
+	uint yid = get_group_id(0);
+
+	acc[lid] = 0;
+	for (uint i=lid; i<n; i+=get_local_size(0)) {
+		priv_acc = mmad(x[i], y[i], priv_acc);
+	}
+	acc[lid] = priv_acc;
+	barrier(CLK_LOCAL_MEM_FENCE);
+
+	if (lid < 128) acc[lid] += acc[lid+128];
+	barrier(CLK_LOCAL_MEM_FENCE);
+	if (lid < 64) acc[lid] += acc[lid+64];
+	barrier(CLK_LOCAL_MEM_FENCE);
+	if (lid < 32) acc[lid] += acc[lid+32];
+	barrier(CLK_LOCAL_MEM_FENCE);
+	if (lid < 16) acc[lid] += acc[lid+16];
+	barrier(CLK_LOCAL_MEM_FENCE);
+	if (lid < 8) acc[lid] += acc[lid+8];
+	barrier(CLK_LOCAL_MEM_FENCE);
+	if (lid < 4) acc[lid] += acc[lid+4];
+	barrier(CLK_LOCAL_MEM_FENCE);
+	if (lid < 2) acc[lid] += acc[lid+2];
+	barrier(CLK_LOCAL_MEM_FENCE);
+
+	if (!lid) r[0] = acc[0];
+}
+void vdotT(global const float *x, global const float *y, global float *r, uint n, uint m)
+{
+	local float acc[256];
+	float priv_acc = 0;
+	uint lid = get_local_id(0);
+	uint yid = get_group_id(0);
+
+	acc[lid] = 0;
+	for (uint i=lid; i<n; i+=get_local_size(0)) {
+		priv_acc = mmad(x[i*m], y[i], priv_acc);
+	}
+	acc[lid] = priv_acc;
+	barrier(CLK_LOCAL_MEM_FENCE);
+
+	if (lid < 128) acc[lid] += acc[lid+128];
+	barrier(CLK_LOCAL_MEM_FENCE);
+	if (lid < 64) acc[lid] += acc[lid+64];
+	barrier(CLK_LOCAL_MEM_FENCE);
+	if (lid < 32) acc[lid] += acc[lid+32];
+	barrier(CLK_LOCAL_MEM_FENCE);
+	if (lid < 16) acc[lid] += acc[lid+16];
+	barrier(CLK_LOCAL_MEM_FENCE);
+	if (lid < 8) acc[lid] += acc[lid+8];
+	barrier(CLK_LOCAL_MEM_FENCE);
+	if (lid < 4) acc[lid] += acc[lid+4];
+	barrier(CLK_LOCAL_MEM_FENCE);
+	if (lid < 2) acc[lid] += acc[lid+2];
+	barrier(CLK_LOCAL_MEM_FENCE);
+
+	if (!lid) r[0] = acc[0] + x[n*m];
+}
+
 //#define mmad(x,y,z)		(x+y*z)
 #define mmad(x,y,z)		mad(x,y,z)
 //#define mmad(x,y,z)		fma(x,y,z)
@@ -51,18 +191,57 @@ void linear_forward_##act(global const float *x, global const float *w, global f
 		w += i;\
 		float s = 0;\
 		for (int k=0; k<is; k++) {\
-			/*sum += w[os*k] * x[k];*/\
-			s = mmad(w[k*os], *x++, s);\
+			s = mmad(w[k*os], x[k], s);\
 		}\
 		s += w[is*os];\
 		o[i] = act(s);\
+		x += get_local_size(0);\
 		w -= i;\
 	}\
 	barrier(CLK_LOCAL_MEM_FENCE);\
 }\
+kernel void __linear_forward_##act(global const float *x, global float *w, global float *o, global float *d, global float *t, global int *sync, uint8 args)\
+{\
+/*	linear_forward_##act(args[0] ? x+args[1] : o+args[1], w+args[2], o+args[3], args[4], args[5]);*/\
+	x = args[0] ? x+args[1] : o+args[1];\
+	w += args[2];\
+	o += args[3];\
+	int is = args[4];\
+	int os = args[5];\
+	for (int i=get_global_id(0); i<os; i+=get_global_size(0)) {\
+		w += i;\
+		float s = 0;\
+		for (int k=0; k<is; k++) {\
+			s = mmad(w[k*os], x[k], s);\
+		}\
+		s += w[is*os];\
+		o[i] = act(s);\
+		x += get_local_size(0);\
+		w -= i;\
+	}\
+}\
 kernel void _linear_forward_##act(global const float *x, global float *w, global float *o, global float *d, global float *t, global int *sync, uint8 args)\
 {\
-	linear_forward_##act(args[0] ? x+args[1] : o+args[1], w+args[2], o+args[3], args[4], args[5]);\
+	x = args[0] ? x+args[1] : o+args[1];\
+	w += args[2];\
+	o += args[3];\
+	int is = args[4];\
+	int os = args[5];\
+	for (int i=0; i<os; i++) {\
+		vdotT(w, x+is*i, o, is, os);\
+		if (!get_global_id(0)) *o = act(*o);\
+		w++;\
+		o++;\
+	}\
+}\
+void ___linear_forward_##act(global const float *x, global const float *w, global float *o, uint is, uint os)\
+{\
+	for (int i=0; i<os; i++) {\
+		vdotT(w, x+is*i, o, is, os);\
+		if (!get_global_id(0)) *o = act(*o);\
+		w++;\
+		o++;\
+	}\
 }
 LINEAR_FORWARD(identity)
 LINEAR_FORWARD(softmax)			// FIXME
@@ -81,7 +260,6 @@ void linear_backward_##dact(global const float *o, global const float *w, global
 		w += i*os;\
 		float s = 0;\
 		for (int k=0; k<os; k++) {\
-			/*s += (*w++) * delta[k];*/\
 			s = mmad(*w++, delta[k], s);\
 		}\
 		d[i] = s * dact(o[i]);\
@@ -109,7 +287,6 @@ void linear_update(float eta, global const float *o, global float *w, global con
 		global float *p = w + i*os;
 		float a = -eta * o[i];
 		for (int k=0; k<os; k++) {
-//			*p++ += a * d[k];
 			*p = mmad(a, d[k], *p);
 			p++;
 		}
@@ -192,106 +369,7 @@ uint xorshift_int(local uint4 *ctx)
 	return xorshift_int(ctx) * 2.3283064e-10;
 }*/
 
-// http://synergy.cs.vt.edu/pubs/papers/xiao-ipdps2010-gpusync.pdf
-// http://stackoverflow.com/questions/34476631/opencl-and-gpu-global-synchronization
-/*void global_sync(uint goalVal, global int *syncIn, global int *syncOut)
-{
-	int tid_in_blk = get_local_id(0) * get_local_size(1) + get_local_id(1);
-	int nBlockNum = get_num_groups(0) * get_num_groups(1);
-	int bid = get_group_id(0) * get_num_groups(1) + get_group_id(1);
-
-//	printf("%d/%d ",tid_in_blk,bid);
-	// only thread 0 is used for synchronization
-	if (tid_in_blk == 0) syncIn[bid] = goalVal;
-
-	if (bid == 1) {
-		if (tid_in_blk < nBlockNum) {
-			while (syncIn[tid_in_blk] != goalVal) ;
-		}
-		barrier(CLK_LOCAL_MEM_FENCE);
-
-		if (tid_in_blk < nBlockNum) syncOut[tid_in_blk] = goalVal;
-	}
-
-	if (tid_in_blk == 0) {
-		while (syncOut[bid] != goalVal) ;
-	}
-	barrier(CLK_LOCAL_MEM_FENCE);
-}*/
-// http://industrybestpractice.blogspot.jp/2012/07/global-synchronisation-in-opencl.html
-void global_sync(volatile global int *flags)
-{
-	const size_t thread_id = get_local_id(0);
-	const size_t workgroup_id = get_group_id(0);
-
-	if (thread_id == 0) {
-		flags[workgroup_id] = 1;
-//		atomic_or(&flags[workgroup_id], 1);
-	}
-
-	if (workgroup_id == 0) {
-		if (thread_id < get_num_groups(0)) {
-//printf("%d ",get_group_id(0));
-//			while (flags[thread_id] != 1) ;
-			while (atomic_or(&flags[thread_id], 0) != 1) ;
-//printf("%d ",get_group_id(0));
-		}
-		barrier(CLK_GLOBAL_MEM_FENCE);
-
-		if (thread_id < get_num_groups(0)) {
-			flags[thread_id] = 0;
-//			atomic_or(&flags[thread_id], 0);
-		}
-	}
-
-	if (thread_id == 0) {
-//printf("[%d] ",get_group_id(0));
-//		while (flags[workgroup_id] != 0) ;
-		while (atomic_or(&flags[workgroup_id], 0) != 0) ;
-	}
-	barrier(CLK_GLOBAL_MEM_FENCE);
-}
-/*void global_sync(global int *goalVal)
-{
-//	barrier(CLK_LOCAL_MEM_FENCE);
-	barrier(CLK_GLOBAL_MEM_FENCE);
-	if (!get_local_id(0)) {
-//		atomic_sub(goalVal, 1);
-		atomic_dec(goalVal);
-printf("%d/%d ", *goalVal, get_group_id(0));
-		while (*goalVal>0) ;
-//		while (atomic_or(goalVal, 0)) ;
-//printf("%d ",get_group_id(0));
-	}
-//	barrier(CLK_LOCAL_MEM_FENCE);
-	if (!get_global_id(0)) *goalVal = get_num_groups(0);
-	barrier(CLK_GLOBAL_MEM_FENCE);
-}*/
-
-// http://www.openclblog.com/2011/04/eureka.html
-//#pragma OPENCL EXTENSION cl_khr_global_int32_base_atomics : enable
-/*#define LOCK(a) atom_cmpxchg(a, 0, 1)
-#define UNLOCK(a) atom_xchg(a, 0)
-kernel void mutex_sync(global int *count, global int *mutex)
-{
-	if (!get_local_id(0)) {
-		// Increment the count
-		while (LOCK(mutex)) ;
-		*count += 1;
-		UNLOCK(mutex);
-
-		// Wait for everyone else to increment the count
-		int waiting = 1;
-		while (waiting) {
-			while (LOCK(mutex)) ;
-			if (*count == get_num_groups(0)) waiting = 0;
-			UNLOCK(mutex);
-		}
-	}
-	//if (!get_global_id(0)) *count = 0;
-}*/
-
-#if 0
+#if 1
 kernel void train(global const float *x, global float *w, global float *o, global float *d, global float *t, global int *sync, uint8 args)
 {
 /*	if (!get_global_id(0)) {
@@ -318,15 +396,12 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 	r.xyzw = args[2];
 	if (!get_group_id(0))
 	for (int n=args[1]; n>0; n--) {
-//		if (!get_global_id(0)) *sync = get_num_groups(0);
-
 		if (!get_global_id(0)) seed = xorshift_int(&r) % 60000;
 //		if (!get_local_id(0)) seed = xorshift_int(&r) % 60000;
 		barrier(CLK_LOCAL_MEM_FENCE);
 		global float *p = x + seed*784;
 
-//		args[5] = seed*784;
-//		forward(x, w, o, d, t, args);
+//if (!get_group_id(0)) {
 		linear_forward_sigmoid(p, w, o+784+1, 784, 200);
 		linear_forward_identity(o+784+1, w+785*200, o+784+1+200+1, 200, 10);
 
@@ -334,10 +409,8 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 		linear_backward_identity(o+784+1, w+785*200, d, d+200+1, 200, 10);
 		linear_update(/*eta*/0.01, p, w, d, 784, 200);
 		linear_update(/*eta*/0.01, o+784+1, w+785*200, d+200+1, 200, 10);
-
-//		global_sync(n, sync, sync+1024);
+//}
 //		global_sync(sync);
-//		mutex_sync(sync, sync+1);
 	}
 
 /*#ifdef __CPU__
@@ -363,8 +436,6 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 	int MINIBATCH = get_num_groups(0);
 	local uint seed[16];
 //	global int *seed = sync+10;
-//#define MINIBATCH	5
-//	local uint seed[MINIBATCH];
 	local uint4 r;
 	r.xyzw = args[2];
 	for (int n=args[1]/MINIBATCH; n>0; n--) {
@@ -382,6 +453,8 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 			barrier(CLK_GLOBAL_MEM_FENCE);
 
 			linear_forward_sigmoid(p, w, o+oo+784+1, 784, 200);
+//		___linear_forward_sigmoid(p, w, o+784+1, 784, 200);
+//		global_sync(sync);
 			linear_forward_identity(o+oo+784+1, w+785*200, o+oo+784+1+200+1, 200, 10);
 
 			loss_0_1(o+oo+784+1+200+1, d+dd+200+1, ptr.ip[seed[m]], 10);
@@ -390,6 +463,7 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 //			linear_update(0.01, p, w, d+dd, 784, 200);
 //			linear_update(0.01, o+oo+784+1, w+785*200, d+dd+200+1, 200, 10);
 		}
+//		global_sync(sync);
 //		if (!get_group_id(0))
 //		for (int m=MINIBATCH-1; m>=0; m--) {
 			{int m = get_group_id(0);
@@ -401,7 +475,6 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 			linear_update(0.01, p, w, d+dd, 784, 200);
 			linear_update(0.01, o+oo+784+1, w+785*200, d+dd+200+1, 200, 10);
 		}
-//mutex_sync(sync, sync+1);
 		global_sync(sync);
 	}
 
