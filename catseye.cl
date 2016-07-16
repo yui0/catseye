@@ -34,7 +34,6 @@ void vdot(global const float *x, global const float *y, global float *r, uint n)
 	local float acc[1024];
 	float priv_acc = 0;
 	uint lid = get_local_id(0);
-	uint yid = get_group_id(0);
 
 	acc[lid] = 0;
 	for (uint i=lid; i<n; i+=get_local_size(0)) {
@@ -63,11 +62,9 @@ void vdot(global const float *x, global const float *y, global float *r, uint n)
 void vdotT(global const float *x, global const float *y, global float *r, uint n, uint m)
 {
 	uint lid = get_local_id(0);
-	uint yid = get_group_id(0);
 	local float acc[1024];
 	float priv_acc = 0;
 
-	acc[lid] = 0;
 	for (uint i=lid; i<n; i+=get_local_size(0)) {
 		priv_acc = mmad(x[i*m], y[i], priv_acc);
 	}
@@ -90,6 +87,7 @@ void vdotT(global const float *x, global const float *y, global float *r, uint n
 	barrier(CLK_LOCAL_MEM_FENCE);
 
 	if (!lid) r[0] = acc[0] + x[n*m];
+//if (!lid) printf("%f ",r[0]);
 }
 
 //#define mmad(x,y,z)		(x+y*z)
@@ -147,7 +145,6 @@ void linear_forward_##act(global const float *x, global const float *w, global f
 		}\
 		s += w[is*os];\
 		o[i] = act(s);\
-		x += get_local_size(0);\
 		w -= i;\
 	}\
 	barrier(CLK_LOCAL_MEM_FENCE);\
@@ -168,7 +165,6 @@ kernel void __linear_forward_##act(global const float *x, global float *w, globa
 		}\
 		s += w[is*os];\
 		o[i] = act(s);\
-		x += get_local_size(0);\
 		w -= i;\
 	}\
 }\
@@ -180,7 +176,7 @@ kernel void _linear_forward_##act(global const float *x, global float *w, global
 	int is = args[4];\
 	int os = args[5];\
 	for (int i=0; i<os; i++) {\
-		vdotT(w, x+is*i, o, is, os);\
+		vdotT(w, x, o, is, os);\
 		if (!get_global_id(0)) *o = act(*o);\
 		w++;\
 		o++;\
@@ -189,8 +185,8 @@ kernel void _linear_forward_##act(global const float *x, global float *w, global
 void ___linear_forward_##act(global const float *x, global const float *w, global float *o, uint is, uint os)\
 {\
 	for (int i=0; i<os; i++) {\
-		vdotT(w, x+is*i, o, is, os);\
-		if (!get_global_id(0)) *o = act(*o);\
+		vdotT(w, x, o, is, os);\
+		if (!get_local_id(0)) *o = act(*o);\
 		w++;\
 		o++;\
 	}\
@@ -354,6 +350,7 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 
 //if (!get_group_id(0)) {
 		linear_forward_sigmoid(p, w, o+784+1, 784, 200);
+		//___linear_forward_sigmoid(p, w, o+784+1, 784, 200);
 		linear_forward_identity(o+784+1, w+785*200, o+784+1+200+1, 200, 10);
 
 		loss_0_1(o+784+1+200+1, d+200+1, ptr.ip[seed], 10);
