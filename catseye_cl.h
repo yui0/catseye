@@ -51,7 +51,7 @@ void CatsEye_clSetup(CatsEye *this)
 
 	// http://dhruba.name/2012/12/24/opencl-cookbook-10-tips-for-high-performance-kernels/
 	oclSetup(0, 0);
-	oclKernel(kernel, ksz, "-cl-denorms-are-zero -cl-finite-math-only -cl-fast-relaxed-math -Werror", kernel_code);
+	oclKernel(kernel, ksz, "-cl-std=CL1.2 -cl-denorms-are-zero -cl-finite-math-only -cl-fast-relaxed-math -Werror", kernel_code);
 }
 
 void CatsEye_clFinish()
@@ -60,7 +60,7 @@ void CatsEye_clFinish()
 	oclFinish();
 }
 
-void CatsEye_forward(CatsEye *this, numerus *x, int n)
+void CatsEye_forward(CatsEye *this, numerus *x)
 {
 #if 0
 	// calculation of input layer
@@ -74,7 +74,7 @@ void CatsEye_forward(CatsEye *this, numerus *x, int n)
 #endif
 #endif
 
-	if (n<0) n = x-1 - this->xdata;
+	int n = x - this->xdata;
 	args[0].s = this->xdata;
 	//args[0].size = sizeof(numerus)*(SIZE(0)+1)*60000;
 	param[0] = n;

@@ -29,7 +29,7 @@ void global_sync(volatile global int *flags)
 	barrier(CLK_GLOBAL_MEM_FENCE);
 }
 
-void vdot(global const float *x, global const float *y, global float *r, uint n)
+kernel void vdot(global const float *x, global const float *y, global float *r, uint n)
 {
 	local float acc[1024];
 	float priv_acc = 0;
@@ -59,7 +59,7 @@ void vdot(global const float *x, global const float *y, global float *r, uint n)
 
 	if (!lid) r[0] = acc[0];
 }
-void vdotT(global const float *x, global const float *y, global float *r, uint n, uint m)
+kernel void vdotT(global const float *x, global const float *y, global float *r, uint n, uint m)
 {
 	uint lid = get_local_id(0);
 	local float acc[1024];
