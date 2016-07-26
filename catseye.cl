@@ -17,7 +17,7 @@ static void global_sync(volatile global uint *flags)
 	if (workgroup_id == 0) {
 		if (thread_id < get_num_groups(0)) {
 //			while (flags[thread_id] != 1) ;
-			while (atomic_or(&flags[thread_id], 0) != 1) ;
+			while (atomic_or(&flags[thread_id], 0) != 1) ;	// for AMD
 		}
 		barrier(CLK_GLOBAL_MEM_FENCE);
 
@@ -28,7 +28,7 @@ static void global_sync(volatile global uint *flags)
 
 	if (thread_id == 0) {
 //		while (flags[workgroup_id] != 0) ;
-		while (atomic_or(&flags[workgroup_id], 0) != 0) ;
+		while (atomic_or(&flags[workgroup_id], 0) != 0) ;	// for AMD
 	}
 	barrier(CLK_GLOBAL_MEM_FENCE);
 }
@@ -44,8 +44,8 @@ static void vdot(local float *acc, global const float *x, global const float *y,
 	acc[lid] = priv_acc;
 	barrier(CLK_LOCAL_MEM_FENCE);
 
-	if (lid < 256) acc[lid] += acc[lid+256];
-	barrier(CLK_LOCAL_MEM_FENCE);
+//	if (lid < 256) acc[lid] += acc[lid+256];
+//	barrier(CLK_LOCAL_MEM_FENCE);
 	if (lid < 128) acc[lid] += acc[lid+128];
 	barrier(CLK_LOCAL_MEM_FENCE);
 	if (lid < 64) acc[lid] += acc[lid+64];
@@ -65,8 +65,6 @@ static void vdot(local float *acc, global const float *x, global const float *y,
 }
 static void vdotT(local float *acc, global const float *x, global const float *y, global float *r, uint n, uint m)
 {
-//	local float _acc[512];
-//	acc = _acc;
 	uint lid = get_local_id(0);
 	float priv_acc = 0;
 
@@ -93,7 +91,7 @@ static void vdotT(local float *acc, global const float *x, global const float *y
 	if (lid < 2) acc[lid] += acc[lid+2];
 	barrier(CLK_LOCAL_MEM_FENCE);
 
-	if (!lid) r[0] = acc[0] + acc[1] + x[n*m];
+	if (!lid) r[0] = acc[0] + acc[1] /*+ x[n*m]*/;
 }
 
 #define identity(a)		(a)
@@ -128,47 +126,11 @@ static void linear_forward_##act(global const float *x, global const float *w, g
 	}\
 	barrier(CLK_LOCAL_MEM_FENCE);\
 }\
-kernel void __linear_forward_##act(global const float *x, global float *w, global float *o, global float *d, global float *t, global uint *sync, uint8 args)\
+static void g_linear_forward_##act(local float *acc, global const float *x, global const float *w, global float *o, uint is, uint os)\
 {\
-/*	linear_forward_##act(args[0] ? x+args[1] : o+args[1], w+args[2], o+args[3], args[4], args[5]);*/\
-	x = args[0] ? x+args[1] : o+args[1];\
-	w += args[2];\
-	o += args[3];\
-	uint is = args[4];\
-	uint os = args[5];\
-	for (uint i=get_global_id(0); i<os; i+=get_global_size(0)) {\
-		w += i;\
-		float s = 0;\
-		for (uint k=0; k<is; k++) {\
-			s = mmad(w[k*os], x[k], s);\
-		}\
-		s += w[is*os];\
-		o[i] = act(s);\
-		w -= i;\
-	}\
-}\
-kernel void _linear_forward_##act(global const float *x, global float *w, global float *o, global float *d, global float *t, global uint *sync, uint8 args)\
-{\
-	local float acc[512];\
-	x = args[0] ? x+args[1] : o+args[1];\
-	w += args[2];\
-	o += args[3];\
-	uint is = args[4];\
-	uint os = args[5];\
-	for (uint i=0; i<os; i++) {\
-		vdotT(acc, w, x, o, is, os);\
-		if (!get_global_id(0)) *o = act(*o);\
-		w++;\
-		o++;\
-	}\
-}\
-static void ___linear_forward_##act(local float *acc, global const float *x, global const float *w, global float *o, uint is, uint os)\
-{\
-	for (uint i=0; i<os; i++) {\
-		vdotT(acc, w, x, o, is, os);\
-		if (!get_local_id(0)) *o = act(*o);\
-		w++;\
-		o++;\
+	for (uint i=get_group_id(0); i<os; i+=get_num_groups(0)) {\
+		vdotT(acc, w+i, x, o+i, is, os);\
+		if (!get_local_id(0)) o[i] = act(o[i] + w[is*os+i]);\
 	}\
 }
 LINEAR_FORWARD(identity)
@@ -252,28 +214,15 @@ kernel void _linear_update(global const float *x, global float *w, global float 
 	}
 }*/
 
-static void f_sig(local float *acc, global const float *x, global const float *w, global float *o, uint is, uint os)
-{
-	for (uint i=get_group_id(0); i<os; i+=get_num_groups(0)) {
-		vdotT(acc, w+i, x, o+i, is, os);
-		if (!get_local_id(0)) o[i] = sigmoid(o[i]);
-	}
-}
-static void f_id(local float *acc, global const float *x, global const float *w, global float *o, uint is, uint os)
-{
-	for (uint i=get_group_id(0); i<os; i+=get_num_groups(0)) {
-		vdotT(acc, w+i, x, o+i, is, os);
-	}
-}
 kernel void forward(global const float *x, global float *w, global float *o, global float *d, global float *t, global uint *sync, uint8 args)
 {
 //	linear_forward_sigmoid(x+args[0], w, o+784+1, 784, 200);
 //	linear_forward_identity(o+784+1, w+785*200, o+784+1+200+1, 200, 10);
 
 	local float acc[256];//[512];
-	f_sig(acc, x+args[0], w, o+784+1, 784, 200);
+	g_linear_forward_sigmoid(acc, x+args[0], w, o+784+1, 784, 200);
 	global_sync(sync);
-	f_id(acc, o+784+1, w+785*200, o+784+1+200+1, 200, 10);
+	g_linear_forward_identity(acc, o+784+1, w+785*200, o+784+1+200+1, 200, 10);
 }
 
 static void loss_0_1(global const float *o, global float *d, uint a, uint n)
@@ -343,8 +292,6 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 		global const float *p = x + seed*784;
 
 //if (!get_group_id(0)) {
-//		___linear_forward_sigmoid(p, w, o+784+1, 784, 200);
-//		___linear_forward_identity(o+784+1, w+785*200, o+784+1+200+1, 200, 10);
 		linear_forward_sigmoid(p, w, o+784+1, 784, 200);
 		linear_forward_identity(o+784+1, w+785*200, o+784+1+200+1, 200, 10);
 

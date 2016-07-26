@@ -23,15 +23,14 @@ args_t args[] = {
 };
 ocl_t kernel[] = {
 	{ "forward",	0, {256,0,0,},{256,0,0,}, args },
-//	{ "train",	0, {256,0,0,},{256,0,0,}, args },
 	{ "train",	0, {1024,0,0,},{0,0,0,}, args },
 
-	{ "_linear_forward_identity",	0, {1024,0,0,},{0,0,0,}, args },
+/*	{ "_linear_forward_identity",	0, {1024,0,0,},{0,0,0,}, args },
 	{ "_linear_forward_sigmoid",	0, {1024,0,0,},{0,0,0,}, args },
 	{ "_linear_backward_identity",	0, {1024,0,0,},{0,0,0,}, args },
 	{ "_linear_backward_sigmoid",	0, {1024,0,0,},{0,0,0,}, args },
 	{ "_linear_update",		0, {1024,0,0,},{0,0,0,}, args },
-	{ "_loss_0_1",			0, {1024,0,0,},{0,0,0,}, args },
+	{ "_loss_0_1",			0, {1024,0,0,},{0,0,0,}, args },*/
 };
 int ksz = sizeof(kernel)/sizeof(kernel[0]);
 
@@ -51,7 +50,8 @@ void CatsEye_clSetup(CatsEye *this)
 
 	// http://dhruba.name/2012/12/24/opencl-cookbook-10-tips-for-high-performance-kernels/
 	oclSetup(0, 0);
-	oclKernel(kernel, ksz, "-cl-std=CL1.2 -cl-denorms-are-zero -cl-finite-math-only -cl-fast-relaxed-math -Werror", kernel_code);
+	oclKernel(kernel, ksz, "-cl-denorms-are-zero -cl-finite-math-only -cl-fast-relaxed-math -Werror", kernel_code);
+	// -cl-std=CL1.2
 }
 
 void CatsEye_clFinish()
