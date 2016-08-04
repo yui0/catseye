@@ -1,9 +1,5 @@
 OCLSTRINGIFY(
 
-//#define mmad(x,y,z)		(x+y*z)
-#define mmad(x,y,z)		mad(x,y,z)
-//#define mmad(x,y,z)		fma(x,y,z)
-
 // http://industrybestpractice.blogspot.jp/2012/07/global-synchronisation-in-opencl.html
 static void global_sync(volatile global uint *flags)
 {
@@ -32,6 +28,26 @@ static void global_sync(volatile global uint *flags)
 	}
 	barrier(CLK_GLOBAL_MEM_FENCE);
 }
+
+//#pragma OPENCL EXTENSION cl_khr_global_int32_base_atomics : enable
+float atom_add_float(global float const *address, const float value)
+{
+	uint oldval;
+	uint newval;
+	uint readback;
+
+	*(float*)&oldval = *address;
+	*(float*)&newval = (*(float*)&oldval + value);
+	while ((readback = atom_cmpxchg((global uint*)address, oldval, newval)) != oldval) {
+		oldval = readback;
+		*(float*)&newval = (*(float*)&oldval + value);
+	}
+	return *(float*)&oldval;
+}
+
+//#define mmad(x,y,z)		(x+y*z)
+#define mmad(x,y,z)		mad(x,y,z)
+//#define mmad(x,y,z)		fma(x,y,z)
 
 static void vdot(local float *acc, global const float *x, global const float *y, global float *r, uint n)
 {
@@ -185,6 +201,7 @@ static void linear_update(float eta, global const float *o, global float *w, glo
 		float a = -eta * o[i];
 		for (int k=0; k<os; k++) {
 			*p = mmad(a, d[k], *p);
+//atom_add_float(p, a*d[k]);
 			p++;
 		}
 	}
@@ -272,7 +289,7 @@ static uint xorshift_int(local uint4 *ctx)
 	return xorshift_int(ctx) * 2.3283064e-10;
 }*/
 
-kernel void train(global const float *x, global float *w, global float *o, global float *d, global float *t, global uint *sync, uint8 args)
+/*kernel void train(global const float *x, global float *w, global float *o, global float *d, global float *t, global uint *sync, uint8 args)
 {
 	union {
 		global uint *ip;
@@ -307,8 +324,8 @@ if (!get_group_id(0)) {
 		g_linear_update(0.01, p, w, d, 784, 200);
 		g_linear_update(0.01, o+784+1, w+785*200, d+200+1, 200, 10);
 	}
-}
-#if 0
+}*/
+#if 1
 #if 0
 kernel void train(global const float *x, global float *w, global float *o, global float *d, global float *t, global uint *sync, uint8 args)
 {
