@@ -22,9 +22,9 @@ args_t args[] = {
 	{ 0, 0, 0, 0, 0, 0 },
 };
 ocl_t kernel[] = {
-//	{ "forward",	0, {256,0,0,},{256,0,0,}, args },
+	{ "forward",	0, {256,0,0,},{256,0,0,}, args },
 //	{ "train",	0, {256,0,0,},{256,0,0,}, args },
-	{ "forward",	0, {1024,0,0,},{256,0,0,}, args },
+//	{ "forward",	0, {1024,0,0,},{256,0,0,}, args },
 	{ "train",	0, {1024,0,0,},{256,0,0,}, args },
 
 /*	{ "_linear_forward_identity",	0, {1024,0,0,},{0,0,0,}, args },
@@ -36,8 +36,57 @@ ocl_t kernel[] = {
 };
 int ksz = sizeof(kernel)/sizeof(kernel[0]);
 
+char acts[][20] = {
+	"identity",
+	"softmax",
+	"sigmoid",
+	"normal_tanh",
+	"scaled_tanh",
+	"relu",
+	"LeakyReLU",
+};
+
 void CatsEye_clSetup(CatsEye *this)
 {
+	#define BUFSIZE	2048
+	char code[4][BUFSIZE];
+	int osize = 0, dsize, in, out;
+	for (int i=0; i<this->layers-1; i++) {
+		int *u = &this->u[LPLEN*(i+1)]; 
+		in = u[SIZE-LPLEN];
+		out = u[SIZE];
+		dsize = osize-this->u[SIZE]-1;
+		switch (u[TYPE]) {
+		case CATS_CONV:
+			break;
+		case CATS_MAXPOOL:
+			break;
+		default:
+			if (i==0) {
+				snprintf(code[3], BUFSIZE, "\tlinear_forward_%s(p, w, o+oo+%d, %d, %d);\n",
+					acts[u[ACT]], in+1, in, out);
+				strcat(code[0], code[3]);
+				snprintf(code[3], BUFSIZE, "\tlinear_update(%f, p, w, d+dd, %d, %d);\n", 0.01, in, out);
+				strcat(code[2], code[3]);
+			} else {
+				snprintf(code[3], BUFSIZE, "\tlinear_forward_%s(o+oo+%d, w+%d, o+oo+%d, %d, %d);\n",
+					acts[u[ACT]], osize, this->ws[i-1], osize+in+1, in, out);
+				strcat(code[0], code[3]);
+				snprintf(code[3], BUFSIZE, "\tlinear_backward_%s(o+oo+%d, w+%d, d+dd+%d, d+dd+%d, %d, %d);\n", acts[u[ACT]], osize, this->ws[i-1], dsize, dsize+in+1, in, out);
+				strcat(code[1], code[3]);
+				snprintf(code[3], BUFSIZE, "\tlinear_update(%f, o+oo+%d, w+%d, d+dd+%d, %d, %d);\n", 0.01, osize, this->ws[i-1], dsize+in+1, in, out);
+				strcat(code[2], code[3]);
+			}
+		}
+		osize += in+1;
+	}
+	snprintf(code[3], BUFSIZE, "\tloss_0_1(o+oo+%d, d+dd+%d, label, %d);\n%s", osize, dsize+in+1, out, code[1]);
+	strcpy(code[1], code[3]);
+
+//	printf("%s", code[0]);
+//	printf("%s", code[1]);
+//	printf("%s", code[2]);
+
 	args[0].size = sizeof(numerus)*(SIZE(0)+1)*60000;
 	//args[0].s = this->xdata;
 	args[1].size = sizeof(numerus)*this->wsize;

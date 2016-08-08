@@ -128,9 +128,7 @@ static void vdotT(local float *acc, global const float *x, global const float *y
 #define LINEAR_FORWARD(act) \
 static void linear_forward_##act(global const float *x, global const float *w, global float *o, uint is, uint os)\
 {\
-/*	if (!get_group_id(0))*/\
 	for (int i=get_local_id(0); i<os; i+=get_local_size(0)) {\
-/*	for (int i=get_global_id(0); i<os; i+=get_global_size(0)) {*/\
 		w += i;\
 		float s = 0;\
 		for (int k=0; k<is; k++) {\
@@ -160,9 +158,7 @@ LINEAR_FORWARD(LeakyReLU)
 #define LINEAR_BACKWARD(dact) \
 static void linear_backward_##dact(global const float *o, global const float *w, global float *d, global const float *delta, uint is, uint os)\
 {\
-/*	if (!get_group_id(0))*/\
 	for (int i=get_local_id(0); i<=is; i+=get_local_size(0)) {\
-/*	for (int i=get_global_id(0); i<=is; i+=get_global_size(0)) {*/\
 		w += i*os;\
 		float s = 0;\
 		for (int k=0; k<os; k++) {\
@@ -194,9 +190,7 @@ LINEAR_BACKWARD(LeakyReLU)
 
 static void linear_update(float eta, global const float *o, global float *w, global const float *d, uint is, uint os)
 {
-//	if (!get_group_id(0))
 	for (int i=get_local_id(0); i<=is; i+=get_local_size(0)) {
-//	for (int i=get_global_id(0); i<=is; i+=get_global_size(0)) {
 		global float *p = w + i*os;
 		float a = -eta * o[i];
 		for (int k=0; k<os; k++) {
@@ -289,7 +283,46 @@ static uint xorshift_int(local uint4 *ctx)
 	return xorshift_int(ctx) * 2.3283064e-10;
 }*/
 
-/*kernel void train(global const float *x, global float *w, global float *o, global float *d, global float *t, global uint *sync, uint8 args)
+kernel void train(global const float *x, global float *w, global float *o, global float *d, global float *t, global uint *sync, uint8 args)
+{
+	union {
+		global uint *ip;
+		global float *fp;
+	} ptr;
+	ptr.fp = t;
+
+	uint MINIBATCH = get_num_groups(0);
+	local uint label;
+	local uint seed;
+	local uint4 r;
+	r.xyzw = args[2];
+	for (int n=args[1]/MINIBATCH; n>0; n--) {
+		uint m = get_group_id(0);
+		if (!get_local_id(0)) {
+			seed = xorshift_int(&r) % 60000;
+			label = ptr.ip[seed];
+		}
+		barrier(CLK_LOCAL_MEM_FENCE);
+		global const float *p = x + seed*784;
+
+		uint dd = m*(200+1+10+1);
+		uint oo = m*(784+1+200+1+10+1);
+
+		linear_forward_sigmoid(p, w, o+oo+784+1, 784, 200);
+		linear_forward_identity(o+oo+784+1, w+785*200, o+oo+784+1+200+1, 200, 10);
+
+		loss_0_1(o+oo+784+1+200+1, d+dd+200+1, label, 10);
+		linear_backward_identity(o+oo+784+1, w+785*200, d+dd, d+dd+200+1, 200, 10);
+
+		linear_update(0.01, p, w, d+dd, 784, 200);
+		linear_update(0.01, o+oo+784+1, w+785*200, d+dd+200+1, 200, 10);
+
+//		global_sync(sync);
+	}
+}
+
+/*// 95%
+kernel void train(global const float *x, global float *w, global float *o, global float *d, global float *t, global uint *sync, uint8 args)
 {
 	union {
 		global uint *ip;
@@ -325,8 +358,9 @@ if (!get_group_id(0)) {
 		g_linear_update(0.01, o+784+1, w+785*200, d+200+1, 200, 10);
 	}
 }*/
-#if 1
 #if 0
+#if 1
+// 94%
 kernel void train(global const float *x, global float *w, global float *o, global float *d, global float *t, global uint *sync, uint8 args)
 {
 /*	if (!get_global_id(0)) {
@@ -353,12 +387,11 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 	r.xyzw = args[2];
 	if (!get_group_id(0))
 	for (int n=args[1]; n>0; n--) {
-		if (!get_global_id(0)) seed = xorshift_int(&r) % 60000;
-//		if (!get_local_id(0)) seed = xorshift_int(&r) % 60000;
+//		if (!get_global_id(0)) seed = xorshift_int(&r) % 60000;
+		if (!get_local_id(0)) seed = xorshift_int(&r) % 60000;
 		barrier(CLK_LOCAL_MEM_FENCE);
 		global const float *p = x + seed*784;
 
-//if (!get_group_id(0)) {
 		linear_forward_sigmoid(p, w, o+784+1, 784, 200);
 		linear_forward_identity(o+784+1, w+785*200, o+784+1+200+1, 200, 10);
 
@@ -366,8 +399,6 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 		linear_backward_identity(o+784+1, w+785*200, d, d+200+1, 200, 10);
 		linear_update(/*eta*/0.01, p, w, d, 784, 200);
 		linear_update(/*eta*/0.01, o+784+1, w+785*200, d+200+1, 200, 10);
-//}
-//		global_sync(sync);
 	}
 
 /*#ifdef __CPU__
