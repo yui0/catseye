@@ -369,7 +369,7 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 		// Asynchronous Update
 		linear_update(0.01, p, w+ww, d+dd, 784, 200);
 		linear_update(0.01, o+oo+784+1, w+ww+785*200, d+dd+200+1, 200, 10);*/
-GEN_CODE;
+%GEN_CODE%
 		global_sync(sync);
 	}
 

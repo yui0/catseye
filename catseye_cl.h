@@ -107,7 +107,7 @@ void CatsEye_clSetup(CatsEye *this)
 	strcpy(code[3], code[0]);
 	strcat(code[3], code[1]);
 	strcat(code[3], code[2]);
-	char *kcode = strrep(kernel_code, "GEN_CODE;", code[3]);
+	char *kcode = strrep(kernel_code, "\%GEN_CODE\%", code[3]);
 	printf("%s", kcode);
 
 	args[0].size = sizeof(numerus)*(SIZE(0)+1)*60000;

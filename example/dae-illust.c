@@ -4,8 +4,8 @@
 //		©2016 Yuichiro Nakada
 //---------------------------------------------------------
 
-// gcc dae-illust.c -o dae-illust -lm -Ofast -fopenmp -lgomp
-// clang dae-illust.c -o dae-illust -lm -Ofast
+// gcc dae-illust.c -o dae-illust -lm -Ofast -fopenmp -lgomp -march=native -funroll-loops `pkg-config --libs --cflags OpenCL`
+// clang dae-illust.c -o dae-illust -lm -Ofast -march=native -funroll-loops `pkg-config --libs --cflags OpenCL`
 //#define CATS_AUTOENCODER
 #define CATS_DENOISING_AUTOENCODER
 #include "../catseye.h"
