@@ -46,6 +46,24 @@ char acts[][20] = {
 	"LeakyReLU",
 };
 
+char *strrep(char *s, char *b, char *a)
+{
+	size_t b_len = strlen(b);
+	size_t a_len = strlen(a);
+
+	char *sub = strstr(s, b);
+	if (!sub) return strdup(s);
+
+	char *newstr = malloc(strlen(s) + a_len - b_len + 1);
+	if (!newstr) return 0;
+	*newstr = '\0';
+
+	strncat(newstr, s, sub - s);
+	strcat(newstr, a);
+	strcat(newstr, sub + b_len);
+	return newstr;
+}
+
 void CatsEye_clSetup(CatsEye *this)
 {
 	#define BUFSIZE	2048
@@ -86,14 +104,20 @@ void CatsEye_clSetup(CatsEye *this)
 //	printf("%s", code[0]);
 //	printf("%s", code[1]);
 //	printf("%s", code[2]);
+	strcpy(code[3], code[0]);
+	strcat(code[3], code[1]);
+	strcat(code[3], code[2]);
+	char *kcode = strrep(kernel_code, "GEN_CODE;", code[3]);
+	printf("%s", kcode);
 
 	args[0].size = sizeof(numerus)*(SIZE(0)+1)*60000;
 	//args[0].s = this->xdata;
-	args[1].size = sizeof(numerus)*this->wsize;
+	args[1].size = sizeof(numerus)*this->wsize *8;
+//	for (int i=1; i<8; i++) memcpy(this->wdata+this->wsize*i, this->wdata, sizeof(numerus)*this->wsize);
 	args[1].s = this->wdata;
-	args[2].size = sizeof(numerus)*this->osize *16;
+	args[2].size = sizeof(numerus)*this->osize *8;
 	args[2].s = this->odata;
-	args[3].size = sizeof(numerus)*this->dsize *16;
+	args[3].size = sizeof(numerus)*this->dsize *8;
 	args[3].s = this->ddata;
 	args[4].size = sizeof(numerus)*60000;
 	//args[4].s = this->ddata;
@@ -101,8 +125,10 @@ void CatsEye_clSetup(CatsEye *this)
 
 	// http://dhruba.name/2012/12/24/opencl-cookbook-10-tips-for-high-performance-kernels/
 	oclSetup(0, 0);
-	oclKernel(kernel, ksz, "-cl-denorms-are-zero -cl-finite-math-only -cl-fast-relaxed-math -Werror", kernel_code);
+//	oclKernel(kernel, ksz, "-cl-denorms-are-zero -cl-finite-math-only -cl-fast-relaxed-math -Werror", kernel_code);
 	// -cl-std=CL1.2
+	oclKernel(kernel, ksz, "-cl-denorms-are-zero -cl-finite-math-only -cl-fast-relaxed-math -Werror", kcode);
+	free(kcode);
 }
 
 void CatsEye_clFinish()

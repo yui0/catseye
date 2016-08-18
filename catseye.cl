@@ -283,6 +283,56 @@ static uint xorshift_int(local uint4 *ctx)
 	return xorshift_int(ctx) * 2.3283064e-10;
 }*/
 
+static void convolutional_layer_forward(global const float *x, global const float *w, global float *o, uint ix, uint iy, uint is, uint os, uint ich, uint och, uint ks)
+{
+/*	for (int i=get_local_id(0); i<os; i+=get_local_size(0)) {
+		w += i;
+		float s = 0;
+		for (int k=0; k<is; k++) {
+			s = mmad(w[k*os], x[k], s);
+		}
+		s += w[is*os];
+		o[i] = act(s);
+		w -= i;
+	}*/
+	uint m = (ks/2)*2;
+	uint sx = ix-m;	// out
+	uint sy = iy-m;
+	// c[out], k, c[in], h, w
+//muladd
+//	for (int i=get_local_id(0); i<sx; i+=get_local_size(0)) {
+//	}
+/*	numerus *z, *p, *r;
+	numerus *pp = s;
+	memset(o, 0, sizeof(numerus)*u[CHANNEL]*sx*sy);
+	for (int c=u[CHANNEL]; c>0; c--) {	// out
+		r = s;
+		for (int cc=ch; cc>0; cc--) {	// in
+			for (int wy=ks; wy>0; wy--) {
+				for (int wx=ks; wx>0; wx--) {
+					p = s++;	// in
+					z = o;		// out
+					for (int y=sy; y>0; y--) {
+						muladd(z, p, *w, sx);	// *z++ += (*p++) * (*w); p += m;
+						p += u[XSIZE];
+						z += sx;
+					}
+					w++;
+				}
+				s += step;
+			}
+			r += u[XSIZE] * u[YSIZE];
+			s = r;
+		}
+		o = z;
+		s = pp;
+	}
+	for (int c=u[CHANNEL]*sx*sy; c>0; c--) {	// out
+		o--;
+		*o = act(*o);
+	}*/
+	barrier(CLK_LOCAL_MEM_FENCE);
+}
 kernel void train(global const float *x, global float *w, global float *o, global float *d, global float *t, global uint *sync, uint8 args)
 {
 	union {
@@ -295,7 +345,7 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 	local uint label;
 	local uint seed;
 	local uint4 r;
-	r.xyzw = args[2];
+	r.xyzw = args[2] +get_group_id(0);
 	for (int n=args[1]/MINIBATCH; n>0; n--) {
 		uint m = get_group_id(0);
 		if (!get_local_id(0)) {
@@ -307,18 +357,44 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 
 		uint dd = m*(200+1+10+1);
 		uint oo = m*(784+1+200+1+10+1);
+//		uint ww = m*(785*200+201*10);
+		uint ww = 0;
 
-		linear_forward_sigmoid(p, w, o+oo+784+1, 784, 200);
-		linear_forward_identity(o+oo+784+1, w+785*200, o+oo+784+1+200+1, 200, 10);
+/*		linear_forward_sigmoid(p, w+ww, o+oo+784+1, 784, 200);
+		linear_forward_identity(o+oo+784+1, w+ww+785*200, o+oo+784+1+200+1, 200, 10);
 
 		loss_0_1(o+oo+784+1+200+1, d+dd+200+1, label, 10);
-		linear_backward_identity(o+oo+784+1, w+785*200, d+dd, d+dd+200+1, 200, 10);
+		linear_backward_identity(o+oo+784+1, w+ww+785*200, d+dd, d+dd+200+1, 200, 10);
 
-		linear_update(0.01, p, w, d+dd, 784, 200);
-		linear_update(0.01, o+oo+784+1, w+785*200, d+dd+200+1, 200, 10);
-
-//		global_sync(sync);
+		// Asynchronous Update
+		linear_update(0.01, p, w+ww, d+dd, 784, 200);
+		linear_update(0.01, o+oo+784+1, w+ww+785*200, d+dd+200+1, 200, 10);*/
+GEN_CODE;
+		global_sync(sync);
 	}
+
+	// http://jubat.us/en/method.html
+	// http://sinhrks.hatenablog.com/entry/2015/12/17/000538
+/*	global_sync(sync);
+	for (int i=get_global_id(0); i<785*200+201*10; i+=get_global_size(0)) {
+		float a = w[i];
+		for (int m=1; m<get_num_groups(0); m++) {
+			a += w[i+m*(785*200+201*10)];
+		}
+		a /= get_num_groups(0);
+//		if (w[i] != a) printf("%f %f!\n", w[i], a);
+		for (int m=0; m<get_num_groups(0); m++) {
+			w[i+m*(785*200+201*10)] = a;
+		}
+		w[i] = w[i+(785*200+201*10)*(get_num_groups(0)-1)];
+	}*/
+/*	if (!get_global_id(0)) {
+		for (int i=0; i<785*200+201*10; i++) {
+			for (int m=1; m<get_num_groups(0); m++) {
+				if (w[i] != w[i+m*(785*200+201*10)]) printf("%f %f!\n", w[i], w[i+m*(785*200+201*10)]);
+			}
+		}
+	}*/
 }
 
 /*// 95%
