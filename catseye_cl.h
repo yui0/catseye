@@ -62,6 +62,7 @@ void CatsEye_clSetup(CatsEye *this)
 	#define BUFSIZE	2048
 	char code[4][BUFSIZE];
 	int osize = 0, dsize, in, out;
+	int wsize = 0;
 	code[0][0] = code[1][0] = code[2][0] = 0;
 	for (int i=0; i<this->layers-1; i++) {
 		int *u = &this->u[LPLEN*(i+1)]; 
@@ -75,37 +76,45 @@ void CatsEye_clSetup(CatsEye *this)
 			break;
 		default:
 			if (i==0) {
-				snprintf(code[3], BUFSIZE, "\tlinear_forward_%s(p, w, o+oo+%d, %d, %d);\n",
+				snprintf(code[3], BUFSIZE, "\t\tlinear_forward_%s(p, w, o+oo+%d, %d, %d);\n",
 					acts[u[ACT]], in+1, in, out);
 				strcat(code[0], code[3]);
-				snprintf(code[3], BUFSIZE, "\tlinear_update(%f, p, w, d+dd, %d, %d);\n", 0.01, in, out);
+				snprintf(code[3], BUFSIZE, "\t\tlinear_update(%f, p, w, d+dd, %d, %d);\n", 0.01, in, out);
 				strcat(code[2], code[3]);
 			} else {
-				snprintf(code[3], BUFSIZE, "\tlinear_forward_%s(o+oo+%d, w+%d, o+oo+%d, %d, %d);\n",
-					acts[u[ACT]], osize, this->ws[i-1], osize+in+1, in, out);
+				snprintf(code[3], BUFSIZE, "\t\tlinear_forward_%s(o+oo+%d, w+%d, o+oo+%d, %d, %d);\n",
+					acts[u[ACT]], osize, wsize, osize+in+1, in, out);
 				strcat(code[0], code[3]);
-				snprintf(code[3], BUFSIZE, "\tlinear_backward_%s(o+oo+%d, w+%d, d+dd+%d, d+dd+%d, %d, %d);\n", acts[u[ACT]], osize, this->ws[i-1], dsize, dsize+in+1, in, out);
+				snprintf(code[3], BUFSIZE, "\t\tlinear_backward_%s(o+oo+%d, w+%d, d+dd+%d, d+dd+%d, %d, %d);\n", acts[u[ACT]], osize, wsize, dsize, dsize+in+1, in, out);
 				strcat(code[1], code[3]);
-				snprintf(code[3], BUFSIZE, "\tlinear_update(%f, o+oo+%d, w+%d, d+dd+%d, %d, %d);\n", 0.01, osize, this->ws[i-1], dsize+in+1, in, out);
+				snprintf(code[3], BUFSIZE, "\t\tlinear_update(%f, o+oo+%d, w+%d, d+dd+%d, %d, %d);\n", 0.01, osize, wsize, dsize+in+1, in, out);
 				strcat(code[2], code[3]);
 			}
 		}
 		osize += in+1;
+		wsize += this->ws[i];
 	}
-	snprintf(code[3], BUFSIZE, "\tloss_0_1(o+oo+%d, d+dd+%d, label, %d);\n%s", osize, dsize+in+1, out, code[1]);
+	int a = this->layers-1;
+	int loss = this->u[a*LPLEN+STRIDE];
+	if (loss) {
+		snprintf(code[3], BUFSIZE, "\t\tloss_mse(o+oo+%d, d+dd+%d, t+seed*%d, %d);\n%s", osize, dsize+in+1, out, this->u[SIZE], code[1]);
+	} else {
+		snprintf(code[3], BUFSIZE, "\t\tloss_0_1(o+oo+%d, d+dd+%d, label, %d);\n%s", osize, dsize+in+1, out, code[1]);
+	}
 	strcpy(code[1], code[3]);
 
 //	printf("%s", code[0]);
 //	printf("%s", code[1]);
 //	printf("%s", code[2]);
-	strcpy(code[3], code[0]);
+	snprintf(code[3], BUFSIZE, "\t\tglobal const float *p = x + seed*%d;\n\n\t\tuint dd = m*(%d);\n\t\tuint oo = m*(%d);\n\n", this->u[SIZE], osize-this->u[SIZE]+out, osize+out+1);
+	strcat(code[3], code[0]);
 	strcat(code[3], code[1]);
 	strcat(code[3], code[2]);
+	printf("%s", code[3]);
 	char *kcode = strrep(kernel_code, "\%GEN_CODE\%", code[3]);
-	printf("%s", kcode);
+//	printf("%s", kcode);
 
-	args[0].size = sizeof(numerus)*(SIZE(0)+1)*60000;
-	//args[0].s = this->xdata;
+	args[0].size = 0;	// x, set at CatsEye_train
 	args[1].size = sizeof(numerus)*this->wsize *8;
 //	for (int i=1; i<8; i++) memcpy(this->wdata+this->wsize*i, this->wdata, sizeof(numerus)*this->wsize);
 	args[1].s = this->wdata;
@@ -113,8 +122,7 @@ void CatsEye_clSetup(CatsEye *this)
 	args[2].s = this->odata;
 	args[3].size = sizeof(numerus)*this->dsize *8;
 	args[3].s = this->ddata;
-	args[4].size = sizeof(numerus)*60000;
-	//args[4].s = this->ddata;
+	args[4].size = 0;	// t, set at CatsEye_train
 	args[5].size = sizeof(cl_int)*1024*2;
 
 	// http://dhruba.name/2012/12/24/opencl-cookbook-10-tips-for-high-performance-kernels/
@@ -148,7 +156,6 @@ void CatsEye_forward(CatsEye *this, numerus *x)
 
 	int n = x - this->xdata;
 	args[0].s = this->xdata;
-	//args[0].size = sizeof(numerus)*(SIZE(0)+1)*60000;
 	param[0] = n;
 
 	oclKernelArgsWrite(args);
@@ -190,15 +197,19 @@ void CatsEye_forward(CatsEye *this, numerus *x)
 
 void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numerus eta)
 {
+	args[0].size = sizeof(numerus)*(SIZE(0)+1)*N;
+	args[4].size = sizeof(numerus)*N;
+	oclKernelArgs(kernel, ksz);
+
 	this->xdata = x;
 	this->xsize = N;
 
 	int batch = N;			// for random
 	if (RANDOM) batch = RANDOM;
 
-	int a = this->layers-1;
-	int loss = this->u[a*LPLEN+STRIDE];
-	if (!loss && x==t) loss = 1;
+//	int a = this->layers-1;
+//	int loss = this->u[a*LPLEN+STRIDE];
+//	if (!loss && x==t) loss = 1;
 
 #ifdef CATS_TIME
 	struct timeval start, stop;
@@ -207,6 +218,7 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 	for (int times=0; times<repeat; times++) {
 		args[0].s = this->xdata;
 		args[4].s = t;
+		param[0] = N;
 		param[1] = batch;
 		param[2] = xor128();
 		oclKernelArgsWrite(args);

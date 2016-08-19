@@ -267,7 +267,6 @@ static void loss_mse(global const float *o, global float *d, global const float 
 	for (int i=get_local_id(0); i<n; i+=get_local_size(0)) {
 		d[i] = o[i] - a[i];
 	}
-	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
 static uint xorshift_int(local uint4 *ctx)
@@ -333,6 +332,7 @@ static void convolutional_layer_forward(global const float *x, global const floa
 	}*/
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
+#if 1
 kernel void train(global const float *x, global float *w, global float *o, global float *d, global float *t, global uint *sync, uint8 args)
 {
 	union {
@@ -340,6 +340,9 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 		global float *fp;
 	} ptr;
 	ptr.fp = t;
+
+	local uint N;
+	N = args[0];
 
 	uint MINIBATCH = get_num_groups(0);
 	local uint label;
@@ -349,15 +352,15 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 	for (int n=args[1]/MINIBATCH; n>0; n--) {
 		uint m = get_group_id(0);
 		if (!get_local_id(0)) {
-			seed = xorshift_int(&r) % 60000;
+			seed = xorshift_int(&r) % /*60000*/N;
 			label = ptr.ip[seed];
 		}
 		barrier(CLK_LOCAL_MEM_FENCE);
-		global const float *p = x + seed*784;
+/*		global const float *p = x + seed*784;
 
 		uint dd = m*(200+1+10+1);
 		uint oo = m*(784+1+200+1+10+1);
-//		uint ww = m*(785*200+201*10);
+//		uint ww = m*(785*200+201*10);*/
 		uint ww = 0;
 
 /*		linear_forward_sigmoid(p, w+ww, o+oo+784+1, 784, 200);
@@ -396,7 +399,7 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 		}
 	}*/
 }
-
+#else
 /*// 95%
 kernel void train(global const float *x, global float *w, global float *o, global float *d, global float *t, global uint *sync, uint8 args)
 {
@@ -434,7 +437,6 @@ if (!get_group_id(0)) {
 		g_linear_update(0.01, o+784+1, w+785*200, d+200+1, 200, 10);
 	}
 }*/
-#if 0
 // 94%
 kernel void train(global const float *x, global float *w, global float *o, global float *d, global float *t, global uint *sync, uint8 args)
 {

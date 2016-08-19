@@ -16,7 +16,7 @@
 
 #include <dirent.h>
 //#include <sys/stat.h>
-double *load(char *path, int w, int h, int *c)
+numerus *load(char *path, int w, int h, int *c)
 {
 	int n = 0;
 	struct dirent *de;
@@ -28,8 +28,8 @@ double *load(char *path, int w, int h, int *c)
 	n -= 2;
 
 	*c = n;
-	double *x = malloc(sizeof(double)*3*w*h*n);
-	double *p = x;
+	numerus *x = malloc(sizeof(numerus)*3*w*h*n);
+	numerus *p = x;
 
 	rewinddir(d);
 	while ((de = readdir(d))) {
@@ -69,7 +69,8 @@ int main()
 	int sample;
 
 	// データの読み込み
-	double *x = load("./illust/", w, h, &sample);
+	numerus *x = load("./illust/", w, h, &sample);
+	sample = 10;
 //	sample = 100;
 
 #if 1
@@ -113,7 +114,7 @@ int main()
 	// 結果の表示
 	unsigned char *pixels = malloc(size*100);
 	for (int i=0; i<50; i++) {
-		double mse = 0;
+		numerus mse = 0;
 		CatsEye_forward(&cat, x+size*i);
 
 		CatsEye_visualize(cat.o[2], w*h, w, &pixels[(i/10)*w*h*10 + (i%10)*w], w*10);
