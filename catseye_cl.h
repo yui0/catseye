@@ -26,13 +26,6 @@ ocl_t kernel[] = {
 //	{ "train",	0, {256,0,0,},{256,0,0,}, args },
 //	{ "forward",	0, {1024,0,0,},{256,0,0,}, args },
 	{ "train",	0, {1024,0,0,},{256,0,0,}, args },
-
-/*	{ "_linear_forward_identity",	0, {1024,0,0,},{0,0,0,}, args },
-	{ "_linear_forward_sigmoid",	0, {1024,0,0,},{0,0,0,}, args },
-	{ "_linear_backward_identity",	0, {1024,0,0,},{0,0,0,}, args },
-	{ "_linear_backward_sigmoid",	0, {1024,0,0,},{0,0,0,}, args },
-	{ "_linear_update",		0, {1024,0,0,},{0,0,0,}, args },
-	{ "_loss_0_1",			0, {1024,0,0,},{0,0,0,}, args },*/
 };
 int ksz = sizeof(kernel)/sizeof(kernel[0]);
 
@@ -69,6 +62,7 @@ void CatsEye_clSetup(CatsEye *this)
 	#define BUFSIZE	2048
 	char code[4][BUFSIZE];
 	int osize = 0, dsize, in, out;
+	code[0][0] = code[1][0] = code[2][0] = 0;
 	for (int i=0; i<this->layers-1; i++) {
 		int *u = &this->u[LPLEN*(i+1)]; 
 		in = u[SIZE-LPLEN];
@@ -128,6 +122,7 @@ void CatsEye_clSetup(CatsEye *this)
 //	oclKernel(kernel, ksz, "-cl-denorms-are-zero -cl-finite-math-only -cl-fast-relaxed-math -Werror", kernel_code);
 	// -cl-std=CL1.2
 	oclKernel(kernel, ksz, "-cl-denorms-are-zero -cl-finite-math-only -cl-fast-relaxed-math -Werror", kcode);
+	oclKernelArgs(kernel, ksz);
 	free(kcode);
 }
 

@@ -91,7 +91,15 @@ void oclKernel(ocl_t *kernel, int n, char *opt, char *kernel_code)
 			clGetKernelWorkGroupInfo(kernel->k, device_id[ocl_device], CL_KERNEL_WORK_GROUP_SIZE, sizeof(size_t)*3, local, NULL);
 			printf("CL_KERNEL_WORK_GROUP_SIZE: %zu\n", local[0]);
 		}
+		kernel++;
+	}
+	clReleaseProgram(program);
+}
 
+void oclKernelArgs(ocl_t *kernel, int n)
+{
+	cl_int ret;
+	for (int i=0; i<n; i++) {
 		args_t *args = kernel->a;
 		while (args->size) {
 			if (args->type>0) {
@@ -101,10 +109,8 @@ void oclKernel(ocl_t *kernel, int n, char *opt, char *kernel_code)
 			}
 			args++;
 		}
-
 		kernel++;
 	}
-	clReleaseProgram(program);
 }
 
 void oclKernelArgsWrite(args_t *args)

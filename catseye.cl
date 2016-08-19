@@ -435,7 +435,6 @@ if (!get_group_id(0)) {
 	}
 }*/
 #if 0
-#if 1
 // 94%
 kernel void train(global const float *x, global float *w, global float *o, global float *d, global float *t, global uint *sync, uint8 args)
 {
@@ -481,56 +480,6 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 	if (get_global_id(0)==1) printf(" [%.2fs]\n", (clock()-time)/1000.0/1000.0);
 #endif*/
 }
-#else
-// http://www.chokkan.org/research/survey/Minibatch%20and%20Parallelization%20for%20Online%20Large%20Margin%20Structured%20Learning.pdf
-kernel void train(global const float *x, global float *w, global float *o, global float *d, global float *t, global uint *sync, uint8 args)
-{
-	union {
-		global uint *ip;
-		global float *fp;
-	} ptr;
-	ptr.fp = t;
-
-	uint MINIBATCH = get_num_groups(0);
-//	local uint seed[16];
-	global uint *seed = sync+10;
-	local uint4 r;
-	r.xyzw = args[2];
-	for (int n=args[1]/MINIBATCH; n>0; n--) {
-		uint m = get_group_id(0);
-//		if (!get_global_id(0)) seed[m] = xorshift_int(&r) % 60000;
-		if (!get_local_id(0)) seed[m] = xorshift_int(&r) % 60000;
-		barrier(CLK_LOCAL_MEM_FENCE);
-		global const float *p = x + seed[m]*784;
-
-		uint dd = m*(200+1+10+1);
-		uint oo = m*(784+1+200+1+10+1);
-//		if (!get_local_id(0)) sync[m] = seed[m]*784;
-
-		linear_forward_sigmoid(p, w, o+oo+784+1, 784, 200);
-		linear_forward_identity(o+oo+784+1, w+785*200, o+oo+784+1+200+1, 200, 10);
-
-		loss_0_1(o+oo+784+1+200+1, d+dd+200+1, ptr.ip[seed[m]], 10);
-		linear_backward_identity(o+oo+784+1, w+785*200, d+dd, d+dd+200+1, 200, 10);
-
-			linear_update(0.01, p, w, d+dd, 784, 200);
-			linear_update(0.01, o+oo+784+1, w+785*200, d+dd+200+1, 200, 10);
-
-/*		if (!get_group_id(0))
-		for (int m=MINIBATCH-1; m>=0; m--) {
-//			{uint m = get_group_id(0);
-			global float *p = x + seed[m]*784;
-			uint dd = m*(200+1+10+1);
-			uint oo = m*(784+1+200+1+10+1);
-//			barrier(CLK_GLOBAL_MEM_FENCE);
-
-			linear_update(0.01, p, w, d+dd, 784, 200);
-			linear_update(0.01, o+oo+784+1, w+785*200, d+dd+200+1, 200, 10);
-		}*/
-		global_sync(sync);
-	}
-}
-#endif
 #endif
 
 );
