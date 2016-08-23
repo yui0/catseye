@@ -70,8 +70,7 @@ int main()
 
 	// データの読み込み
 	numerus *x = load("./illust/", w, h, &sample);
-	sample = 10;
-//	sample = 100;
+	sample = 100;
 
 #if 1
 	int u[] = {

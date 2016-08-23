@@ -707,7 +707,8 @@ enum CATS_LAYER_TYPE {
 	CATS_MAXPOOL,
 };
 
-//#define CATS_OPENCL
+#define CATS_MBATCH	8
+#define CATS_OPENCL
 #ifdef CATS_OPENCL
 #include "catseye_cl.h"
 #endif
@@ -776,7 +777,7 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 		size[i] = this->osize;
 		this->osize += SIZE(i)+1;	// bias
 	}
-	this->odata = malloc(sizeof(numerus)*this->osize *8/*MINIBATCH*/);
+	this->odata = malloc(sizeof(numerus)*this->osize *CATS_MBATCH);
 	for (int i=0; i<this->layers; i++) {
 		this->o[i] = this->odata + size[i];
 		this->odata[SIZE(i)] = 1;	// bias
@@ -790,7 +791,7 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 		size[i] = this->dsize;
 		this->dsize += SIZE(i+1)+1;	// bias
 	}
-	this->ddata = malloc(sizeof(numerus)*this->dsize *8/*MINIBATCH*/);
+	this->ddata = malloc(sizeof(numerus)*this->dsize *CATS_MBATCH);
 	for (int i=0; i<this->layers-1; i++) this->d[i] = this->ddata + size[i];
 
 	// allocate gradient
@@ -830,7 +831,7 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 		size[i] = this->wsize;
 		this->wsize += this->ws[i];
 	}
-	this->wdata = malloc(sizeof(numerus)*this->wsize *8/*MINIBATCH*/);
+	this->wdata = malloc(sizeof(numerus)*this->wsize *CATS_MBATCH);
 	for (int i=0; i<this->layers-1; i++) {
 		this->w[i] = this->wdata + size[i];
 //		this->w[i] = malloc(sizeof(numerus)*(n[i]+1)*m[i]);
@@ -848,10 +849,10 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 
 	if (param) {
 		for (int i=0; i<(SIZE(0)+1)*SIZE(1); i++) {
-			fscanf(fp, "%f ", &this->w[0][i]);
+			fscanf(fp, "%lf ", &this->w[0][i]);
 		}
 		for (int i=0; i<(SIZE(1)+1)*SIZE(2); i++) {
-			fscanf(fp, "%f ", &this->w[1][i]);
+			fscanf(fp, "%lf ", &this->w[1][i]);
 		}
 		fclose(fp);
 	}

@@ -376,6 +376,19 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 		global_sync(sync);
 	}
 
+	if (!get_group_id(0)) {
+		local float acc[256];
+//		global float *err = sync+10;
+		global float *mse = sync+11;
+%MSE_CODE%
+		barrier(CLK_LOCAL_MEM_FENCE);
+/*		if (!get_local_id(0)) {
+			*err = 0.5 * (*err + *mse/size);
+			printf("epochs %d, mse %f", args[3], *err);
+		}*/
+		if (!get_local_id(0)) printf("epochs %d, mse %f", args[3], *mse/size);
+	}
+
 	// http://jubat.us/en/method.html
 	// http://sinhrks.hatenablog.com/entry/2015/12/17/000538
 /*	global_sync(sync);

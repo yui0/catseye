@@ -103,24 +103,26 @@ void CatsEye_clSetup(CatsEye *this)
 	}
 	strcpy(code[1], code[3]);
 
-//	printf("%s", code[0]);
-//	printf("%s", code[1]);
-//	printf("%s", code[2]);
 	snprintf(code[3], BUFSIZE, "\t\tglobal const float *p = x + seed*%d;\n\n\t\tuint dd = m*(%d);\n\t\tuint oo = m*(%d);\n\n", this->u[SIZE], osize-this->u[SIZE]+out, osize+out+1);
 	strcat(code[3], code[0]);
 	strcat(code[3], code[1]);
 	strcat(code[3], code[2]);
 	printf("%s", code[3]);
-	char *kcode = strrep(kernel_code, "\%GEN_CODE\%", code[3]);
+	char *s = strrep(kernel_code, "\%GEN_CODE\%", code[3]);
+//	snprintf(code[3], BUFSIZE, "\t\tuint size = %d;\n\t\tvdot(acc, d, d, mse, %d);\n", SIZE(1), SIZE(1));
+	snprintf(code[3], BUFSIZE, "\t\tuint size = %d;\n\t\tvdot(acc, d+%d, d+%d, mse, %d);\n", SIZE(2), SIZE(1)+1, SIZE(1)+1, SIZE(2));
+	char *kcode = strrep(s, "\%MSE_CODE\%", code[3]);
+	printf("%s", code[3]);
+	free(s);
 //	printf("%s", kcode);
 
 	args[0].size = 0;	// x, set at CatsEye_train
-	args[1].size = sizeof(numerus)*this->wsize *8;
+	args[1].size = sizeof(numerus)*this->wsize *CATS_MBATCH;
 //	for (int i=1; i<8; i++) memcpy(this->wdata+this->wsize*i, this->wdata, sizeof(numerus)*this->wsize);
 	args[1].s = this->wdata;
-	args[2].size = sizeof(numerus)*this->osize *8;
+	args[2].size = sizeof(numerus)*this->osize *CATS_MBATCH;
 	args[2].s = this->odata;
-	args[3].size = sizeof(numerus)*this->dsize *8;
+	args[3].size = sizeof(numerus)*this->dsize *CATS_MBATCH;
 	args[3].s = this->ddata;
 	args[4].size = 0;	// t, set at CatsEye_train
 	args[5].size = sizeof(cl_int)*1024*2;
@@ -197,8 +199,15 @@ void CatsEye_forward(CatsEye *this, numerus *x)
 
 void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numerus eta)
 {
+	int a = this->layers-1;
+	int loss = this->u[a*LPLEN+STRIDE];
+//	if (!loss && x==t) loss = 1;
+	if (loss) {
+		args[4].size = sizeof(numerus)*(SIZE(0)+1)*N;
+	} else {
+		args[4].size = sizeof(numerus)*N;
+	}
 	args[0].size = sizeof(numerus)*(SIZE(0)+1)*N;
-	args[4].size = sizeof(numerus)*N;
 	oclKernelArgs(kernel, ksz);
 
 	this->xdata = x;
@@ -206,10 +215,6 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 
 	int batch = N;			// for random
 	if (RANDOM) batch = RANDOM;
-
-//	int a = this->layers-1;
-//	int loss = this->u[a*LPLEN+STRIDE];
-//	if (!loss && x==t) loss = 1;
 
 #ifdef CATS_TIME
 	struct timeval start, stop;
@@ -221,6 +226,7 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 		param[0] = N;
 		param[1] = batch;
 		param[2] = xor128();
+		param[3] = times;
 		oclKernelArgsWrite(args);
 		oclRun(&kernel[1]);
 		oclKernelArgsRead(args);
@@ -285,7 +291,7 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 		}
 		oclKernelArgsRead(args);*/
 
-#ifdef CATS_AUTOENCODER
+/*#ifdef CATS_AUTOENCODER
 			// tied weight
 			numerus *dst = this->w[1];
 			for (int i=0; i<SIZE(1); i++) {
@@ -293,20 +299,21 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 					this->w[1][j + SIZE(1)*i] = this->w[0][SIZE(1)*j + i];
 				}
 			}
-#endif
+#endif*/
 		// calculate the mean squared error
-		numerus err = 0;
+/*		numerus err = 0;
 		numerus mse = 0;
 		for (int i=0; i<SIZE(2); i++) {
 			mse += 0.5 * (this->d[1][i] * this->d[1][i]);
 		}
 		err = 0.5 * (err + mse);
 
-		printf("epochs %d, mse %f", times, err);
+		printf("epochs %d, mse %f", times, err);*/
 #ifdef CATS_TIME
 		gettimeofday(&stop, NULL);
 		printf(" [%.2fs]", (stop.tv_sec - start.tv_sec) + (stop.tv_usec - start.tv_usec)*0.001*0.001);
 #endif
 		printf("\n");
 	}
+//	oclKernelArgsRead(args);
 }
