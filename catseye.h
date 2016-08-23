@@ -17,10 +17,10 @@
 
 #ifdef CATS_USE_FIXED
 #define numerus		short
-#elif defined CATS_USE_FLOAT
-#define numerus		float
-#else
+#elif defined CATS_USE_DOUBLE
 #define numerus		double
+#else
+#define numerus		float
 #endif
 
 #define CATS_SIGMOID
@@ -708,7 +708,7 @@ enum CATS_LAYER_TYPE {
 };
 
 #define CATS_MBATCH	8
-#define CATS_OPENCL
+//#define CATS_OPENCL
 #ifdef CATS_OPENCL
 #include "catseye_cl.h"
 #endif
@@ -849,10 +849,10 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 
 	if (param) {
 		for (int i=0; i<(SIZE(0)+1)*SIZE(1); i++) {
-			fscanf(fp, "%lf ", &this->w[0][i]);
+			fscanf(fp, "%f ", &this->w[0][i]);
 		}
 		for (int i=0; i<(SIZE(1)+1)*SIZE(2); i++) {
-			fscanf(fp, "%lf ", &this->w[1][i]);
+			fscanf(fp, "%f ", &this->w[1][i]);
 		}
 		fclose(fp);
 	}

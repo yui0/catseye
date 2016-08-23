@@ -352,37 +352,24 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 	for (int n=args[1]/MINIBATCH; n>0; n--) {
 		uint m = get_group_id(0);
 		if (!get_local_id(0)) {
-			seed = xorshift_int(&r) % /*60000*/N;
+			seed = xorshift_int(&r) % N;
 			label = ptr.ip[seed];
 		}
 		barrier(CLK_LOCAL_MEM_FENCE);
-/*		global const float *p = x + seed*784;
-
-		uint dd = m*(200+1+10+1);
-		uint oo = m*(784+1+200+1+10+1);
-//		uint ww = m*(785*200+201*10);*/
-		uint ww = 0;
-
-/*		linear_forward_sigmoid(p, w+ww, o+oo+784+1, 784, 200);
-		linear_forward_identity(o+oo+784+1, w+ww+785*200, o+oo+784+1+200+1, 200, 10);
-
-		loss_0_1(o+oo+784+1+200+1, d+dd+200+1, label, 10);
-		linear_backward_identity(o+oo+784+1, w+ww+785*200, d+dd, d+dd+200+1, 200, 10);
 
 		// Asynchronous Update
-		linear_update(0.01, p, w+ww, d+dd, 784, 200);
-		linear_update(0.01, o+oo+784+1, w+ww+785*200, d+dd+200+1, 200, 10);*/
+		uint ww = 0;
 %GEN_CODE%
 		global_sync(sync);
 	}
 
 	if (!get_group_id(0)) {
 		local float acc[256];
-//		global float *err = sync+10;
 		global float *mse = sync+11;
 %MSE_CODE%
 		barrier(CLK_LOCAL_MEM_FENCE);
-/*		if (!get_local_id(0)) {
+/*		global float *err = sync+10;
+		if (!get_local_id(0)) {
 			*err = 0.5 * (*err + *mse/size);
 			printf("epochs %d, mse %f", args[3], *err);
 		}*/

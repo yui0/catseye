@@ -23,8 +23,6 @@ args_t args[] = {
 };
 ocl_t kernel[] = {
 	{ "forward",	0, {256,0,0,},{256,0,0,}, args },
-//	{ "train",	0, {256,0,0,},{256,0,0,}, args },
-//	{ "forward",	0, {1024,0,0,},{256,0,0,}, args },
 	{ "train",	0, {1024,0,0,},{256,0,0,}, args },
 };
 int ksz = sizeof(kernel)/sizeof(kernel[0]);
@@ -230,18 +228,6 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 		oclKernelArgsWrite(args);
 		oclRun(&kernel[1]);
 		oclKernelArgsRead(args);
-
-/*		oclKernelArgsWrite(args);
-		for (int n=0; n<batch; n++) {
-			int sample = RANDOM ? (frand()*N) : n;
-
-			args[0].s = this->xdata;
-			args[4].s = t;
-			param[1] = 1;
-			param[2] = sample;
-			oclRun(&kernel[1]);
-		}
-		oclKernelArgsRead(args);*/
 
 		/*oclKernelArgsWrite(args);
 		for (int n=0; n<batch; n++) {
