@@ -110,7 +110,7 @@ void CatsEye_clSetup(CatsEye *this)
 //	snprintf(code[3], BUFSIZE, "\t\tuint size = %d;\n\t\tvdot(acc, d, d, mse, %d);\n", SIZE(1), SIZE(1));
 	snprintf(code[3], BUFSIZE, "\t\tuint size = %d;\n\t\tvdot(acc, d+%d, d+%d, mse, %d);\n", SIZE(2), SIZE(1)+1, SIZE(1)+1, SIZE(2));
 	char *kcode = strrep(s, "\%MSE_CODE\%", code[3]);
-	printf("%s", code[3]);
+//	printf("%s", code[3]);
 	free(s);
 //	printf("%s", kcode);
 

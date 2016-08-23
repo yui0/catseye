@@ -358,7 +358,6 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 		barrier(CLK_LOCAL_MEM_FENCE);
 
 		// Asynchronous Update
-		uint ww = 0;
 %GEN_CODE%
 		global_sync(sync);
 	}

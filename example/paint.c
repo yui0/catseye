@@ -6,6 +6,7 @@
 
 // gcc paint.c -o paint -lm -Ofast -fopenmp -lgomp -march=native -funroll-loops `pkg-config --libs --cflags OpenCL`
 // clang paint.c -o paint -lm -Ofast -march=native -funroll-loops `pkg-config --libs --cflags OpenCL`
+#define CATS_USE_FLOAT
 #include "../catseye.h"
 #define STB_IMAGE_IMPLEMENTATION
 #include "../stb_image.h"

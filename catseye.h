@@ -17,14 +17,14 @@
 
 #ifdef CATS_USE_FIXED
 #define numerus		short
-#elif defined CATS_USE_DOUBLE
-#define numerus		double
-#else
+#elif defined CATS_USE_FLOAT
 #define numerus		float
+#else
+#define numerus		double
+#warning "using double!!"
 #endif
 
 #define CATS_SIGMOID
-
 //#define CATS_SIGMOID_CROSSENTROPY
 #ifdef CATS_SIGMOID_CROSSENTROPY
 // cross entropy df: (y - t) / (y * (1 - y))

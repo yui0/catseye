@@ -6,6 +6,7 @@
 
 // gcc mnist_train.c -o mnist_train -lm -Ofast -march=native -funroll-loops -fopenmp -lgomp
 // clang mnist_train.c -o mnist_train -lm -Ofast -march=native -funroll-loops `pkg-config --libs --cflags OpenCL`
+#define CATS_USE_FLOAT
 #include "../catseye.h"
 
 int main()
