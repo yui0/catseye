@@ -343,6 +343,7 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 
 	local uint N;
 	N = args[0];
+	float eta = args[4]*1e-8;
 
 	uint MINIBATCH = get_num_groups(0);
 	local uint label;
@@ -362,6 +363,7 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 		global_sync(sync);
 	}
 
+#if 0
 	if (!get_group_id(0)) {
 		local float acc[256];
 		global float *mse = sync+11;
@@ -374,6 +376,7 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 		}*/
 		if (!get_local_id(0)) printf("epochs %d, mse %f", args[3], *mse/size);
 	}
+#endif
 
 	// http://jubat.us/en/method.html
 	// http://sinhrks.hatenablog.com/entry/2015/12/17/000538

@@ -8,6 +8,7 @@
 // clang dae-illust.c -o dae-illust -lm -Ofast -march=native -funroll-loops `pkg-config --libs --cflags OpenCL`
 //#define CATS_AUTOENCODER
 #define CATS_DENOISING_AUTOENCODER
+#define CATS_USE_FLOAT
 #include "../catseye.h"
 #define STB_IMAGE_IMPLEMENTATION
 #include "../stb_image.h"
@@ -105,7 +106,8 @@ int main()
 
 	// 訓練
 	printf("Starting training using (stochastic) gradient descent\n");
-	CatsEye_train(&cat, x, x, sample, 1000/*repeat*/, 0.001);
+//	CatsEye_train(&cat, x, x, sample, 1000/*repeat*/, 0.001);
+	CatsEye_train(&cat, x, x, sample, 100/*repeat*/, 0.001);
 	printf("Training complete\n");
 //	CatsEye_save(&cat, "dae-illust.weights");
 //	CatsEye_saveJson(&cat, "dae-illust.json");

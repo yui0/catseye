@@ -57,6 +57,7 @@ char *strrep(char *s, char *b, char *a)
 
 void CatsEye_clSetup(CatsEye *this)
 {
+	// generate dynamic code
 	#define BUFSIZE	2048
 	char code[4][BUFSIZE];
 	int osize = 0, dsize, in, out;
@@ -77,7 +78,8 @@ void CatsEye_clSetup(CatsEye *this)
 				snprintf(code[3], BUFSIZE, "\t\tlinear_forward_%s(p, w, o+oo+%d, %d, %d);\n",
 					acts[u[ACT]], in+1, in, out);
 				strcat(code[0], code[3]);
-				snprintf(code[3], BUFSIZE, "\t\tlinear_update(%f, p, w, d+dd, %d, %d);\n", 0.01, in, out);
+//				snprintf(code[3], BUFSIZE, "\t\tlinear_update(%f, p, w, d+dd, %d, %d);\n", 0.01, in, out);
+				snprintf(code[3], BUFSIZE, "\t\tlinear_update(eta, p, w, d+dd, %d, %d);\n", in, out);
 				strcat(code[2], code[3]);
 			} else {
 				snprintf(code[3], BUFSIZE, "\t\tlinear_forward_%s(o+oo+%d, w+%d, o+oo+%d, %d, %d);\n",
@@ -85,7 +87,8 @@ void CatsEye_clSetup(CatsEye *this)
 				strcat(code[0], code[3]);
 				snprintf(code[3], BUFSIZE, "\t\tlinear_backward_%s(o+oo+%d, w+%d, d+dd+%d, d+dd+%d, %d, %d);\n", acts[u[ACT]], osize, wsize, dsize, dsize+in+1, in, out);
 				strcat(code[1], code[3]);
-				snprintf(code[3], BUFSIZE, "\t\tlinear_update(%f, o+oo+%d, w+%d, d+dd+%d, %d, %d);\n", 0.01, osize, wsize, dsize+in+1, in, out);
+//				snprintf(code[3], BUFSIZE, "\t\tlinear_update(%f, o+oo+%d, w+%d, d+dd+%d, %d, %d);\n", 0.01, osize, wsize, dsize+in+1, in, out);
+				snprintf(code[3], BUFSIZE, "\t\tlinear_update(eta, o+oo+%d, w+%d, d+dd+%d, %d, %d);\n", osize, wsize, dsize+in+1, in, out);
 				strcat(code[2], code[3]);
 			}
 		}
@@ -95,7 +98,7 @@ void CatsEye_clSetup(CatsEye *this)
 	int a = this->layers-1;
 	int loss = this->u[a*LPLEN+STRIDE];
 	if (loss) {
-		snprintf(code[3], BUFSIZE, "\t\tloss_mse(o+oo+%d, d+dd+%d, t+seed*%d, %d);\n%s", osize, dsize+in+1, out, this->u[SIZE], code[1]);
+		snprintf(code[3], BUFSIZE, "\t\tloss_mse(o+oo+%d, d+dd+%d, t+seed*%d, %d);\n%s", osize, dsize+in+1, out, out/*this->u[a*LPLEN+SIZE]*/, code[1]);
 	} else {
 		snprintf(code[3], BUFSIZE, "\t\tloss_0_1(o+oo+%d, d+dd+%d, label, %d);\n%s", osize, dsize+in+1, out, code[1]);
 	}
@@ -114,6 +117,7 @@ void CatsEye_clSetup(CatsEye *this)
 	free(s);
 //	printf("%s", kcode);
 
+	// set arguments
 	args[0].size = 0;	// x, set at CatsEye_train
 	args[1].size = sizeof(numerus)*this->wsize *CATS_MBATCH;
 //	for (int i=1; i<8; i++) memcpy(this->wdata+this->wsize*i, this->wdata, sizeof(numerus)*this->wsize);
@@ -125,6 +129,7 @@ void CatsEye_clSetup(CatsEye *this)
 	args[4].size = 0;	// t, set at CatsEye_train
 	args[5].size = sizeof(cl_int)*1024*2;
 
+	// compile the code
 	// http://dhruba.name/2012/12/24/opencl-cookbook-10-tips-for-high-performance-kernels/
 	oclSetup(0, 0);
 //	oclKernel(kernel, ksz, "-cl-denorms-are-zero -cl-finite-math-only -cl-fast-relaxed-math -Werror", kernel_code);
@@ -201,13 +206,14 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 	int loss = this->u[a*LPLEN+STRIDE];
 //	if (!loss && x==t) loss = 1;
 	if (loss) {
-		args[4].size = sizeof(numerus)*(SIZE(0)+1)*N;
+		args[4].size = sizeof(numerus)*(SIZE(a)+1)*N;
 	} else {
 		args[4].size = sizeof(numerus)*N;
 	}
 	args[0].size = sizeof(numerus)*(SIZE(0)+1)*N;
 	oclKernelArgs(kernel, ksz);
 
+	param[4] = eta*1e8;
 	this->xdata = x;
 	this->xsize = N;
 
@@ -287,14 +293,14 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 			}
 #endif*/
 		// calculate the mean squared error
-/*		numerus err = 0;
+		numerus err = 0;
 		numerus mse = 0;
 		for (int i=0; i<SIZE(2); i++) {
 			mse += 0.5 * (this->d[1][i] * this->d[1][i]);
 		}
 		err = 0.5 * (err + mse);
 
-		printf("epochs %d, mse %f", times, err);*/
+		printf("epochs %d, mse %f", times, err);
 #ifdef CATS_TIME
 		gettimeofday(&stop, NULL);
 		printf(" [%.2fs]", (stop.tv_sec - start.tv_sec) + (stop.tv_usec - start.tv_usec)*0.001*0.001);
