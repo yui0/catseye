@@ -901,7 +901,7 @@ void CatsEye_propagate(CatsEye *this, int n)
 		CatsEye_layer_forward[TYPE(i+1)](this->o[i], this->w[i], this->z[i], this->o[i+1], &this->u[LPLEN*(i+1)]);
 	}
 }
-#ifndef CATS_OPENCL
+
 // calculate forward propagation of input x
 void CatsEye_forward(CatsEye *this, numerus *x)
 {
@@ -925,6 +925,7 @@ void CatsEye_forward(CatsEye *this, numerus *x)
 	}
 }
 
+#ifndef CATS_OPENCL
 // calculate the error of output layer
 void CatsEye_loss_0_1(CatsEye *this, int c, void *t, int n)
 {

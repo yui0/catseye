@@ -132,8 +132,6 @@ void CatsEye_clSetup(CatsEye *this)
 	// compile the code
 	// http://dhruba.name/2012/12/24/opencl-cookbook-10-tips-for-high-performance-kernels/
 	oclSetup(0, 0);
-//	oclKernel(kernel, ksz, "-cl-denorms-are-zero -cl-finite-math-only -cl-fast-relaxed-math -Werror", kernel_code);
-	// -cl-std=CL1.2
 	oclKernel(kernel, ksz, "-cl-denorms-are-zero -cl-finite-math-only -cl-fast-relaxed-math -Werror", kcode);
 	oclKernelArgs(kernel, ksz);
 	free(kcode);
@@ -145,6 +143,7 @@ void CatsEye_clFinish()
 	oclFinish();
 }
 
+#if 0
 void CatsEye_forward(CatsEye *this, numerus *x)
 {
 #if 0
@@ -199,9 +198,16 @@ void CatsEye_forward(CatsEye *this, numerus *x)
 	printf("\n");
 	exit(0);*/
 }
+#endif
 
 void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numerus eta)
 {
+	this->xdata = x;
+	this->xsize = N;
+
+	int batch = N;			// for random
+	if (RANDOM) batch = RANDOM;
+
 	int a = this->layers-1;
 	int loss = this->u[a*LPLEN+STRIDE];
 //	if (!loss && x==t) loss = 1;
@@ -213,22 +219,17 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 	args[0].size = sizeof(numerus)*(SIZE(0)+1)*N;
 	oclKernelArgs(kernel, ksz);
 
+	args[0].s = this->xdata;
+	args[4].s = t;
+	param[0] = N;
+	param[1] = batch;
 	param[4] = eta*1e8;
-	this->xdata = x;
-	this->xsize = N;
-
-	int batch = N;			// for random
-	if (RANDOM) batch = RANDOM;
 
 #ifdef CATS_TIME
 	struct timeval start, stop;
 	gettimeofday(&start, NULL);
 #endif
 	for (int times=0; times<repeat; times++) {
-		args[0].s = this->xdata;
-		args[4].s = t;
-		param[0] = N;
-		param[1] = batch;
 		param[2] = xor128();
 		param[3] = times;
 		oclKernelArgsWrite(args);
