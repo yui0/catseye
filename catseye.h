@@ -708,7 +708,7 @@ enum CATS_LAYER_TYPE {
 };
 
 #define CATS_MBATCH	8
-//#define CATS_OPENCL
+#define CATS_OPENCL
 #ifdef CATS_OPENCL
 #include "catseye_cl.h"
 #endif

@@ -192,14 +192,15 @@ static void linear_update(float eta, global const float *o, global float *w, glo
 {
 	for (int i=get_local_id(0); i<=is; i+=get_local_size(0)) {
 		global float *p = w + i*os;
-		float a = -eta * o[i];
+		float a;// = -eta * o[i];
+		if (i==is) a = -eta;	// for bias
+		else a = -eta * o[i];
 		for (int k=0; k<os; k++) {
 			*p = mmad(a, d[k], *p);
 //atom_add_float(p, a*d[k]);
 			p++;
 		}
 	}
-//	barrier(CLK_LOCAL_MEM_FENCE);
 }
 kernel void _linear_update(global const float *x, global float *w, global float *o, global float *d, global float *t, global uint *sync, uint8 args)
 {
@@ -233,6 +234,7 @@ static void g_linear_update(float eta, global const float *o, global float *w, g
 	}
 }
 
+// FIXME
 kernel void forward(global const float *x, global float *w, global float *o, global float *d, global float *t, global uint *sync, uint8 args)
 {
 //	linear_forward_sigmoid(x+args[0], w, o+784+1, 784, 200);
@@ -243,44 +245,6 @@ kernel void forward(global const float *x, global float *w, global float *o, glo
 	global_sync(sync);
 	g_linear_forward_identity(acc, o+784+1, w+785*200, o+784+1+200+1, 200, 10);
 }
-
-static void loss_0_1(global const float *o, global float *d, uint a, uint n)
-{
-	for (int i=get_local_id(0); i<n; i+=get_local_size(0)) {
-		d[i] = a==i ? o[i]-1 : o[i];	// 1-of-K
-	}
-	barrier(CLK_LOCAL_MEM_FENCE);
-}
-kernel void _loss_0_1(global const float *x, global float *w, global float *o, global float *d, global float *t, global uint *sync, uint8 args)
-{
-	loss_0_1(o+args[0], d+args[1], args[2], args[3]);
-}
-static void g_loss_0_1(global const float *o, global float *d, uint a, uint n)
-{
-	for (int i=get_global_id(0); i<n; i+=get_global_size(0)) {
-		d[i] = a==i ? o[i]-1 : o[i];	// 1-of-K
-	}
-}
-
-static void loss_mse(global const float *o, global float *d, global const float *a, uint n)
-{
-	for (int i=get_local_id(0); i<n; i+=get_local_size(0)) {
-		d[i] = o[i] - a[i];
-	}
-}
-
-static uint xorshift_int(local uint4 *ctx)
-{
-	uint t = ctx->x ^ (ctx->x << 11);
-	*ctx = ctx->yzww;
-	ctx->w = ctx->w ^ (ctx->w >> 19) ^ (t ^ (t >> 8));
-
-	return ctx->w;
-}
-/*static float xorshift_float(local uint4 *ctx)
-{
-	return xorshift_int(ctx) * 2.3283064e-10;
-}*/
 
 static void convolutional_layer_forward(global const float *x, global const float *w, global float *o, uint ix, uint iy, uint is, uint os, uint ich, uint och, uint ks)
 {
@@ -332,6 +296,53 @@ static void convolutional_layer_forward(global const float *x, global const floa
 	}*/
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
+
+static void loss_0_1(global const float *o, global float *d, uint a, uint n)
+{
+	for (int i=get_local_id(0); i<n; i+=get_local_size(0)) {
+		d[i] = a==i ? o[i]-1 : o[i];	// 1-of-K
+	}
+	barrier(CLK_LOCAL_MEM_FENCE);
+}
+kernel void _loss_0_1(global const float *x, global float *w, global float *o, global float *d, global float *t, global uint *sync, uint8 args)
+{
+	loss_0_1(o+args[0], d+args[1], args[2], args[3]);
+}
+static void g_loss_0_1(global const float *o, global float *d, uint a, uint n)
+{
+	for (int i=get_global_id(0); i<n; i+=get_global_size(0)) {
+		d[i] = a==i ? o[i]-1 : o[i];	// 1-of-K
+	}
+}
+
+static void loss_mse(global const float *o, global float *d, global const float *a, uint n)
+{
+	for (int i=get_local_id(0); i<n; i+=get_local_size(0)) {
+		d[i] = o[i] - a[i];
+	}
+}
+
+static uint xorshift_int(local uint4 *ctx)
+{
+	uint t = ctx->x ^ (ctx->x << 11);
+	*ctx = ctx->yzww;
+	ctx->w = ctx->w ^ (ctx->w >> 19) ^ (t ^ (t >> 8));
+
+	return ctx->w;
+}
+/*static float xorshift_float(local uint4 *ctx)
+{
+	return xorshift_int(ctx) * 2.3283064e-10;
+}*/
+/*#define frand()		( xor128() / ((double)XOR128_MAX + 1.0f) )
+int binomial(numerus p)
+{
+	int c = 0;
+	numerus r = frand();
+	if (r < p) c++;
+	return c;
+}*/
+
 #if 1
 kernel void train(global const float *x, global float *w, global float *o, global float *d, global float *t, global uint *sync, uint8 args)
 {

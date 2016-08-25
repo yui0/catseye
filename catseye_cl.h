@@ -75,6 +75,12 @@ void CatsEye_clSetup(CatsEye *this)
 			break;
 		default:
 			if (i==0) {
+#ifdef CATS_DENOISING_AUTOENCODER
+	// Denoising Autoencoder (http://kiyukuta.github.io/2013/08/20/hello_autoencoder.html)
+//	for (int i=0; i<SIZE(0); i++) {
+//		this->o[0][i] *= binomial(/*0.7(30%)*/0.5);
+//	}
+#endif
 				snprintf(code[3], BUFSIZE, "\t\tlinear_forward_%s(p, w, o+oo+%d, %d, %d);\n",
 					acts[u[ACT]], in+1, in, out);
 				strcat(code[0], code[3]);
@@ -212,14 +218,16 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 	int loss = this->u[a*LPLEN+STRIDE];
 //	if (!loss && x==t) loss = 1;
 	if (loss) {
-		args[4].size = sizeof(numerus)*(SIZE(a)+1)*N;
+//		args[4].size = sizeof(numerus)*(SIZE(a)+1)*N;
+		args[4].size = sizeof(numerus)*SIZE(a)*N;
 	} else {
 		args[4].size = sizeof(numerus)*N;
 	}
-	args[0].size = sizeof(numerus)*(SIZE(0)+1)*N;
+//	args[0].size = sizeof(numerus)*(SIZE(0)+1)*N;
+	args[0].size = sizeof(numerus)*SIZE(0)*N;
 	oclKernelArgs(kernel, ksz);
 
-	args[0].s = this->xdata;
+	args[0].s = x;//this->xdata;
 	args[4].s = t;
 	param[0] = N;
 	param[1] = batch;
