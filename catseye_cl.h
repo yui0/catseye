@@ -232,6 +232,10 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 	param[0] = N;
 	param[1] = batch;
 	param[4] = eta*1e8;
+//	for (int i=0; i<60; i++) printf("%f ",this->wdata[i]);
+//printf("\n%x\n",args[1].p);
+oclKernelArgsWrite(args);
+//sleep(2);
 
 #ifdef CATS_TIME
 	struct timeval start, stop;
@@ -240,9 +244,13 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 	for (int times=0; times<repeat; times++) {
 		param[2] = xor128();
 		param[3] = times;
-		oclKernelArgsWrite(args);
+#ifdef CATS_TIME
+		gettimeofday(&stop, NULL);
+		param[5] = (stop.tv_sec - start.tv_sec) + (stop.tv_usec - start.tv_usec);
+#endif
+//		oclKernelArgsWrite(args);
 		oclRun(&kernel[1]);
-		oclKernelArgsRead(args);
+//		oclKernelArgsRead(args);
 
 		/*oclKernelArgsWrite(args);
 		for (int n=0; n<batch; n++) {
@@ -316,5 +324,5 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 #endif
 		printf("\n");
 	}
-//	oclKernelArgsRead(args);
+	oclKernelArgsRead(args);
 }

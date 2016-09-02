@@ -204,7 +204,6 @@ static void linear_update(float eta, global const float *o, global float *w, glo
 }
 kernel void _linear_update(global const float *x, global float *w, global float *o, global float *d, global float *t, global uint *sync, uint8 args)
 {
-	//linear_update(0.01, args[0] ? x+args[1] : o+args[1], w+args[2], d+args[3], args[4], args[5]);
 	o = args[0] ? x+args[1] : o+args[1];
 	w += args[2];
 	d += args[3];
@@ -351,6 +350,9 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 		global float *fp;
 	} ptr;
 	ptr.fp = t;
+/*if (!get_global_id(0)) {
+	for (int i=0; i<60; i++) printf("%f ",w[i]);
+}*/
 
 	local uint N;
 	N = args[0];
@@ -370,7 +372,43 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 		barrier(CLK_LOCAL_MEM_FENCE);
 
 		// Asynchronous Update
+/*		global const float *p = x + seed*2;
+		uint dd = m*(151);
+		uint oo = m*(154);
+		linear_forward_normal_tanh(p, w, o+oo+3, 2, 20);
+		linear_forward_normal_tanh(o+oo+3, w+60, o+oo+24, 20, 20);
+		linear_forward_normal_tanh(o+oo+24, w+480, o+oo+45, 20, 20);
+		linear_forward_normal_tanh(o+oo+45, w+900, o+oo+66, 20, 20);
+		linear_forward_normal_tanh(o+oo+66, w+1320, o+oo+87, 20, 20);
+		linear_forward_normal_tanh(o+oo+87, w+1740, o+oo+108, 20, 20);
+		linear_forward_normal_tanh(o+oo+108, w+2160, o+oo+129, 20, 20);
+		linear_forward_sigmoid(o+oo+129, w+2580, o+oo+150, 20, 3);
+if (!get_global_id(0)) {
+//	for (int i=0; i<2; i++) printf("%f ",p[i]);
+	for (int i=0; i<60; i++) printf("%f ",w[i]);
+//	for (int i=0; i<20; i++) printf("%f ",o[oo+3+i]);
+//	for (int i=0; i<20; i++) printf("%f ",o[oo+24+i]);
+//	for (int i=0; i<3; i++) printf("%f ",o[oo+150+i]);
+}
+		loss_mse(o+oo+150, d+dd+147, t+seed*3, 3);
+		linear_backward_normal_tanh(o+oo+3, w+60, d+dd+0, d+dd+21, 20, 20);
+		linear_backward_normal_tanh(o+oo+24, w+480, d+dd+21, d+dd+42, 20, 20);
+		linear_backward_normal_tanh(o+oo+45, w+900, d+dd+42, d+dd+63, 20, 20);
+		linear_backward_normal_tanh(o+oo+66, w+1320, d+dd+63, d+dd+84, 20, 20);
+		linear_backward_normal_tanh(o+oo+87, w+1740, d+dd+84, d+dd+105, 20, 20);
+		linear_backward_normal_tanh(o+oo+108, w+2160, d+dd+105, d+dd+126, 20, 20);
+		linear_backward_sigmoid(o+oo+129, w+2580, d+dd+126, d+dd+147, 20, 3);
+		linear_update(eta, p, w, d+dd, 2, 20);
+		linear_update(eta, o+oo+3, w+60, d+dd+21, 20, 20);
+		linear_update(eta, o+oo+24, w+480, d+dd+42, 20, 20);
+		linear_update(eta, o+oo+45, w+900, d+dd+63, 20, 20);
+		linear_update(eta, o+oo+66, w+1320, d+dd+84, 20, 20);
+		linear_update(eta, o+oo+87, w+1740, d+dd+105, 20, 20);
+		linear_update(eta, o+oo+108, w+2160, d+dd+126, 20, 20);
+		linear_update(eta, o+oo+129, w+2580, d+dd+147, 20, 3);*/
+#if 1
 %GEN_CODE%
+#endif
 		global_sync(sync);
 	}
 
@@ -385,7 +423,9 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 			*err = 0.5 * (*err + *mse/size);
 			printf("epochs %d, mse %f", args[3], *err);
 		}*/
-		if (!get_local_id(0)) printf("epochs %d, mse %f", args[3], *mse/size);
+		if (!get_local_id(0)) {
+			printf("epochs %d, mse %f [%.2fs]\n", args[3], *mse/size, args[5]*0.001*0.001);
+		}
 	}
 #endif
 
