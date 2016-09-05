@@ -166,6 +166,11 @@ void oclReleaseKernel(ocl_t *kernel, int n)
 	}
 }
 
+void oclWait()
+{
+	clFinish(command_queue);
+}
+
 void oclFinish()
 {
 	clFlush(command_queue);

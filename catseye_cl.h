@@ -10,7 +10,7 @@ char kernel_code[] =
 #include "catseye.cl"
 
 cl_mem d_mem[6];
-unsigned int param[8];
+/*unsigned int*/cl_uint param[8];
 args_t args[] = {
 	{ CL_MEM_READ_WRITE, 0, &d_mem[0], 0, -1, 0 },	// x
 	{ CL_MEM_READ_WRITE, 0, &d_mem[1], 0, 1, 1 },	// w
@@ -232,10 +232,7 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 	param[0] = N;
 	param[1] = batch;
 	param[4] = eta*1e8;
-//	for (int i=0; i<60; i++) printf("%f ",this->wdata[i]);
-//printf("\n%x\n",args[1].p);
-oclKernelArgsWrite(args);
-//sleep(2);
+	oclKernelArgsWrite(args);
 
 #ifdef CATS_TIME
 	struct timeval start, stop;
@@ -246,11 +243,11 @@ oclKernelArgsWrite(args);
 		param[3] = times;
 #ifdef CATS_TIME
 		gettimeofday(&stop, NULL);
-		param[5] = (stop.tv_sec - start.tv_sec) + (stop.tv_usec - start.tv_usec);
+		param[5] = (stop.tv_sec - start.tv_sec)*1000*1000 + (stop.tv_usec - start.tv_usec);
 #endif
-//		oclKernelArgsWrite(args);
 		oclRun(&kernel[1]);
-//		oclKernelArgsRead(args);
+//		oclWait();
+		oclKernelArgsRead(args);
 
 		/*oclKernelArgsWrite(args);
 		for (int n=0; n<batch; n++) {
