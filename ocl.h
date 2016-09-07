@@ -66,6 +66,10 @@ void oclSetup(int platform, int device)
 
 	context = clCreateContext(NULL, 1, &device_id[device], NULL, NULL, &ret);
 	command_queue = clCreateCommandQueue(context, device_id[device], 0, &ret);
+
+	/*cl_ulong maxMemAlloc;
+	clGetDeviceInfo(device_id[device], CL_DEVICE_MAX_MEM_ALLOC_SIZE, sizeof(cl_ulong), &maxMemAlloc, NULL);
+	printf("Maximum memory allocation size is %llu bytes\n", maxMemAlloc);*/
 }
 
 void oclKernel(ocl_t *kernel, int n, char *opt, char *kernel_code)

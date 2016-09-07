@@ -780,9 +780,9 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 	this->odata = malloc(sizeof(numerus)*this->osize *CATS_MBATCH);
 	for (int i=0; i<this->layers; i++) {
 		this->o[i] = this->odata + size[i];
-		this->odata[SIZE(i)] = 1;	// bias
+		this->o[i][SIZE(i)] = 1;	// bias
 	}
-	this->o3 = this->o[2];	// deprecated!
+	this->o3 = this->o[2];		// deprecated!
 
 	// allocate errors
 	this->d = malloc(sizeof(numerus*)*(this->layers-1));
@@ -843,7 +843,7 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 		numerus range = sqrt(6)/sqrt(n[i]+m[i]+2);
 		for (int j=0; j<this->ws[i]; j++) {
 			this->w[i][j] = 2.0*range*frand()-range;
-//			for (int k=1; k<8; k++) this->wdata[this->wsize*k + size[i]+j] = 2.0*range*frand()-range;
+//			for (int k=1; k<CATS_MBATCH; k++) this->wdata[this->wsize*k + size[i]+j] = 2.0*range*frand()-range;
 		}
 	}
 
@@ -886,7 +886,7 @@ void CatsEye__destruct(CatsEye *this)
 	free(this->u);
 }
 
-void CatsEye_backpropagate(CatsEye *this, int n)
+void CatsEye_backpropagate(CatsEye *this, int n)	// FIXME
 {
 	for (int i=/*this->layers-2*/n; i>0; i--) {
 //		CatsEye_layer_backward[TYPE(i+1)](this->d[i], this->w[i], this->o[i-1], this->o[i], &this->u[LPLEN*(i+1)]);
@@ -894,7 +894,7 @@ void CatsEye_backpropagate(CatsEye *this, int n)
 //		CatsEye_layer_backward[TYPE(i+1)](this->d[i-1], this->w[i], this->o[i-1], this->o[i], &this->u[LPLEN*(i+1)]);
 	}
 }
-void CatsEye_propagate(CatsEye *this, int n)
+void CatsEye_propagate(CatsEye *this, int n)	// FIXME
 {
 	for (int i=n; i<this->layers-1; i++) {
 		this->o[i][SIZE(i)] = 1;	// for bias

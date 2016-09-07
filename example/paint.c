@@ -45,7 +45,7 @@ int main(int argc,char *argv[])
 	free(pixels);
 
 	int neurons = 20;	// 20
-#if 0
+#if 1
 	int u[] = {	// http://cs.stanford.edu/people/karpathy/convnetjs/demo/image_regression.html
 		0, 0, 1, 2/*xy*/, 0, 0, 0, sample,
 		CATS_LINEAR, CATS_ACT_LEAKY_RELU, 1, neurons, 0, 0, 0, 0,	// sigmoid×

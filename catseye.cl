@@ -319,6 +319,7 @@ static void loss_mse(global const float *o, global float *d, global const float 
 	for (int i=get_local_id(0); i<n; i+=get_local_size(0)) {
 		d[i] = o[i] - a[i];
 	}
+	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
 static uint xorshift_int(local uint4 *ctx)
@@ -352,17 +353,21 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 	ptr.fp = t;
 /*if (!get_global_id(0)) {
 	for (int i=0; i<60; i++) printf("%f ",w[i]);
+	//for (int i=0; i<6000; i++) if (t[i]<0.9) printf("%f ",t[i]);
 }*/
-
-	local uint N;
-	N = args[0];
-	float eta = args[4]*1e-8;
 
 	uint MINIBATCH = get_num_groups(0);
 	local uint label;
 	local uint seed;
 	local uint4 r;
-	r.xyzw = args[2] +get_group_id(0);
+//	r.xyzw = args[2] +get_group_id(0);
+	local uint N;
+	local float eta;
+	if (!get_local_id(0)) {
+		N = args[0];
+		eta = args[4]*1e-8;
+		r.xyzw = args[2] + get_group_id(0);
+	}
 	for (int n=args[1]/MINIBATCH; n>0; n--) {
 		uint m = get_group_id(0);
 		if (!get_local_id(0)) {
@@ -373,6 +378,11 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 
 		// Asynchronous Update
 %GEN_CODE%
+/*if (!get_global_id(0)) {
+//	for (int i=0; i<60; i++) printf("%f ",o[i]);
+//	for (int i=129; i<153; i++) printf("%f ",o[i]);
+	for (int i=126; i<150; i++) printf("%f ",d[i]);
+}*/
 		global_sync(sync);
 	}
 
@@ -476,12 +486,19 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 #endif*/
 	o[784+1+200] = 1;
 
+#if 1
+	local uint N;
+	N = args[0];
+	float eta = args[4]*1e-8;
+	local uint label;
+#endif
+
 	local uint seed;
 	local uint4 r;
 	r.xyzw = args[2];
 	if (!get_group_id(0))
 	for (int n=args[1]; n>0; n--) {
-//		if (!get_global_id(0)) seed = xorshift_int(&r) % 60000;
+#if 0
 		if (!get_local_id(0)) seed = xorshift_int(&r) % 60000;
 		barrier(CLK_LOCAL_MEM_FENCE);
 		global const float *p = x + seed*784;
@@ -493,6 +510,15 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 		linear_backward_identity(o+784+1, w+785*200, d, d+200+1, 200, 10);
 		linear_update(/*eta*/0.01, p, w, d, 784, 200);
 		linear_update(/*eta*/0.01, o+784+1, w+785*200, d+200+1, 200, 10);
+#else
+		uint m = /*get_group_id(0)*/0;
+		if (!get_local_id(0)) {
+			seed = xorshift_int(&r) % N;
+			label = ptr.ip[seed];
+		}
+		barrier(CLK_LOCAL_MEM_FENCE);
+%GEN_CODE%
+#endif
 	}
 
 /*#ifdef __CPU__

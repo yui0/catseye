@@ -10,7 +10,7 @@ char kernel_code[] =
 #include "catseye.cl"
 
 cl_mem d_mem[6];
-/*unsigned int*/cl_uint param[8];
+cl_uint param[8];
 args_t args[] = {
 	{ CL_MEM_READ_WRITE, 0, &d_mem[0], 0, -1, 0 },	// x
 	{ CL_MEM_READ_WRITE, 0, &d_mem[1], 0, 1, 1 },	// w
@@ -84,7 +84,6 @@ void CatsEye_clSetup(CatsEye *this)
 				snprintf(code[3], BUFSIZE, "\t\tlinear_forward_%s(p, w, o+oo+%d, %d, %d);\n",
 					acts[u[ACT]], in+1, in, out);
 				strcat(code[0], code[3]);
-//				snprintf(code[3], BUFSIZE, "\t\tlinear_update(%f, p, w, d+dd, %d, %d);\n", 0.01, in, out);
 				snprintf(code[3], BUFSIZE, "\t\tlinear_update(eta, p, w, d+dd, %d, %d);\n", in, out);
 				strcat(code[2], code[3]);
 			} else {
@@ -92,8 +91,9 @@ void CatsEye_clSetup(CatsEye *this)
 					acts[u[ACT]], osize, wsize, osize+in+1, in, out);
 				strcat(code[0], code[3]);
 				snprintf(code[3], BUFSIZE, "\t\tlinear_backward_%s(o+oo+%d, w+%d, d+dd+%d, d+dd+%d, %d, %d);\n", acts[u[ACT]], osize, wsize, dsize, dsize+in+1, in, out);
-				strcat(code[1], code[3]);
-//				snprintf(code[3], BUFSIZE, "\t\tlinear_update(%f, o+oo+%d, w+%d, d+dd+%d, %d, %d);\n", 0.01, osize, wsize, dsize+in+1, in, out);
+				//strcat(code[1], code[3]);
+				strcat(code[3], code[1]);
+				strcpy(code[1], code[3]);
 				snprintf(code[3], BUFSIZE, "\t\tlinear_update(eta, o+oo+%d, w+%d, d+dd+%d, %d, %d);\n", osize, wsize, dsize+in+1, in, out);
 				strcat(code[2], code[3]);
 			}
@@ -218,21 +218,23 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 	int loss = this->u[a*LPLEN+STRIDE];
 //	if (!loss && x==t) loss = 1;
 	if (loss) {
-//		args[4].size = sizeof(numerus)*(SIZE(a)+1)*N;
-		args[4].size = sizeof(numerus)*SIZE(a)*N;
+		args[4].size = sizeof(numerus)*SIZE(a)*N;	// (SIZE(a)+1)
 	} else {
 		args[4].size = sizeof(numerus)*N;
 	}
-//	args[0].size = sizeof(numerus)*(SIZE(0)+1)*N;
-	args[0].size = sizeof(numerus)*SIZE(0)*N;
-	oclKernelArgs(kernel, ksz);
-
-	args[0].s = x;//this->xdata;
+	args[0].size = sizeof(numerus)*SIZE(0)*N;		// (SIZE(0)+1)
+	args[0].s = x;
 	args[4].s = t;
 	param[0] = N;
 	param[1] = batch;
 	param[4] = eta*1e8;
+	oclKernelArgs(kernel, ksz);
 	oclKernelArgsWrite(args);
+//	for (int i=0; i<60; i++) printf("%f ",this->wdata[i]);
+/*	for (int i=0; i<60; i++) printf("%f ",((numerus*)args[1].s)[i]);
+	printf("[%d]\n",args[1].size);
+	for (int i=0; i<6000; i++) if (((numerus*)t)[i]<0.9) printf("%f ",((numerus*)t)[i]);
+	printf("\n");*/
 
 #ifdef CATS_TIME
 	struct timeval start, stop;
