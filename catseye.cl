@@ -120,10 +120,10 @@ static void vdotT(local float *acc, global const float *x, global const float *y
 #define d_normal_tanh(a)	(1.0 - a*a)
 #define scaled_tanh(a)		(1.7159 * tanh(2.0/3.0 * a))
 #define d_scaled_tanh(a)	((2.0/3.0)/1.7159 * (1.7159-a)*(1.7159+a))
-#define relu(a)			(a > 0 ? a : 0)
-#define d_relu(a)		(a > 0 ? 1.0 : 0)
-#define LeakyReLU(a)		(a > 0 ? a : a * 0.01)
-#define d_LeakyReLU(a)		(a > 0 ? 1.0 : 0.01)
+#define relu(a)			(a>0 ? a : 0)
+#define d_relu(a)		(a>0 ? 1.0 : 0)
+#define LeakyReLU(a)		(a>0 ? a : a * 0.01)
+#define d_LeakyReLU(a)		(a>0 ? 1.0 : 0.01)
 
 #define LINEAR_FORWARD(act) \
 static void linear_forward_##act(global const float *x, global const float *w, global float *o, uint is, uint os)\
@@ -159,13 +159,15 @@ LINEAR_FORWARD(LeakyReLU)
 static void linear_backward_##dact(global const float *o, global const float *w, global float *d, global const float *delta, uint is, uint os)\
 {\
 	for (int i=get_local_id(0); i<=is; i+=get_local_size(0)) {\
-		w += i*os;\
+/*		w += i*os;*/\
+		global const float *p = w + i*os;\
 		float s = 0;\
 		for (int k=0; k<os; k++) {\
-			s = mmad(*w++, delta[k], s);\
+/*			s = mmad(*w++, delta[k], s);*/\
+			s = mmad(*p++, delta[k], s);\
 		}\
 		d[i] = s * dact(o[i]);\
-		w -= (i*os + os);\
+/*		w -= (i*os + os);*/\
 	}\
 	barrier(CLK_LOCAL_MEM_FENCE);\
 }\
@@ -192,12 +194,12 @@ static void linear_update(float eta, global const float *o, global float *w, glo
 {
 	for (int i=get_local_id(0); i<=is; i+=get_local_size(0)) {
 		global float *p = w + i*os;
-		float a;// = -eta * o[i];
-		if (i==is) a = -eta;	// for bias
-		else a = -eta * o[i];
+//		float a;// = -eta * o[i];
+		float a = -eta;
+		if (i!=is) a *= o[i];	// !bias
 		for (int k=0; k<os; k++) {
+			//atom_add_float(p, a*d[k]);
 			*p = mmad(a, d[k], *p);
-//atom_add_float(p, a*d[k]);
 			p++;
 		}
 	}
@@ -346,21 +348,27 @@ int binomial(numerus p)
 #if 1
 kernel void train(global const float *x, global float *w, global float *o, global float *d, global float *t, global uint *sync, uint8 args)
 {
+/*	if (!get_global_id(0)) {
+		printf("OpenCL training start!!\n");
+		printf("group size: %d\n", get_num_groups(0));
+		printf("global size: %d\n", get_global_size(0));
+		printf("local size: %d\n", get_local_size(0));
+	}*/
+/*#ifdef __CPU__
+	uint time;
+	if (get_global_id(0)==1) time = clock();
+#endif*/
+
 	union {
 		global uint *ip;
 		global float *fp;
 	} ptr;
 	ptr.fp = t;
-/*if (!get_global_id(0)) {
-	for (int i=0; i<60; i++) printf("%f ",w[i]);
-	//for (int i=0; i<6000; i++) if (t[i]<0.9) printf("%f ",t[i]);
-}*/
 
 	uint MINIBATCH = get_num_groups(0);
 	local uint label;
 	local uint seed;
 	local uint4 r;
-//	r.xyzw = args[2] +get_group_id(0);
 	local uint N;
 	local float eta;
 	if (!get_local_id(0)) {
@@ -368,7 +376,12 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 		eta = args[4]*1e-8;
 		r.xyzw = args[2] + get_group_id(0);
 	}
-	for (int n=args[1]/MINIBATCH; n>0; n--) {
+#ifdef DEBUG
+	if (!get_group_id(0)) for (int n=args[1]; n>0; n--)	// 94% (mnist)
+#else
+	for (int n=args[1]/MINIBATCH; n>0; n--)
+#endif
+	{
 		uint m = get_group_id(0);
 		if (!get_local_id(0)) {
 			seed = xorshift_int(&r) % N;
@@ -383,7 +396,9 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 //	for (int i=129; i<153; i++) printf("%f ",o[i]);
 	for (int i=126; i<150; i++) printf("%f ",d[i]);
 }*/
+#ifndef DEBUG
 		global_sync(sync);
+#endif
 	}
 
 #if 0
@@ -425,9 +440,13 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 			}
 		}
 	}*/
+
+/*#ifdef __CPU__
+	if (get_global_id(0)==1) printf(" [%.2fs]\n", (clock()-time)/1000.0/1000.0);
+#endif*/
 }
 #else
-/*// 95%
+// 95% (mnist)
 kernel void train(global const float *x, global float *w, global float *o, global float *d, global float *t, global uint *sync, uint8 args)
 {
 	union {
@@ -463,67 +482,6 @@ if (!get_group_id(0)) {
 		g_linear_update(0.01, p, w, d, 784, 200);
 		g_linear_update(0.01, o+784+1, w+785*200, d+200+1, 200, 10);
 	}
-}*/
-// 94%
-kernel void train(global const float *x, global float *w, global float *o, global float *d, global float *t, global uint *sync, uint8 args)
-{
-/*	if (!get_global_id(0)) {
-		printf("OpenCL training start!!\n");
-		printf("group size: %d\n", get_num_groups(0));
-		printf("global size: %d\n", get_global_size(0));
-		printf("local size: %d\n", get_local_size(0));
-	}*/
-
-	union {
-		global uint *ip;
-		global float *fp;
-	} ptr;
-	ptr.fp = t;
-
-/*#ifdef __CPU__
-	uint time;
-	if (get_global_id(0)==1) time = clock();
-#endif*/
-	o[784+1+200] = 1;
-
-#if 1
-	local uint N;
-	N = args[0];
-	float eta = args[4]*1e-8;
-	local uint label;
-#endif
-
-	local uint seed;
-	local uint4 r;
-	r.xyzw = args[2];
-	if (!get_group_id(0))
-	for (int n=args[1]; n>0; n--) {
-#if 0
-		if (!get_local_id(0)) seed = xorshift_int(&r) % 60000;
-		barrier(CLK_LOCAL_MEM_FENCE);
-		global const float *p = x + seed*784;
-
-		linear_forward_sigmoid(p, w, o+784+1, 784, 200);
-		linear_forward_identity(o+784+1, w+785*200, o+784+1+200+1, 200, 10);
-
-		loss_0_1(o+784+1+200+1, d+200+1, ptr.ip[seed], 10);
-		linear_backward_identity(o+784+1, w+785*200, d, d+200+1, 200, 10);
-		linear_update(/*eta*/0.01, p, w, d, 784, 200);
-		linear_update(/*eta*/0.01, o+784+1, w+785*200, d+200+1, 200, 10);
-#else
-		uint m = /*get_group_id(0)*/0;
-		if (!get_local_id(0)) {
-			seed = xorshift_int(&r) % N;
-			label = ptr.ip[seed];
-		}
-		barrier(CLK_LOCAL_MEM_FENCE);
-%GEN_CODE%
-#endif
-	}
-
-/*#ifdef __CPU__
-	if (get_global_id(0)==1) printf(" [%.2fs]\n", (clock()-time)/1000.0/1000.0);
-#endif*/
 }
 #endif
 

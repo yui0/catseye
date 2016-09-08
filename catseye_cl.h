@@ -110,7 +110,7 @@ void CatsEye_clSetup(CatsEye *this)
 	}
 	strcpy(code[1], code[3]);
 
-	snprintf(code[3], BUFSIZE, "\t\tglobal const float *p = x + seed*%d;\n\n\t\tuint dd = m*(%d);\n\t\tuint oo = m*(%d);\n\n", this->u[SIZE], osize-this->u[SIZE]+out, osize+out+1);
+	snprintf(code[3], BUFSIZE, "\t\tglobal const float *p = x + seed*%d;\n\n\t\tuint dd = m*(%d);\n\t\tuint oo = m*(%d);\n\n", this->u[SIZE], osize-this->u[SIZE]+out-1, osize+out/*+1*/);
 	strcat(code[3], code[0]);
 	strcat(code[3], code[1]);
 	strcat(code[3], code[2]);
@@ -230,11 +230,6 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 	param[4] = eta*1e8;
 	oclKernelArgs(kernel, ksz);
 	oclKernelArgsWrite(args);
-//	for (int i=0; i<60; i++) printf("%f ",this->wdata[i]);
-/*	for (int i=0; i<60; i++) printf("%f ",((numerus*)args[1].s)[i]);
-	printf("[%d]\n",args[1].size);
-	for (int i=0; i<6000; i++) if (((numerus*)t)[i]<0.9) printf("%f ",((numerus*)t)[i]);
-	printf("\n");*/
 
 #ifdef CATS_TIME
 	struct timeval start, stop;
@@ -243,62 +238,12 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 	for (int times=0; times<repeat; times++) {
 		param[2] = xor128();
 		param[3] = times;
-#ifdef CATS_TIME
+/*#ifdef CATS_TIME
 		gettimeofday(&stop, NULL);
 		param[5] = (stop.tv_sec - start.tv_sec)*1000*1000 + (stop.tv_usec - start.tv_usec);
-#endif
+#endif*/
 		oclRun(&kernel[1]);
-//		oclWait();
 		oclKernelArgsRead(args);
-
-		/*oclKernelArgsWrite(args);
-		for (int n=0; n<batch; n++) {
-			int sample = RANDOM ? (frand()*N) : n;
-			param[0] = 1;
-			param[1] = sample*784;
-			param[2] = 0;
-			param[3] = 784+1;
-			param[4] = 784;
-			param[5] = 200;
-			oclRun(&kernel[3]);
-			param[0] = 0;
-			param[1] = 784+1;
-			param[2] = 785*200;
-			param[3] = 784+1+200+1;
-			param[4] = 200;
-			param[5] = 10;
-			oclRun(&kernel[2]);
-
-			param[0] = 784+1+200+1;
-			param[1] = 200+1;
-			param[2] = ((int*)t)[sample];
-			param[3] = 10;
-			oclRun(&kernel[7]);
-			param[0] = 784+1;
-			param[1] = 785*200;
-			param[2] = 0;
-			param[3] = 200+1;
-			param[4] = 200;
-			param[5] = 10;
-			oclRun(&kernel[4]);
-
-			param[0] = 1;
-			param[1] = sample*784;
-			param[2] = 0;
-			param[3] = 0;
-			param[4] = 784;
-			param[5] = 200;
-			oclRun(&kernel[6]);
-			param[0] = 0;
-			param[1] = 784+1;
-			param[2] = 785*200;
-			param[3] = 200+1;
-			param[4] = 200;
-			param[5] = 10;
-			oclRun(&kernel[6]);
-		}
-		oclKernelArgsRead(args);*/
-
 /*#ifdef CATS_AUTOENCODER
 			// tied weight
 			numerus *dst = this->w[1];
@@ -308,6 +253,7 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 				}
 			}
 #endif*/
+
 		// calculate the mean squared error
 		numerus err = 0;
 		numerus mse = 0;
@@ -323,5 +269,5 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 #endif
 		printf("\n");
 	}
-	oclKernelArgsRead(args);
+//	oclKernelArgsRead(args);
 }

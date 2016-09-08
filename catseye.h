@@ -828,6 +828,7 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 			printf("L%02d: LINEAR %d %d\n", i+1, n[i], m[i]);
 		}
 		this->ws[i] = (n[i]+1)*m[i];
+//		this->ws[i] = n[i]*m[i]+1;	// FIXME
 		size[i] = this->wsize;
 		this->wsize += this->ws[i];
 	}
