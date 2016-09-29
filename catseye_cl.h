@@ -206,6 +206,7 @@ void CatsEye_forward(CatsEye *this, numerus *x)
 }
 #endif
 
+//#define CL_DEBUG
 void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numerus eta)
 {
 	this->xdata = x;
@@ -231,17 +232,11 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 	oclKernelArgs(kernel, ksz);
 	oclKernelArgsWrite(args);
 
-#ifdef CATS_TIME
 	struct timeval start, stop;
 	gettimeofday(&start, NULL);
-#endif
 	for (int times=0; times<repeat; times++) {
 		param[2] = xor128();
 		param[3] = times;
-/*#ifdef CATS_TIME
-		gettimeofday(&stop, NULL);
-		param[5] = (stop.tv_sec - start.tv_sec)*1000*1000 + (stop.tv_usec - start.tv_usec);
-#endif*/
 		oclRun(&kernel[1]);
 		oclKernelArgsRead(args);
 /*#ifdef CATS_AUTOENCODER
@@ -253,6 +248,14 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 				}
 			}
 #endif*/
+#ifdef CL_DEBUG
+		void CatsEye_forward(CatsEye *this, numerus *x);
+		CatsEye_forward(this, x+1*SIZE(0));
+		for (int i=SIZE(0); i<this->osize; i++) {
+			if (this->odata[i] != this->odata[this->osize+i]) printf("%f/%f/%d ", this->odata[i], this->odata[this->osize+i], i);
+		}
+		exit(0);
+#endif
 
 		// calculate the mean squared error
 		numerus err = 0;
@@ -263,10 +266,8 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 		err = 0.5 * (err + mse);
 
 		printf("epochs %d, mse %f", times, err);
-#ifdef CATS_TIME
 		gettimeofday(&stop, NULL);
 		printf(" [%.2fs]", (stop.tv_sec - start.tv_sec) + (stop.tv_usec - start.tv_usec)*0.001*0.001);
-#endif
 		printf("\n");
 	}
 //	oclKernelArgsRead(args);

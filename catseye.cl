@@ -158,16 +158,14 @@ LINEAR_FORWARD(LeakyReLU)
 #define LINEAR_BACKWARD(dact) \
 static void linear_backward_##dact(global const float *o, global const float *w, global float *d, global const float *delta, uint is, uint os)\
 {\
-	for (int i=get_local_id(0); i<=is; i+=get_local_size(0)) {\
-/*		w += i*os;*/\
+/*	for (int i=get_local_id(0); i<=is; i+=get_local_size(0)) {*/\
+	for (int i=get_local_id(0); i<is; i+=get_local_size(0)) {\
 		global const float *p = w + i*os;\
 		float s = 0;\
 		for (int k=0; k<os; k++) {\
-/*			s = mmad(*w++, delta[k], s);*/\
 			s = mmad(*p++, delta[k], s);\
 		}\
 		d[i] = s * dact(o[i]);\
-/*		w -= (i*os + os);*/\
 	}\
 	barrier(CLK_LOCAL_MEM_FENCE);\
 }\
@@ -346,19 +344,20 @@ int binomial(numerus p)
 }*/
 
 #if 1
+//#define CL_DEBUG
+#ifdef CL_DEBUG
+#define CL_DEBUG_S(a, b) (b)
+#define CL_NDEBUG(statments)
+#else
+#define CL_DEBUG_S(a, b) (a)
+#define CL_NDEBUG(statments) statments
+#endif
 kernel void train(global const float *x, global float *w, global float *o, global float *d, global float *t, global uint *sync, uint8 args)
 {
-/*	if (!get_global_id(0)) {
-		printf("OpenCL training start!!\n");
-		printf("group size: %d\n", get_num_groups(0));
-		printf("global size: %d\n", get_global_size(0));
-		printf("local size: %d\n", get_local_size(0));
-	}*/
 /*#ifdef __CPU__
 	uint time;
 	if (get_global_id(0)==1) time = clock();
 #endif*/
-
 	union {
 		global uint *ip;
 		global float *fp;
@@ -376,15 +375,12 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 		eta = args[4]*1e-8;
 		r.xyzw = args[2] + get_group_id(0);
 	}
-#ifdef DEBUG
-	if (!get_group_id(0)) for (int n=args[1]; n>0; n--)	// 94% (mnist)
-#else
-	for (int n=args[1]/MINIBATCH; n>0; n--)
-#endif
+	//if (!get_group_id(0)) for (int n=args[1]; n>0; n--)	// 94% (mnist)
+	CL_NDEBUG(for (int n=args[1]/MINIBATCH; n>0; n--))
 	{
 		uint m = get_group_id(0);
 		if (!get_local_id(0)) {
-			seed = xorshift_int(&r) % N;
+			seed = CL_DEBUG_S(xorshift_int(&r) % N, m);
 			label = ptr.ip[seed];
 		}
 		barrier(CLK_LOCAL_MEM_FENCE);
@@ -396,9 +392,7 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 //	for (int i=129; i<153; i++) printf("%f ",o[i]);
 	for (int i=126; i<150; i++) printf("%f ",d[i]);
 }*/
-#ifndef DEBUG
 		global_sync(sync);
-#endif
 	}
 
 #if 0

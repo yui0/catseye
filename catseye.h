@@ -9,11 +9,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
-
-#define CATS_TIME
-#ifdef CATS_TIME
 #include <sys/time.h>
-#endif
 
 #ifdef CATS_USE_FIXED
 #define numerus		short
@@ -1022,10 +1018,8 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 	int loss = this->u[a*LPLEN+STRIDE];
 	if (!loss && x==t) loss = 1;
 
-#ifdef CATS_TIME
 	struct timeval start, stop;
 	gettimeofday(&start, NULL);
-#endif
 	for (int times=0; times<repeat; times++) {
 /*#ifndef CATS_OPT_SGD
 		memset(this->e3, 0, sizeof(numerus)*SIZE(2));
@@ -1070,10 +1064,8 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 			err = 0.5 * (err + mse);
 		}
 		printf("epochs %d, mse %f", times, err);
-#ifdef CATS_TIME
 		gettimeofday(&stop, NULL);
 		printf(" [%.2fs]", (stop.tv_sec - start.tv_sec) + (stop.tv_usec - start.tv_usec)*0.001*0.001);
-#endif
 		printf("\n");
 	}
 }
