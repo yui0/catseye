@@ -706,6 +706,7 @@ enum CATS_LAYER_TYPE {
 #define CATS_MBATCH	8
 //#define CATS_OPENCL
 #ifdef CATS_OPENCL
+//#define CL_DEBUG
 #include "catseye_cl.h"
 #endif
 /* constructor
@@ -773,10 +774,12 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 		size[i] = this->osize;
 		this->osize += SIZE(i)+1;	// bias
 	}
+	this->osize--;
 	this->odata = malloc(sizeof(numerus)*this->osize *CATS_MBATCH);
 	for (int i=0; i<this->layers; i++) {
 		this->o[i] = this->odata + size[i];
 		this->o[i][SIZE(i)] = 1;	// bias
+		for (int j=0; j<CATS_MBATCH; j++) this->odata[this->osize*j + size[i]+SIZE(i)] = 1;
 	}
 	this->o3 = this->o[2];		// deprecated!
 

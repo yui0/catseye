@@ -344,13 +344,12 @@ int binomial(numerus p)
 }*/
 
 #if 1
-//#define CL_DEBUG
 #ifdef CL_DEBUG
-#define CL_DEBUG_S(a, b) (b)
-#define CL_NDEBUG(statments)
+#define CL_SDEBUG(statment) statment
+#define CL_NDEBUG(statment)
 #else
-#define CL_DEBUG_S(a, b) (a)
-#define CL_NDEBUG(statments) statments
+#define CL_SDEBUG(statment)
+#define CL_NDEBUG(statment) statment
 #endif
 kernel void train(global const float *x, global float *w, global float *o, global float *d, global float *t, global uint *sync, uint8 args)
 {
@@ -376,23 +375,18 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 		r.xyzw = args[2] + get_group_id(0);
 	}
 	//if (!get_group_id(0)) for (int n=args[1]; n>0; n--)	// 94% (mnist)
-	CL_NDEBUG(for (int n=args[1]/MINIBATCH; n>0; n--))
-	{
+	CL_SDEBUG(if (get_group_id(0)==1))
+	for (int n=args[1]/MINIBATCH; n>0; n--) {
 		uint m = get_group_id(0);
 		if (!get_local_id(0)) {
-			seed = CL_DEBUG_S(xorshift_int(&r) % N, m);
+			CL_NDEBUG(seed = xorshift_int(&r) % N); CL_SDEBUG(seed = 1);
 			label = ptr.ip[seed];
 		}
 		barrier(CLK_LOCAL_MEM_FENCE);
 
 		// Asynchronous Update
 %GEN_CODE%
-/*if (!get_global_id(0)) {
-//	for (int i=0; i<60; i++) printf("%f ",o[i]);
-//	for (int i=129; i<153; i++) printf("%f ",o[i]);
-	for (int i=126; i<150; i++) printf("%f ",d[i]);
-}*/
-		global_sync(sync);
+		CL_NDEBUG(global_sync(sync));
 	}
 
 #if 0

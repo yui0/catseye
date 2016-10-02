@@ -206,7 +206,6 @@ void CatsEye_forward(CatsEye *this, numerus *x)
 }
 #endif
 
-//#define CL_DEBUG
 void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numerus eta)
 {
 	this->xdata = x;
