@@ -251,7 +251,8 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 		void CatsEye_forward(CatsEye *this, numerus *x);
 		CatsEye_forward(this, x+1*SIZE(0));
 		for (int i=SIZE(0); i<this->osize; i++) {
-			if (this->odata[i] != this->odata[this->osize+i]) printf("%f/%f/%d ", this->odata[i], this->odata[this->osize+i], i);
+//			if (this->odata[i] != this->odata[this->osize+i]) printf("%f/%f/%d ", this->odata[i], this->odata[this->osize+i], i);
+			if (fabs(this->odata[i] - this->odata[this->osize+i]) > 1e-7) printf("%f/%f/%d ", this->odata[i], this->odata[this->osize+i], i);
 		}
 		exit(0);
 #endif

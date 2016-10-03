@@ -45,7 +45,7 @@ float atom_add_float(global float const *address, const float value)
 	return *(float*)&oldval;
 }
 
-//#define mmad(x,y,z)		(x+y*z)
+//#define mmad(x,y,z)		(x*y+z)
 #define mmad(x,y,z)		mad(x,y,z)
 //#define mmad(x,y,z)		fma(x,y,z)
 
