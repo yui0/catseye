@@ -156,12 +156,6 @@ void CatsEye_forward(CatsEye *this, numerus *x)
 	// calculation of input layer
 	memcpy(this->o[0], x+n, SIZE(0)*sizeof(numerus));
 	this->o[0][SIZE(0)] = 1;	// for bias
-#ifdef CATS_DENOISING_AUTOENCODER
-	// Denoising Autoencoder (http://kiyukuta.github.io/2013/08/20/hello_autoencoder.html)
-	for (int i=0; i<SIZE(0); i++) {
-		this->o[0][i] *= binomial(/*0.7(30%)*/0.5);
-	}
-#endif
 #endif
 
 	int n = x - this->xdata;
@@ -188,21 +182,6 @@ void CatsEye_forward(CatsEye *this, numerus *x)
 	param[5] = 10;
 	oclRun(&kernel[2]);
 	oclKernelArgsRead(args);*/
-
-//	memcpy(this->o[0], x+n, SIZE(0)*sizeof(numerus));
-
-/*	for (int i=0; i<200; i++) printf("%f ", this->o[1][i]);
-	printf("\n%d %f\n",SIZE(0),this->o[0][0]);
-	CatsEye_layer_forward[TYPE(1)](this->o[0], this->w[0], this->z[0], this->o[1], &this->u[LPLEN*(1)]);
-	for (int i=0; i<200; i++) printf("%f ", this->o[1][i]);
-	printf("\n");
-	exit(0);*/
-/*	for (int i=0; i<10; i++) printf("%f ", this->o[2][i]);
-	printf("\n%d %f\n",SIZE(0),this->o[1][0]);
-	CatsEye_layer_forward[TYPE(2)](this->o[1], this->w[1], this->z[1], this->o[2], &this->u[LPLEN*(2)]);
-	for (int i=0; i<10; i++) printf("%f ", this->o[2][i]);
-	printf("\n");
-	exit(0);*/
 }
 #endif
 
@@ -253,6 +232,15 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 		for (int i=SIZE(0); i<this->osize; i++) {
 //			if (this->odata[i] != this->odata[this->osize+i]) printf("%f/%f/%d ", this->odata[i], this->odata[this->osize+i], i);
 			if (fabs(this->odata[i] - this->odata[this->osize+i]) > 1e-7) printf("%f/%f/%d ", this->odata[i], this->odata[this->osize+i], i);
+			/*if (fabs(this->odata[i] - this->odata[this->osize+i]) > 1e-7) {
+				union Num {
+					int i;
+					float f;
+				};
+				union Num a; a.f = this->odata[i];
+				union Num b; b.f = this->odata[this->osize+i];
+				printf("%f(%x)/%f(%x)/%d ", a.f, a.i, b.f, b.i, i);
+			}*/
 		}
 		exit(0);
 #endif

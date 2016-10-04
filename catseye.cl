@@ -45,9 +45,9 @@ float atom_add_float(global float const *address, const float value)
 	return *(float*)&oldval;
 }
 
-//#define mmad(x,y,z)		(x*y+z)
-#define mmad(x,y,z)		mad(x,y,z)
-//#define mmad(x,y,z)		fma(x,y,z)
+//#define mmad(x,y,z)		((x)*(y)+(z))
+#define mmad(x,y,z)		mad((x),(y),(z))
+//#define mmad(x,y,z)		fma((x),(y),(z))
 
 static void vdot(local float *acc, global const float *x, global const float *y, global float *r, uint n)
 {
@@ -129,16 +129,22 @@ static void vdotT(local float *acc, global const float *x, global const float *y
 static void linear_forward_##act(global const float *x, global const float *w, global float *o, uint is, uint os)\
 {\
 	for (int i=get_local_id(0); i<os; i+=get_local_size(0)) {\
-		w += i;\
+		global const float *p = w + i;\
 		float s = 0;\
 		for (int k=0; k<is; k++) {\
-			s = mmad(w[k*os], x[k], s);\
+			s = mmad(p[k*os], x[k], s);\
 		}\
-		s += w[is*os];\
+		s += p[is*os];\
 		o[i] = act(s);\
-		w -= i;\
 	}\
 	barrier(CLK_LOCAL_MEM_FENCE);\
+}\
+static void __linear_forward_##act(local float *acc, global const float *x, global const float *w, global float *o, uint is, uint os)\
+{\
+	for (int i=0; i<os; i++) {\
+		vdotT(acc, w+i, x, o+i, is, os);\
+		if (!get_local_id(0)) o[i] = act(o[i] + w[is*os+i]);\
+	}\
 }\
 static void g_linear_forward_##act(local float *acc, global const float *x, global const float *w, global float *o, uint is, uint os)\
 {\
@@ -192,7 +198,7 @@ static void linear_update(float eta, global const float *o, global float *w, glo
 {
 	for (int i=get_local_id(0); i<=is; i+=get_local_size(0)) {
 		global float *p = w + i*os;
-//		float a;// = -eta * o[i];
+//		float a = -eta * o[i];
 		float a = -eta;
 		if (i!=is) a *= o[i];	// !bias
 		for (int k=0; k<os; k++) {
@@ -357,6 +363,7 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 	uint time;
 	if (get_global_id(0)==1) time = clock();
 #endif*/
+	//local float acc[256];
 	union {
 		global uint *ip;
 		global float *fp;
@@ -367,8 +374,8 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 	local uint label;
 	local uint seed;
 	local uint4 r;
-	local uint N;
 	local float eta;
+	uint N;
 	if (!get_local_id(0)) {
 		N = args[0];
 		eta = args[4]*1e-8;
@@ -420,13 +427,6 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 			w[i+m*(785*200+201*10)] = a;
 		}
 		w[i] = w[i+(785*200+201*10)*(get_num_groups(0)-1)];
-	}*/
-/*	if (!get_global_id(0)) {
-		for (int i=0; i<785*200+201*10; i++) {
-			for (int m=1; m<get_num_groups(0); m++) {
-				if (w[i] != w[i+m*(785*200+201*10)]) printf("%f %f!\n", w[i], w[i+m*(785*200+201*10)]);
-			}
-		}
 	}*/
 
 /*#ifdef __CPU__
