@@ -10,6 +10,7 @@ Neural network library written in C and Javascript
   - OpenCL support (GPGPU)
   - SSE, AVX support (But gcc and clang support SIMD...)
   - OpenMP support
+  - Support half precision floats (16bit)
 - Support Deep Learning:
   - Multilayer perceptron (MLP)
   - Deep Neural Networks (DNN)

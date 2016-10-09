@@ -118,8 +118,9 @@ void CatsEye_clSetup(CatsEye *this)
 	char *s = strrep(kernel_code, "\%GEN_CODE\%", code[3]);
 //	snprintf(code[3], BUFSIZE, "\t\tuint size = %d;\n\t\tvdot(acc, d, d, mse, %d);\n", SIZE(1), SIZE(1));
 	snprintf(code[3], BUFSIZE, "\t\tuint size = %d;\n\t\tvdot(acc, d+%d, d+%d, mse, %d);\n", SIZE(2), SIZE(1)+1, SIZE(1)+1, SIZE(2));
-	char *kcode = strrep(s, "\%MSE_CODE\%", code[3]);
+	//char *kcode = strrep(s, "\%MSE_CODE\%", code[3]);
 //	printf("%s", code[3]);
+	char *kcode = strrep(s, "\%PREPROCESSOR\%", ""/*"#pragma OPENCL EXTENSION cl_khr_select_fprounding_mode : enable\n#pragma OPENCL SELECT_ROUNDING_MODE rte\n"*/);
 	free(s);
 //	printf("%s", kcode);
 
@@ -242,6 +243,8 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 				printf("%f(%x)/%f(%x)/%d ", a.f, a.i, b.f, b.i, i);
 			}*/
 		}
+float *w = this->w[0];
+printf("\nx:[%f,%f,%f],w:[%f,%f,%f]\n",x[2],x[3],x[4],w[0],w[20*1],w[20*2]);
 		exit(0);
 #endif
 

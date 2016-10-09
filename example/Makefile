@@ -4,7 +4,7 @@ PROGRAM = $(patsubst %.c,%,$(wildcard *.c))
 #OBJS = $(patsubst %.c,%.o,$(wildcard *.c))
 
 CC = clang
-CFLAGS = -Ofast -march=native -funroll-loops
+CFLAGS = -Ofast -march=native -funroll-loops -mf16c
 LDFLAGS = -lm
 
 UNAME_S := $(shell uname -s)

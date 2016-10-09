@@ -51,10 +51,10 @@ int main(int argc,char *argv[])
 		CATS_LINEAR, CATS_ACT_LEAKY_RELU, 1, neurons, 0, 0, 0, 0,	// sigmoid×
 		CATS_LINEAR, CATS_ACT_LEAKY_RELU, 1, neurons, 0, 0, 0, 0,
 		CATS_LINEAR, CATS_ACT_LEAKY_RELU, 1, neurons, 0, 0, 0, 0,
+/*		CATS_LINEAR, CATS_ACT_LEAKY_RELU, 1, neurons, 0, 0, 0, 0,
 		CATS_LINEAR, CATS_ACT_LEAKY_RELU, 1, neurons, 0, 0, 0, 0,
 		CATS_LINEAR, CATS_ACT_LEAKY_RELU, 1, neurons, 0, 0, 0, 0,
-		CATS_LINEAR, CATS_ACT_LEAKY_RELU, 1, neurons, 0, 0, 0, 0,
-		CATS_LINEAR, CATS_ACT_LEAKY_RELU, 1, neurons, 0, 0, 0, 0,
+		CATS_LINEAR, CATS_ACT_LEAKY_RELU, 1, neurons, 0, 0, 0, 0,*/
 		CATS_LINEAR, CATS_ACT_SIGMOID, 1, 3/*RGB*/, 0, 0, 0, 1,
 	};
 #else

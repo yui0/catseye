@@ -1,4 +1,5 @@
 OCLSTRINGIFY(
+%PREPROCESSOR%
 
 // http://industrybestpractice.blogspot.jp/2012/07/global-synchronisation-in-opencl.html
 static void global_sync(volatile global uint *flags)
@@ -133,8 +134,10 @@ static void linear_forward_##act(global const float *x, global const float *w, g
 		float s = 0;\
 		for (int k=0; k<is; k++) {\
 			s = mmad(p[k*os], x[k], s);\
+if (!get_local_id(0) && is==2) printf("[%f]",s);\
 		}\
 		s += p[is*os];\
+if (!get_local_id(0) && is==2) printf("[%f/%f]%f\n",s,p[is*os],act(0.002527+0.372637));\
 		o[i] = act(s);\
 	}\
 	barrier(CLK_LOCAL_MEM_FENCE);\
@@ -383,7 +386,7 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 	}
 	//if (!get_group_id(0)) for (int n=args[1]; n>0; n--)	// 94% (mnist)
 	CL_SDEBUG(if (get_group_id(0)==1))
-	for (int n=args[1]/MINIBATCH; n>0; n--) {
+	CL_NDEBUG(for (int n=args[1]/MINIBATCH; n>0; n--)) {
 		uint m = get_group_id(0);
 		if (!get_local_id(0)) {
 			CL_NDEBUG(seed = xorshift_int(&r) % N); CL_SDEBUG(seed = 1);
