@@ -776,6 +776,7 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 	}
 	this->osize--;
 	this->odata = malloc(sizeof(numerus)*this->osize *CATS_MBATCH);
+	memset(this->odata, 0, sizeof(numerus)*this->osize *CATS_MBATCH);	// for debug
 	for (int i=0; i<this->layers; i++) {
 		this->o[i] = this->odata + size[i];
 		this->o[i][SIZE(i)] = 1;	// bias
@@ -845,6 +846,7 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 			this->w[i][j] = 2.0*range*frand()-range;
 //			for (int k=1; k<CATS_MBATCH; k++) this->wdata[this->wsize*k + size[i]+j] = 2.0*range*frand()-range;
 		}
+		memcpy(&this->wdata[this->wsize], this->wdata, this->wsize*sizeof(numerus));	// for debug
 	}
 
 	if (param) {

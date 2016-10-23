@@ -110,7 +110,7 @@ void CatsEye_clSetup(CatsEye *this)
 	}
 	strcpy(code[1], code[3]);
 
-	snprintf(code[3], BUFSIZE, "\t\tglobal const float *p = x + seed*%d;\n\n\t\tuint dd = m*(%d);\n\t\tuint oo = m*(%d);\n\n", this->u[SIZE], osize-this->u[SIZE]+out-1, osize+out/*+1*/);
+	snprintf(code[3], BUFSIZE, "\t\tglobal const float *p = x + seed*%d;\n\n\t\tuint dd = m*%d;\n\t\tuint oo = m*%d;\n\n", this->u[SIZE], osize-this->u[SIZE]+out-1, osize+out/*+1*/);
 	strcat(code[3], code[0]);
 	strcat(code[3], code[1]);
 	strcat(code[3], code[2]);
@@ -228,6 +228,8 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 			}
 #endif*/
 #ifdef CL_DEBUG
+		memcpy(this->wdata, &this->wdata[this->wsize], this->wsize*sizeof(numerus));
+		//memcpy(&this->odata[this->osize], &this->odata[0], this->osize*sizeof(numerus));
 		void CatsEye_forward(CatsEye *this, numerus *x);
 		CatsEye_forward(this, x+1*SIZE(0));
 		for (int i=SIZE(0); i<this->osize; i++) {
@@ -245,6 +247,9 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 		}
 float *w = this->w[0];
 printf("\nx:[%f,%f,%f],w:[%f,%f,%f]\n",x[2],x[3],x[4],w[0],w[20*1],w[20*2]);
+		/*for (int i=0; i<this->wsize; i++) {
+			if (fabs(this->wdata[i] - this->wdata[this->wsize+i]) > 1e-7) printf("%f/%f/%d ", this->wdata[i], this->wdata[this->wsize+i], i);
+		}*/
 		exit(0);
 #endif
 
@@ -261,5 +266,4 @@ printf("\nx:[%f,%f,%f],w:[%f,%f,%f]\n",x[2],x[3],x[4],w[0],w[20*1],w[20*2]);
 		printf(" [%.2fs]", (stop.tv_sec - start.tv_sec) + (stop.tv_usec - start.tv_usec)*0.001*0.001);
 		printf("\n");
 	}
-//	oclKernelArgsRead(args);
 }

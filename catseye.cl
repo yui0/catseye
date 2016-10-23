@@ -47,8 +47,8 @@ float atom_add_float(global float const *address, const float value)
 }
 
 //#define mmad(x,y,z)		((x)*(y)+(z))
-#define mmad(x,y,z)		mad((x),(y),(z))
-//#define mmad(x,y,z)		fma((x),(y),(z))
+//#define mmad(x,y,z)		mad((x),(y),(z))
+#define mmad(x,y,z)		fma((x),(y),(z))
 
 static void vdot(local float *acc, global const float *x, global const float *y, global float *r, uint n)
 {
@@ -134,13 +134,15 @@ static void linear_forward_##act(global const float *x, global const float *w, g
 		float s = 0;\
 		for (int k=0; k<is; k++) {\
 			s = mmad(p[k*os], x[k], s);\
-if (!get_local_id(0) && is==2) printf("[%f]",s);\
+/*if (!get_local_id(0) && is==2) printf("[%f]",s);*/\
 		}\
 		s += p[is*os];\
-if (!get_local_id(0) && is==2) printf("[%f/%f]%f\n",s,p[is*os],act(0.002527+0.372637));\
+/*if (!get_local_id(0) && is==2) printf("[%f/%f]\n",s,p[is*os]);*/\
 		o[i] = act(s);\
+/*if (is==2) printf("[%f/%d]",o[i],i);*/\
 	}\
 	barrier(CLK_LOCAL_MEM_FENCE);\
+	/*barrier(CLK_GLOBAL_MEM_FENCE);*/\
 }\
 static void __linear_forward_##act(local float *acc, global const float *x, global const float *w, global float *o, uint is, uint os)\
 {\
@@ -177,6 +179,7 @@ static void linear_backward_##dact(global const float *o, global const float *w,
 		d[i] = s * dact(o[i]);\
 	}\
 	barrier(CLK_LOCAL_MEM_FENCE);\
+	/*barrier(CLK_GLOBAL_MEM_FENCE);*/\
 }\
 kernel void _linear_backward_##dact(global const float *x, global float *w, global float *o, global float *d, global float *t, global uint *sync, uint8 args)\
 {\
@@ -199,7 +202,9 @@ LINEAR_BACKWARD(LeakyReLU)
 
 static void linear_update(float eta, global const float *o, global float *w, global const float *d, uint is, uint os)
 {
+//printf("(%d) ",get_local_id(0));
 	for (int i=get_local_id(0); i<=is; i+=get_local_size(0)) {
+//printf("%d ",i);
 		global float *p = w + i*os;
 //		float a = -eta * o[i];
 		float a = -eta;
@@ -207,6 +212,7 @@ static void linear_update(float eta, global const float *o, global float *w, glo
 		for (int k=0; k<os; k++) {
 			//atom_add_float(p, a*d[k]);
 			*p = mmad(a, d[k], *p);
+//printf("(%f/%d) ",*p,k+i*os);
 			p++;
 		}
 	}
