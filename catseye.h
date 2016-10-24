@@ -364,6 +364,7 @@ void CatsEye_linear_layer_backward(numerus *o, numerus *w, numerus *d, numerus *
 	// calculate the error
 	CATS_ACT dact = CatsEye_dact[u[ACT-LPLEN]];
 	for (int i=0; i<=in; i++) {	// bias!!
+//if (i==19) printf("[%f,%f] ",vdot(&w[i*out], delta, out), dact(*o++));
 		*d++ = vdot(&w[i*out], delta, out) * dact(*o++);
 //		*d++ = vdotT(w++, delta, out, in+1) * dact(*o++);
 	}
@@ -791,6 +792,7 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 		size[i] = this->dsize;
 		this->dsize += SIZE(i+1)+1;	// bias
 	}
+	this->dsize--;
 	this->ddata = malloc(sizeof(numerus)*this->dsize *CATS_MBATCH);
 	for (int i=0; i<this->layers-1; i++) this->d[i] = this->ddata + size[i];
 
@@ -927,7 +929,6 @@ void CatsEye_forward(CatsEye *this, numerus *x)
 	}
 }
 
-#ifndef CATS_OPENCL
 // calculate the error of output layer
 void CatsEye_loss_0_1(CatsEye *this, int c, void *t, int n)
 {
@@ -1005,6 +1006,7 @@ void (*CatsEye_loss[])(CatsEye *this, int c, void *t, int n) = {
 	CatsEye_loss_mse,
 	CatsEye_loss_mse_with_sparse,
 };
+#ifndef CATS_OPENCL
 /* train: multi layer perceptron
  * x: train data (number of elements is in*N)
  * t: correct label (number of elements is N)

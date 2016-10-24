@@ -134,15 +134,11 @@ static void linear_forward_##act(global const float *x, global const float *w, g
 		float s = 0;\
 		for (int k=0; k<is; k++) {\
 			s = mmad(p[k*os], x[k], s);\
-/*if (!get_local_id(0) && is==2) printf("[%f]",s);*/\
 		}\
 		s += p[is*os];\
-/*if (!get_local_id(0) && is==2) printf("[%f/%f]\n",s,p[is*os]);*/\
 		o[i] = act(s);\
-/*if (is==2) printf("[%f/%d]",o[i],i);*/\
 	}\
 	barrier(CLK_LOCAL_MEM_FENCE);\
-	/*barrier(CLK_GLOBAL_MEM_FENCE);*/\
 }\
 static void __linear_forward_##act(local float *acc, global const float *x, global const float *w, global float *o, uint is, uint os)\
 {\
@@ -169,14 +165,15 @@ LINEAR_FORWARD(LeakyReLU)
 #define LINEAR_BACKWARD(dact) \
 static void linear_backward_##dact(global const float *o, global const float *w, global float *d, global const float *delta, uint is, uint os)\
 {\
-/*	for (int i=get_local_id(0); i<=is; i+=get_local_size(0)) {*/\
-	for (int i=get_local_id(0); i<is; i+=get_local_size(0)) {\
+	for (int i=get_local_id(0); i<=is; i+=get_local_size(0)) {\
+/*	for (int i=get_local_id(0); i<is; i+=get_local_size(0)) {*/\
 		global const float *p = w + i*os;\
 		float s = 0;\
 		for (int k=0; k<os; k++) {\
 			s = mmad(*p++, delta[k], s);\
 		}\
-		d[i] = s * dact(o[i]);\
+		d[i] = s * d_##dact(o[i]);\
+/*if (i==19) printf("(%f,%f) ",s, d_##dact(o[i]));*/\
 	}\
 	barrier(CLK_LOCAL_MEM_FENCE);\
 	/*barrier(CLK_GLOBAL_MEM_FENCE);*/\
@@ -189,7 +186,7 @@ static void g_linear_backward_##dact(local float *acc, global const float *o, gl
 {\
 	for (int i=get_group_id(0); i<=is; i+=get_num_groups(0)) {\
 		vdot(acc, w+i*os, delta, d+i, os);\
-		if (!get_local_id(0)) d[i] = d[i] * dact(o[i]);\
+		if (!get_local_id(0)) d[i] = d[i] * d_##dact(o[i]);\
 	}\
 }
 LINEAR_BACKWARD(identity)
@@ -390,9 +387,10 @@ kernel void train(global const float *x, global float *w, global float *o, globa
 		eta = args[4]*1e-8;
 		r.xyzw = args[2] + get_group_id(0);
 	}
-	//if (!get_group_id(0)) for (int n=args[1]; n>0; n--)	// 94% (mnist)
+//	if (!get_group_id(0)) for (int n=args[1]; n>0; n--)	// 94% (mnist)
 	CL_SDEBUG(if (get_group_id(0)==1))
-	CL_NDEBUG(for (int n=args[1]/MINIBATCH; n>0; n--)) {
+	CL_NDEBUG(for (int n=args[1]/MINIBATCH; n>0; n--))
+	{
 		uint m = get_group_id(0);
 		if (!get_local_id(0)) {
 			CL_NDEBUG(seed = xorshift_int(&r) % N); CL_SDEBUG(seed = 1);

@@ -90,7 +90,7 @@ void CatsEye_clSetup(CatsEye *this)
 				snprintf(code[3], BUFSIZE, "\t\tlinear_forward_%s(o+oo+%d, w+%d, o+oo+%d, %d, %d);\n",
 					acts[u[ACT]], osize, wsize, osize+in+1, in, out);
 				strcat(code[0], code[3]);
-				snprintf(code[3], BUFSIZE, "\t\tlinear_backward_%s(o+oo+%d, w+%d, d+dd+%d, d+dd+%d, %d, %d);\n", acts[u[ACT]], osize, wsize, dsize, dsize+in+1, in, out);
+				snprintf(code[3], BUFSIZE, "\t\tlinear_backward_%s(o+oo+%d, w+%d, d+dd+%d, d+dd+%d, %d, %d);\n", acts[u[ACT-LPLEN]], osize, wsize, dsize, dsize+in+1, in, out);
 				//strcat(code[1], code[3]);
 				strcat(code[3], code[1]);
 				strcpy(code[1], code[3]);
@@ -228,12 +228,22 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 			}
 #endif*/
 #ifdef CL_DEBUG
+		memcpy(&this->wdata[this->wsize*2], this->wdata, this->wsize*sizeof(numerus));
 		memcpy(this->wdata, &this->wdata[this->wsize], this->wsize*sizeof(numerus));
 		//memcpy(&this->odata[this->osize], &this->odata[0], this->osize*sizeof(numerus));
+		/*for (int i=0; i<this->dsize; i++) {
+			printf("%f/%d ", this->ddata[this->dsize+i], i);
+		}*/
+
 		void CatsEye_forward(CatsEye *this, numerus *x);
+		void CatsEye_loss_mse(CatsEye *this, int c, void *t, int n);
 		CatsEye_forward(this, x+1*SIZE(0));
+		CatsEye_loss_mse(this, a, t, 1);
+		for (int i=this->layers-2; i>0; i--) {
+			CatsEye_layer_backward[TYPE(i+1)](this->o[i], this->w[i], this->d[i-1], this->d[i], &this->u[LPLEN*(i+1)]);
+		}
+
 		for (int i=SIZE(0); i<this->osize; i++) {
-//			if (this->odata[i] != this->odata[this->osize+i]) printf("%f/%f/%d ", this->odata[i], this->odata[this->osize+i], i);
 			if (fabs(this->odata[i] - this->odata[this->osize+i]) > 1e-7) printf("%f/%f/%d ", this->odata[i], this->odata[this->osize+i], i);
 			/*if (fabs(this->odata[i] - this->odata[this->osize+i]) > 1e-7) {
 				union Num {
@@ -247,8 +257,12 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 		}
 float *w = this->w[0];
 printf("\nx:[%f,%f,%f],w:[%f,%f,%f]\n",x[2],x[3],x[4],w[0],w[20*1],w[20*2]);
+printf("dsize:%d\n",this->dsize);
+		for (int i=0; i<this->dsize; i++) {
+			if (fabs(this->ddata[i] - this->ddata[this->dsize+i]) > 1e-7) printf("%f/%f/%d ", this->ddata[i], this->ddata[this->dsize+i], i);
+		}
 		/*for (int i=0; i<this->wsize; i++) {
-			if (fabs(this->wdata[i] - this->wdata[this->wsize+i]) > 1e-7) printf("%f/%f/%d ", this->wdata[i], this->wdata[this->wsize+i], i);
+			if (fabs(this->wdata[i] - this->wdata[this->wsize*2+i]) > 1e-7) printf("%f/%f/%d ", this->wdata[i], this->wdata[this->wsize*2+i], i);
 		}*/
 		exit(0);
 #endif
