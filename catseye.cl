@@ -47,8 +47,8 @@ float atom_add_float(global float const *address, const float value)
 }
 
 //#define mmad(x,y,z)		((x)*(y)+(z))
-//#define mmad(x,y,z)		mad((x),(y),(z))
-#define mmad(x,y,z)		fma((x),(y),(z))
+#define mmad(x,y,z)		mad((x),(y),(z))	// mad is intended to be used where speed is preferred over accuracy.
+//#define mmad(x,y,z)		fma((x),(y),(z))
 
 static void vdot(local float *acc, global const float *x, global const float *y, global float *r, uint n)
 {
@@ -165,8 +165,8 @@ LINEAR_FORWARD(LeakyReLU)
 #define LINEAR_BACKWARD(dact) \
 static void linear_backward_##dact(global const float *o, global const float *w, global float *d, global const float *delta, uint is, uint os)\
 {\
-	for (int i=get_local_id(0); i<=is; i+=get_local_size(0)) {\
-/*	for (int i=get_local_id(0); i<is; i+=get_local_size(0)) {*/\
+/*	for (int i=get_local_id(0); i<=is; i+=get_local_size(0)) { bias*/\
+	for (int i=get_local_id(0); i<is; i+=get_local_size(0)) {\
 		global const float *p = w + i*os;\
 		float s = 0;\
 		for (int k=0; k<os; k++) {\
@@ -176,7 +176,6 @@ static void linear_backward_##dact(global const float *o, global const float *w,
 /*if (i==19) printf("(%f,%f) ",s, d_##dact(o[i]));*/\
 	}\
 	barrier(CLK_LOCAL_MEM_FENCE);\
-	/*barrier(CLK_GLOBAL_MEM_FENCE);*/\
 }\
 kernel void _linear_backward_##dact(global const float *x, global float *w, global float *o, global float *d, global float *t, global uint *sync, uint8 args)\
 {\
@@ -214,7 +213,7 @@ static void linear_update(float eta, global const float *o, global float *w, glo
 		}
 	}
 }
-kernel void _linear_update(global const float *x, global float *w, global float *o, global float *d, global float *t, global uint *sync, uint8 args)
+/*kernel void _linear_update(global const float *x, global float *w, global float *o, global float *d, global float *t, global uint *sync, uint8 args)
 {
 	o = args[0] ? x+args[1] : o+args[1];
 	w += args[2];
@@ -243,20 +242,108 @@ static void g_linear_update(float eta, global const float *o, global float *w, g
 			p[lid] = mmad(a, d[lid], p[lid]);
 		}
 	}
-}
+}*/
 
 // FIXME
 kernel void forward(global const float *x, global float *w, global float *o, global float *d, global float *t, global uint *sync, uint8 args)
 {
-//	linear_forward_sigmoid(x+args[0], w, o+784+1, 784, 200);
-//	linear_forward_identity(o+784+1, w+785*200, o+784+1+200+1, 200, 10);
-
 	local float acc[256];//[512];
 	g_linear_forward_sigmoid(acc, x+args[0], w, o+784+1, 784, 200);
 	global_sync(sync);
 	g_linear_forward_identity(acc, o+784+1, w+785*200, o+784+1+200+1, 200, 10);
 }
 
+// http://kourindrug.sakura.ne.jp/waifu2x.html
+// http://int.main.jp/txt/waifu2x.html#sec7
+// https://github.com/ueshita/waifu2x-converter-glsl/blob/master/shaders/convolve_fs.glsl
+static void convolutional_layer_forward3x3(global const float *ss, global const float *ww, global float *oo, uint ix, uint iy, uint is, uint os, uint ich, uint och)
+{
+	global const float3 *weightMatrix = (global const float3 *)ww;
+	uint sx = ix-2;	// out
+	uint sy = iy-2;
+
+	for (uint c=get_local_id(0); c<och; c+=get_local_size(0)) {	// out
+		global const float3 *s = ss;
+		global float3 *o = &oo[sx*sy*c];
+		for (uint cc=ich; cc>0; cc--) {	// in
+			float3 w0 = *weightMatrix++;
+			float3 w1 = *weightMatrix++;
+			float3 w2 = *weightMatrix++;
+			for (uint y=0; y<sy; y++) {
+				for (uint x=0; x<sx; x++) {
+					float3 s0 = *((global const float3 *)s);
+					float3 s1 = *((global const float3 *)(s+sx));
+					float3 s2 = *((global const float3 *)(s+sx*2));
+					s++;
+					*o++ = dot(s0, w0) + dot(s1, w1) + dot(s2, w2);
+				}
+				s += 2;
+			}
+		}
+		//o = oo;
+	}
+}
+// http://blog.yusugomori.com/post/129688163130/%E6%95%B0%E5%BC%8F%E3%81%A7%E6%9B%B8%E3%81%8D%E4%B8%8B%E3%81%99-convolutional-neural-networks-cnn
+static void convolutional_layer_backward3x3(global const float *prev_out, global const float *ww, global float *prev_delta, global const float *delta, uint ix, uint iy, uint is, uint os, uint ich, uint och)
+{
+	global const float3 *weightMatrix = (global const float3 *)ww;
+	uint sx = ix-2;	// out
+	uint sy = iy-2;
+
+	for (uint c=get_local_id(0); c<och; c+=get_local_size(0)) {	// out
+		global const float3 *d = (global const float3 *)delta;
+		global float3 *p = (global float3 *)&prev_delta[sx*sy*c];
+		for (uint cc=ich; cc>0; cc--) {	// in
+			float3 w0 = *weightMatrix++; w0 = w0.s210;
+			float3 w1 = *weightMatrix++; w1 = w1.s210;
+			float3 w2 = *weightMatrix++; w2 = w2.s210;
+			for (uint y=0; y<sy; y++) {
+				for (uint x=0; x<sx; x++) {
+					float3 s0 = *((global const float3 *)d);
+					float3 s1 = *((global const float3 *)(d+sx));
+					float3 s2 = *((global const float3 *)(d+sx*2));
+					d++;
+					//*p++ = dot(s2.s210, w0) + dot(s1.s210, w1) + dot(s0.s210, w2);
+					*p++ = dot(s0, w2) + dot(s1, w1) + dot(s2, w0);
+				}
+			}
+		}
+	}
+}
+static void convolutional_layer_update3x3(float eta, global const float *prev_out, global float *w, global const float *curr_delta, uint ix, uint iy, uint is, uint os, uint ich, uint och)
+{
+	global float3 *weightMatrix = (global float3 *)w;
+	uint sx = ix-2;	// out
+	uint sy = iy-2;
+
+	for (uint c=get_local_id(0); c<och; c+=get_local_size(0)) {	// out
+		global const float3 *d = (global const float3 *)curr_delta;
+		global float3 *p = (global float3 *)&prev_out[sx*sy*c];
+		for (uint cc=ich; cc>0; cc--) {	// in
+			float3 w0 = 0;
+			float3 w1 = 0;
+			float3 w2 = 0;
+			for (uint y=0; y<sy; y++) {
+				for (uint x=0; x<sx; x++) {
+					float3 s0 = (*d,*d,*d);
+					float3 s1 = (*(d+sx),*(d+sx),*(d+sx));
+					float3 s2 = (*(d+sx*2),*(d+sx*2),*(d+sx*2));
+					d++;
+					float3 x0 = *((global const float3 *)p);
+					float3 x1 = *((global const float3 *)(p+ix));
+					float3 x2 = *((global const float3 *)(p+ix*2));
+					w0 += dot(s0, x0);
+					w1 += dot(s1, x1);
+					w2 += dot(s2, x2);
+				}
+				p += 2;
+			}
+			*weightMatrix++ += eta * w0;
+			*weightMatrix++ += eta * w1;
+			*weightMatrix++ += eta * w2;
+		}
+	}
+}
 static void convolutional_layer_forward(global const float *x, global const float *w, global float *o, uint ix, uint iy, uint is, uint os, uint ich, uint och, uint ks)
 {
 /*	for (int i=get_local_id(0); i<os; i+=get_local_size(0)) {
@@ -269,17 +356,15 @@ static void convolutional_layer_forward(global const float *x, global const floa
 		o[i] = act(s);
 		w -= i;
 	}*/
-	uint m = (ks/2)*2;
+/*	uint m = (ks/2)*2;
 	uint sx = ix-m;	// out
 	uint sy = iy-m;
+
 	// c[out], k, c[in], h, w
-//muladd
-//	for (int i=get_local_id(0); i<sx; i+=get_local_size(0)) {
-//	}
-/*	numerus *z, *p, *r;
+	numerus *z, *p, *r;
 	numerus *pp = s;
 	memset(o, 0, sizeof(numerus)*u[CHANNEL]*sx*sy);
-	for (int c=u[CHANNEL]; c>0; c--) {	// out
+	for (int c=och; c>0; c--) {	// out
 		r = s;
 		for (int cc=ch; cc>0; cc--) {	// in
 			for (int wy=ks; wy>0; wy--) {
@@ -301,7 +386,7 @@ static void convolutional_layer_forward(global const float *x, global const floa
 		o = z;
 		s = pp;
 	}
-	for (int c=u[CHANNEL]*sx*sy; c>0; c--) {	// out
+	for (int c=och*sx*sy; c>0; c--) {	// out
 		o--;
 		*o = act(*o);
 	}*/
@@ -310,7 +395,7 @@ static void convolutional_layer_forward(global const float *x, global const floa
 
 static void loss_0_1(global const float *o, global float *d, uint a, uint n)
 {
-	for (int i=get_local_id(0); i<n; i+=get_local_size(0)) {
+	for (uint i=get_local_id(0); i<n; i+=get_local_size(0)) {
 		d[i] = a==i ? o[i]-1 : o[i];	// 1-of-K
 	}
 	barrier(CLK_LOCAL_MEM_FENCE);
@@ -321,14 +406,14 @@ kernel void _loss_0_1(global const float *x, global float *w, global float *o, g
 }
 static void g_loss_0_1(global const float *o, global float *d, uint a, uint n)
 {
-	for (int i=get_global_id(0); i<n; i+=get_global_size(0)) {
+	for (uint i=get_global_id(0); i<n; i+=get_global_size(0)) {
 		d[i] = a==i ? o[i]-1 : o[i];	// 1-of-K
 	}
 }
 
 static void loss_mse(global const float *o, global float *d, global const float *a, uint n)
 {
-	for (int i=get_local_id(0); i<n; i+=get_local_size(0)) {
+	for (uint i=get_local_id(0); i<n; i+=get_local_size(0)) {
 		d[i] = o[i] - a[i];
 	}
 	barrier(CLK_LOCAL_MEM_FENCE);

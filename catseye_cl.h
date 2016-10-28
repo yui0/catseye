@@ -255,9 +255,8 @@ void CatsEye_train(CatsEye *this, numerus *x, void *t, int N, int repeat, numeru
 				printf("%f(%x)/%f(%x)/%d ", a.f, a.i, b.f, b.i, i);
 			}*/
 		}
-float *w = this->w[0];
-printf("\nx:[%f,%f,%f],w:[%f,%f,%f]\n",x[2],x[3],x[4],w[0],w[20*1],w[20*2]);
-printf("dsize:%d\n",this->dsize);
+//		float *w = this->w[0];
+//		printf("\nx:[%f,%f,%f],w:[%f,%f,%f]\n",x[2],x[3],x[4],w[0],w[20*1],w[20*2]);
 		for (int i=0; i<this->dsize; i++) {
 			if (fabs(this->ddata[i] - this->ddata[this->dsize+i]) > 1e-7) printf("%f/%f/%d ", this->ddata[i], this->ddata[this->dsize+i], i);
 		}
