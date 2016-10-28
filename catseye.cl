@@ -282,6 +282,7 @@ static void convolutional_layer_forward3x3(global const float *ss, global const 
 		}
 		//o = oo;
 	}
+	barrier(CLK_LOCAL_MEM_FENCE);
 }
 // http://blog.yusugomori.com/post/129688163130/%E6%95%B0%E5%BC%8F%E3%81%A7%E6%9B%B8%E3%81%8D%E4%B8%8B%E3%81%99-convolutional-neural-networks-cnn
 static void convolutional_layer_backward3x3(global const float *prev_out, global const float *ww, global float *prev_delta, global const float *delta, uint ix, uint iy, uint is, uint os, uint ich, uint och)
@@ -309,6 +310,7 @@ static void convolutional_layer_backward3x3(global const float *prev_out, global
 			}
 		}
 	}
+	barrier(CLK_LOCAL_MEM_FENCE);
 }
 static void convolutional_layer_update3x3(float eta, global const float *prev_out, global float *w, global const float *curr_delta, uint ix, uint iy, uint is, uint os, uint ich, uint och)
 {
@@ -343,54 +345,6 @@ static void convolutional_layer_update3x3(float eta, global const float *prev_ou
 			*weightMatrix++ += eta * w2;
 		}
 	}
-}
-static void convolutional_layer_forward(global const float *x, global const float *w, global float *o, uint ix, uint iy, uint is, uint os, uint ich, uint och, uint ks)
-{
-/*	for (int i=get_local_id(0); i<os; i+=get_local_size(0)) {
-		w += i;
-		float s = 0;
-		for (int k=0; k<is; k++) {
-			s = mmad(w[k*os], x[k], s);
-		}
-		s += w[is*os];
-		o[i] = act(s);
-		w -= i;
-	}*/
-/*	uint m = (ks/2)*2;
-	uint sx = ix-m;	// out
-	uint sy = iy-m;
-
-	// c[out], k, c[in], h, w
-	numerus *z, *p, *r;
-	numerus *pp = s;
-	memset(o, 0, sizeof(numerus)*u[CHANNEL]*sx*sy);
-	for (int c=och; c>0; c--) {	// out
-		r = s;
-		for (int cc=ch; cc>0; cc--) {	// in
-			for (int wy=ks; wy>0; wy--) {
-				for (int wx=ks; wx>0; wx--) {
-					p = s++;	// in
-					z = o;		// out
-					for (int y=sy; y>0; y--) {
-						muladd(z, p, *w, sx);	// *z++ += (*p++) * (*w); p += m;
-						p += u[XSIZE];
-						z += sx;
-					}
-					w++;
-				}
-				s += step;
-			}
-			r += u[XSIZE] * u[YSIZE];
-			s = r;
-		}
-		o = z;
-		s = pp;
-	}
-	for (int c=och*sx*sy; c>0; c--) {	// out
-		o--;
-		*o = act(*o);
-	}*/
-	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
 static void loss_0_1(global const float *o, global float *d, uint a, uint n)
