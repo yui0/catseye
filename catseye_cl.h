@@ -70,6 +70,23 @@ void CatsEye_clSetup(CatsEye *this)
 		dsize = osize-this->u[SIZE]-1;
 		switch (u[TYPE]) {
 		case CATS_CONV:
+			/*if (i==0) {
+				snprintf(code[3], BUFSIZE, "\t\tlinear_forward_%s(p, w, o+oo+%d, %d, %d);\n",
+					acts[u[ACT]], in+1, in, out);
+				strcat(code[0], code[3]);
+				snprintf(code[3], BUFSIZE, "\t\tlinear_update(eta, p, w, d+dd, %d, %d);\n", in, out);
+				strcat(code[2], code[3]);
+			} else {
+				snprintf(code[3], BUFSIZE, "\t\tlinear_forward_%s(o+oo+%d, w+%d, o+oo+%d, %d, %d);\n",
+					acts[u[ACT]], osize, wsize, osize+in+1, in, out);
+				strcat(code[0], code[3]);
+				snprintf(code[3], BUFSIZE, "\t\tlinear_backward_%s(o+oo+%d, w+%d, d+dd+%d, d+dd+%d, %d, %d);\n", acts[u[ACT-LPLEN]], osize, wsize, dsize, dsize+in+1, in, out);
+				//strcat(code[1], code[3]);
+				strcat(code[3], code[1]);
+				strcpy(code[1], code[3]);
+				snprintf(code[3], BUFSIZE, "\t\tlinear_update(eta, o+oo+%d, w+%d, d+dd+%d, %d, %d);\n", osize, wsize, dsize+in+1, in, out);
+				strcat(code[2], code[3]);
+			}*/
 			break;
 		case CATS_MAXPOOL:
 			break;

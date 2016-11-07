@@ -173,7 +173,6 @@ static void linear_backward_##dact(global const float *o, global const float *w,
 			s = mmad(*p++, delta[k], s);\
 		}\
 		d[i] = s * d_##dact(o[i]);\
-/*if (i==19) printf("(%f,%f) ",s, d_##dact(o[i]));*/\
 	}\
 	barrier(CLK_LOCAL_MEM_FENCE);\
 }\
@@ -198,9 +197,7 @@ LINEAR_BACKWARD(LeakyReLU)
 
 static void linear_update(float eta, global const float *o, global float *w, global const float *d, uint is, uint os)
 {
-//printf("(%d) ",get_local_id(0));
 	for (int i=get_local_id(0); i<=is; i+=get_local_size(0)) {
-//printf("%d ",i);
 		global float *p = w + i*os;
 //		float a = -eta * o[i];
 		float a = -eta;
@@ -208,7 +205,6 @@ static void linear_update(float eta, global const float *o, global float *w, glo
 		for (int k=0; k<os; k++) {
 			//atom_add_float(p, a*d[k]);
 			*p = mmad(a, d[k], *p);
-//printf("(%f/%d) ",*p,k+i*os);
 			p++;
 		}
 	}
@@ -263,8 +259,8 @@ static void convolutional_layer_forward3x3(global const float *ss, global const 
 	uint sy = iy-2;
 
 	for (uint c=get_local_id(0); c<och; c+=get_local_size(0)) {	// out
-		global const float3 *s = ss;
-		global float3 *o = &oo[sx*sy*c];
+		global const float3 *s = (global const float3 *)ss;
+		global float3 *o = (global float3 *)&oo[sx*sy*c];
 		for (uint cc=ich; cc>0; cc--) {	// in
 			float3 w0 = *weightMatrix++;
 			float3 w1 = *weightMatrix++;
@@ -280,10 +276,21 @@ static void convolutional_layer_forward3x3(global const float *ss, global const 
 				s += 2;
 			}
 		}
-		//o = oo;
 	}
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
+#define CONVOLUTIONAL_ACT(act) \
+static void convolutional_layer_##act(global const float *s, global const float *w, global float *o, uint ix, uint iy, uint is, uint os, uint ich, uint och)\
+{\
+	uint sx = ix-2;\
+	uint sy = iy-2;\
+	uint size = sx*sy*och;\
+	for (uint n=get_local_id(0); n<size; n+=get_local_size(0)) {\
+		o[n] = act(o[n]);\
+	}\
+}
+CONVOLUTIONAL_ACT(relu)
+CONVOLUTIONAL_ACT(LeakyReLU)
 // http://blog.yusugomori.com/post/129688163130/%E6%95%B0%E5%BC%8F%E3%81%A7%E6%9B%B8%E3%81%8D%E4%B8%8B%E3%81%99-convolutional-neural-networks-cnn
 static void convolutional_layer_backward3x3(global const float *prev_out, global const float *ww, global float *prev_delta, global const float *delta, uint ix, uint iy, uint is, uint os, uint ich, uint och)
 {
@@ -307,6 +314,7 @@ static void convolutional_layer_backward3x3(global const float *prev_out, global
 					//*p++ = dot(s2.s210, w0) + dot(s1.s210, w1) + dot(s0.s210, w2);
 					*p++ = dot(s0, w2) + dot(s1, w1) + dot(s2, w0);
 				}
+				p += 2;
 			}
 		}
 	}
@@ -334,6 +342,7 @@ static void convolutional_layer_update3x3(float eta, global const float *prev_ou
 					float3 x0 = *((global const float3 *)p);
 					float3 x1 = *((global const float3 *)(p+ix));
 					float3 x2 = *((global const float3 *)(p+ix*2));
+					p++;
 					w0 += dot(s0, x0);
 					w1 += dot(s1, x1);
 					w2 += dot(s2, x2);
