@@ -70,23 +70,23 @@ void CatsEye_clSetup(CatsEye *this)
 		dsize = osize-this->u[SIZE]-1;
 		switch (u[TYPE]) {
 		case CATS_CONV:
-			/*if (i==0) {
-				snprintf(code[3], BUFSIZE, "\t\tlinear_forward_%s(p, w, o+oo+%d, %d, %d);\n",
-					acts[u[ACT]], in+1, in, out);
+			if (i==0) {
+				snprintf(code[3], BUFSIZE, "\t\tconvolutional_layer_forward3x3(p, w, o+oo+%d, %d, %d, %d, %d);\n\t\tconvolutional_layer_%s(o+oo+%d, %d, %d, %d);\n",
+					in+1, u[XSIZE], u[YSIZE], u[CHANNEL-LPLEN], u[CHANNEL], acts[u[ACT]], in+1, u[XSIZE], u[YSIZE], u[CHANNEL]);
 				strcat(code[0], code[3]);
-				snprintf(code[3], BUFSIZE, "\t\tlinear_update(eta, p, w, d+dd, %d, %d);\n", in, out);
+				snprintf(code[3], BUFSIZE, "\t\tconvolutional_layer_update3x3(eta, p, w, d+dd, %d, %d, %d, %d);\n", u[XSIZE], u[YSIZE], u[CHANNEL-LPLEN], u[CHANNEL]);
 				strcat(code[2], code[3]);
 			} else {
-				snprintf(code[3], BUFSIZE, "\t\tlinear_forward_%s(o+oo+%d, w+%d, o+oo+%d, %d, %d);\n",
-					acts[u[ACT]], osize, wsize, osize+in+1, in, out);
+				snprintf(code[3], BUFSIZE, "\t\tconvolutional_layer_forward3x3(o+oo+%d, w+%d, o+oo+%d, %d, %d, %d, %d);\n\t\tconvolutional_layer_%s(o+oo+%d, %d, %d, %d);\n",
+					osize, wsize, osize+in+1, u[XSIZE], u[YSIZE], u[CHANNEL-LPLEN], u[CHANNEL], acts[u[ACT]], in+1, u[XSIZE], u[YSIZE], u[CHANNEL]);
 				strcat(code[0], code[3]);
-				snprintf(code[3], BUFSIZE, "\t\tlinear_backward_%s(o+oo+%d, w+%d, d+dd+%d, d+dd+%d, %d, %d);\n", acts[u[ACT-LPLEN]], osize, wsize, dsize, dsize+in+1, in, out);
+				snprintf(code[3], BUFSIZE, "\t\tconvolutional_layer_backward3x3(w+%d, d+dd+%d, d+dd+%d, %d, %d, %d, %d);\n\t\tconvolutional_layer_d%s(o+oo+%d, %d, %d, %d);\n", wsize, dsize, dsize+in+1, u[XSIZE], u[YSIZE], u[CHANNEL-LPLEN], u[CHANNEL], acts[u[ACT-LPLEN]], osize, u[XSIZE], u[YSIZE], u[CHANNEL-LPLEN]);
 				//strcat(code[1], code[3]);
 				strcat(code[3], code[1]);
 				strcpy(code[1], code[3]);
-				snprintf(code[3], BUFSIZE, "\t\tlinear_update(eta, o+oo+%d, w+%d, d+dd+%d, %d, %d);\n", osize, wsize, dsize+in+1, in, out);
+				snprintf(code[3], BUFSIZE, "\t\tconvolutional_layer_update3x3(eta, o+oo+%d, w+%d, d+dd+%d, %d, %d, %d, %d);\n", osize, wsize, dsize+in+1, u[XSIZE], u[YSIZE], u[CHANNEL-LPLEN], u[CHANNEL]);
 				strcat(code[2], code[3]);
-			}*/
+			}
 			break;
 		case CATS_MAXPOOL:
 			break;

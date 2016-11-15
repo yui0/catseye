@@ -5,7 +5,8 @@
 //---------------------------------------------------------
 
 // gcc mnist_train.c -o mnist_cnn_train -lm -Ofast -fopenmp -lgomp
-// clang mnist_cnn_train.c -o mnist_cnn_train -lm -Ofast
+// clang mnist_cnn_train.c -o mnist_cnn_train -lm -Ofast -march=native -funroll-loops `pkg-config --libs --cflags OpenCL` -mf16c
+#define CATS_USE_FLOAT
 #include "../catseye.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "../stb_image_write.h"
@@ -130,7 +131,7 @@ int main()
 //	CatsEye__construct(&cat, size, hidden, label, 0);
 	CatsEye__construct(&cat, 0, 0, layers, u);
 
-	double *x = malloc(sizeof(double)*size*sample);	// 訓練データ
+	numerus *x = malloc(sizeof(numerus)*size*sample);	// 訓練データ
 	int t[sample];			// ラベルデータ
 	unsigned char *data = malloc(sample*size);
 

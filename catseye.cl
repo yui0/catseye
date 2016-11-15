@@ -252,7 +252,7 @@ kernel void forward(global const float *x, global float *w, global float *o, glo
 // http://kourindrug.sakura.ne.jp/waifu2x.html
 // http://int.main.jp/txt/waifu2x.html#sec7
 // https://github.com/ueshita/waifu2x-converter-glsl/blob/master/shaders/convolve_fs.glsl
-static void convolutional_layer_forward3x3(global const float *ss, global const float *ww, global float *oo, uint ix, uint iy, uint is, uint os, uint ich, uint och)
+static void convolutional_layer_forward3x3(global const float *ss, global const float *ww, global float *oo, uint ix, uint iy, uint ich, uint och)
 {
 	global const float3 *weightMatrix = (global const float3 *)ww;
 	uint sx = ix-2;	// out
@@ -280,7 +280,7 @@ static void convolutional_layer_forward3x3(global const float *ss, global const 
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
 #define CONVOLUTIONAL_ACT(act) \
-static void convolutional_layer_##act(global const float *s, global const float *w, global float *o, uint ix, uint iy, uint is, uint os, uint ich, uint och)\
+static void convolutional_layer_##act(global float *o, uint ix, uint iy, uint och)\
 {\
 	uint sx = ix-2;\
 	uint sy = iy-2;\
@@ -292,7 +292,7 @@ static void convolutional_layer_##act(global const float *s, global const float 
 CONVOLUTIONAL_ACT(relu)
 CONVOLUTIONAL_ACT(LeakyReLU)
 // http://blog.yusugomori.com/post/129688163130/%E6%95%B0%E5%BC%8F%E3%81%A7%E6%9B%B8%E3%81%8D%E4%B8%8B%E3%81%99-convolutional-neural-networks-cnn
-static void convolutional_layer_backward3x3(global const float *prev_out, global const float *ww, global float *prev_delta, global const float *delta, uint ix, uint iy, uint is, uint os, uint ich, uint och)
+static void convolutional_layer_backward3x3(/*global const float *prev_out,*/ global const float *ww, global float *prev_delta, global const float *delta, uint ix, uint iy, uint ich, uint och)
 {
 	global const float3 *weightMatrix = (global const float3 *)ww;
 	uint sx = ix-2;	// out
@@ -320,7 +320,17 @@ static void convolutional_layer_backward3x3(global const float *prev_out, global
 	}
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
-static void convolutional_layer_update3x3(float eta, global const float *prev_out, global float *w, global const float *curr_delta, uint ix, uint iy, uint is, uint os, uint ich, uint och)
+#define CONVOLUTIONAL_DACT(act) \
+static void convolutional_layer_d##act(global float *o, uint ix, uint iy, uint ich)\
+{\
+	uint size = ix*iy*ich;\
+	for (uint n=get_local_id(0); n<size; n+=get_local_size(0)) {\
+		o[n] = act(o[n]);\
+	}\
+}
+CONVOLUTIONAL_DACT(relu)
+CONVOLUTIONAL_DACT(LeakyReLU)
+static void convolutional_layer_update3x3(float eta, global const float *prev_out, global float *w, global const float *curr_delta, uint ix, uint iy, uint ich, uint och)
 {
 	global float3 *weightMatrix = (global float3 *)w;
 	uint sx = ix-2;	// out
