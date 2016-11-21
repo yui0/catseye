@@ -58,7 +58,7 @@ char *strrep(char *s, char *b, char *a)
 void CatsEye_clSetup(CatsEye *this)
 {
 	// generate dynamic code
-	#define BUFSIZE	2048
+	#define BUFSIZE	4096
 	char code[4][BUFSIZE];
 	int osize = 0, dsize, in, out;
 	int wsize = 0;
@@ -68,6 +68,7 @@ void CatsEye_clSetup(CatsEye *this)
 		in = u[SIZE-LPLEN];
 		out = u[SIZE];
 		dsize = osize-this->u[SIZE]-1;
+
 		switch (u[TYPE]) {
 		case CATS_CONV:
 			if (i==0) {
@@ -115,7 +116,8 @@ void CatsEye_clSetup(CatsEye *this)
 				strcat(code[2], code[3]);
 			}
 		}
-		osize += in+1;
+		//osize += in+1;
+		osize += u[SIZE]+1;
 		wsize += this->ws[i];
 	}
 	int a = this->layers-1;

@@ -186,17 +186,18 @@ numerus CatsEye_dact_sigmoid(numerus x)
 // https://github.com/nyanp/tiny-cnn/blob/master/tiny_cnn/activations/activation_function.h
 numerus CatsEye_act_tanh(numerus x)
 {
-//	return (tanh(x));
+	return (tanh(x));
 
-/*	numerus ep = exp(x[n]);
-	numerus em = exp(-x[n]);
+/*	numerus ep = exp(x);
+	numerus em = exp(-x);
 	return (ep-em) / (ep+em);*/
 
+	// error by paint.c
 	// fast approximation of tanh (improve 2-3% speed in LeNet-5)
-	numerus x1 = x;
+/*	numerus x1 = x;
 	numerus x2 = x1 * x1;
 	x1 *= 1.0 + x2 * (0.1653 + x2 * 0.0097);
-	return x1 / sqrt(1.0 + x2);
+	return x1 / sqrt(1.0 + x2);*/
 }
 numerus CatsEye_dact_tanh(numerus x)
 {
