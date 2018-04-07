@@ -1,7 +1,7 @@
 //---------------------------------------------------------
 //	Cat's eye
 //
-//		©2016 Yuichiro Nakada
+//		©2016-2018 Yuichiro Nakada
 //---------------------------------------------------------
 
 #include <stdio.h>
@@ -192,7 +192,7 @@ numerus CatsEye_act_tanh(numerus x)
 	numerus em = exp(-x);
 	return (ep-em) / (ep+em);*/
 
-	// error by paint.c
+	// error at paint.c
 	// fast approximation of tanh (improve 2-3% speed in LeNet-5)
 /*	numerus x1 = x;
 	numerus x2 = x1 * x1;
@@ -377,7 +377,7 @@ void CatsEye_linear_layer_update(numerus eta, numerus *o, numerus *w, numerus *d
 
 	// update the weights
 	for (int i=0; i<in; i++) {
-		numerus a = eta * (*o++);
+		numerus a = eta;// * (*o++);
 		for (int j=0; j<out; j++) {
 			*w++ -= a*d[j];
 		}
@@ -679,6 +679,42 @@ void CatsEye_maxpooling_layer_backward(numerus *o, numerus *w, numerus *d, numer
 		max++;
 	}
 }
+// RNN
+#define CATS_RNN_TRUNCATEDTIME	3
+/*void CatsEye_rnn_layer_forward(numerus *x, numerus *w, numerus *z, numerus *o, int u[])
+{
+	int in = u[SIZE-LPLEN]+1;	// +1 -> for bias
+	int out = u[SIZE];
+
+	CATS_ACT act = CatsEye_act[u[ACT]];
+	for (int i=out; i>0; i--) {
+		*z = act(vdotT(w++, x, in, out) +vdotT(U++, s, in, out));
+		*o++ = vdotT(V++, z, in, out);
+		z++;
+	}
+}
+void CatsEye_rnn_layer_backward(numerus *o, numerus *w, numerus *d, numerus *delta, int u[])
+{
+	int in = u[SIZE-LPLEN];
+	int out = u[SIZE];
+
+	CATS_ACT dact = CatsEye_dact[u[ACT-LPLEN]];
+	for (int i=0; i<=in; i++) {	// bias!!
+		*d++ = vdot(&w[i*out], delta, out) * dact(*o++);
+	}
+}
+void CatsEye_rnn_layer_update(numerus eta, numerus *o, numerus *w, numerus *d, int u[])
+{
+	int in = u[SIZE-LPLEN]+1;	// +1 -> for bias
+	int out = u[SIZE];
+
+	for (int i=0; i<in; i++) {
+		numerus a = eta * (*o++);
+		for (int j=0; j<out; j++) {
+			*w++ -= a*d[j];
+		}
+	}
+}*/
 void CatsEye_none_update(numerus eta, numerus *s, numerus *w, numerus *d, int u[])
 {
 }
@@ -1006,6 +1042,11 @@ void (*CatsEye_loss[])(CatsEye *this, int c, void *t, int n) = {
 	CatsEye_loss_0_1,
 	CatsEye_loss_mse,
 	CatsEye_loss_mse_with_sparse,
+};
+enum CATS_LOSS_TYPE {
+	CATS_LOSS_0_1,
+	CATS_LOSS_MSE,
+	CATS_LOSS_MSESPARSE,
 };
 #ifndef CATS_OPENCL
 /* train: multi layer perceptron

@@ -1,13 +1,12 @@
 //---------------------------------------------------------
 //	Cat's eye
 //
-//		©2016 Yuichiro Nakada
+//		©2016-2018 Yuichiro Nakada
 //---------------------------------------------------------
 
 // gcc sin.c -o sin -lm -fopenmp -lgomp
 // clang sin.c -o sin -lm
-// ps2pdf sin.ps 
-#define CATS_LOSS_MSE
+// ps2pdf sin.ps (ghostscript-core)
 #include "../catseye.h"
 #include "../pssub.h"
 
@@ -15,9 +14,15 @@ int main()
 {
 	int size = 1;		// 入力層
 	int sample = 360;
+	int u[] = {
+		CATS_LINEAR, CATS_ACT_IDENTITY, 1/*ch*/, size/*input*/, 0, 0, 0, 500,
+		CATS_LINEAR, CATS_ACT_SIGMOID,  1/*ch*/, 100/*hidden*/, 0, 0, 0, 0,
+		CATS_LINEAR, CATS_ACT_IDENTITY, 1/*ch*/,   1/*output*/, 0, 0, 0, CATS_LOSS_MSE,
+	};
+	int layers = sizeof(u)/sizeof(int)/LPLEN;
 
 	CatsEye cat;
-	CatsEye__construct(&cat, size, 100/*hidden*/, 1/*output*/, 0);
+	CatsEye__construct(&cat, 0, 0, layers, u);
 
 	// 訓練データ
 	double x[sample];
