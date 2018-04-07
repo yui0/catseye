@@ -1,7 +1,7 @@
 //---------------------------------------------------------
 //	Cat's eye
 //
-//		©2016 Yuichiro Nakada
+//		©2016-2018 Yuichiro Nakada
 //---------------------------------------------------------
 
 // gcc paint.c -o paint -lm -Ofast -fopenmp -lgomp -march=native -funroll-loops `pkg-config --libs --cflags OpenCL`
@@ -55,7 +55,7 @@ int main(int argc,char *argv[])
 		CATS_LINEAR, CATS_ACT_LEAKY_RELU, 1, neurons, 0, 0, 0, 0,
 		CATS_LINEAR, CATS_ACT_LEAKY_RELU, 1, neurons, 0, 0, 0, 0,
 		CATS_LINEAR, CATS_ACT_LEAKY_RELU, 1, neurons, 0, 0, 0, 0,
-		CATS_LINEAR, CATS_ACT_SIGMOID, 1, 3/*RGB*/, 0, 0, 0, 1,
+		CATS_LINEAR, CATS_ACT_SIGMOID, 1, 3/*RGB*/, 0, 0, 0, CATS_LOSS_MSE,
 	};
 #else
 	int u[] = {
@@ -68,7 +68,7 @@ int main(int argc,char *argv[])
 		CATS_LINEAR, CATS_ACT_TANH, 1, neurons, 0, 0, 0, 0,
 		CATS_LINEAR, CATS_ACT_TANH, 1, neurons, 0, 0, 0, 0,
 //		CATS_LINEAR, 0, 1, 3/*RGB*/, 0, 0, 0, 1,
-		CATS_LINEAR, CATS_ACT_SIGMOID, 1, 3/*RGB*/, 0, 0, 0, 1,
+		CATS_LINEAR, CATS_ACT_SIGMOID, 1, 3/*RGB*/, 0, 0, 0, CATS_LOSS_MSE,
 	};
 #endif
 	int layers = sizeof(u)/sizeof(int)/LPLEN;

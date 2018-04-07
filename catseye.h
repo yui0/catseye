@@ -94,7 +94,12 @@
 // https://github.com/AndreasMadsen/xorshift/blob/master/reference.c
 // http://ogawa-sankinkoutai.seesaa.net/category/5784373-1.html
 #define XOR128_MAX	18446744073709551615.0
-typedef unsigned long long	uint64_t;
+#if __WORDSIZE == 64
+typedef unsigned long int	uint64_t;
+#else
+__extension__
+typedef unsigned long long int	uint64_t;
+#endif
 // The state must be seeded so that it is not everywhere zero.
 uint64_t seed[2];
 void xor128_init(unsigned int s)
