@@ -382,13 +382,13 @@ void CatsEye_linear_layer_update(numerus eta, numerus *o, numerus *w, numerus *d
 
 	// update the weights
 	for (int i=0; i<in; i++) {
-		numerus a = eta;// * (*o++);
+		numerus a = eta * (*o++);
 		for (int j=0; j<out; j++) {
 			*w++ -= a*d[j];
 		}
 	}
 }
-void CatsEye_SVM_layer_update(numerus eta, numerus *o, numerus *w, numerus *d, int u[])
+/*void CatsEye_SVM_layer_update(numerus eta, numerus *o, numerus *w, numerus *d, int u[])
 {
 	int in = u[SIZE-LPLEN]+1;
 	int out = u[SIZE];
@@ -402,7 +402,7 @@ void CatsEye_SVM_layer_update(numerus eta, numerus *o, numerus *w, numerus *d, i
 		w += out;
 //		muladd(w++, d, a, out);	// *w -= a* (*dd++) + (*w)*1e-8; w++;
 	}
-}
+}*/
 
 // calculate forward propagation
 void CatsEye_convolutional_layer_forward(numerus *s, numerus *w, numerus *_z/*no use*/, numerus *o, int u[])
@@ -714,9 +714,10 @@ void CatsEye_rnn_layer_update(numerus eta, numerus *o, numerus *w, numerus *d, i
 	int out = u[SIZE];
 
 	for (int i=0; i<in; i++) {
-		numerus a = eta * (*o++);
 		for (int j=0; j<out; j++) {
-			*w++ -= a*d[j];
+			*U++ -= eta*dU[j];
+			*V++ -= eta*dV[j];
+			*w++ -= eta*d[j];
 		}
 	}
 }*/
@@ -735,8 +736,8 @@ void (*CatsEye_layer_backward[])(numerus *o, numerus *w, numerus *d, numerus *de
 	CatsEye_maxpooling_layer_backward,
 };
 void (*CatsEye_layer_update[])(numerus eta, numerus *s, numerus *w, numerus *d, int u[]) = {
-//	CatsEye_linear_layer_update,
-	CatsEye_SVM_layer_update,
+	CatsEye_linear_layer_update,
+//	CatsEye_SVM_layer_update,
 	CatsEye_convolutional_layer_update,
 	CatsEye_none_update,
 };
