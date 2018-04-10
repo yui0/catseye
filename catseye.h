@@ -278,18 +278,83 @@ enum CATS_LP {
 #ifdef CATS_SSE
 #include "catseye_simd.h"	// deprecated!
 #else
+/*real vdot(real *vec1, real *vec2, int n)
+{
+	real s0, s1;
+	s0 = s1 = 0;
+	#pragma omp simd reduction(+:s)
+	for (int i=n>>1; i>0; i--) {
+		s0 += (*vec1++) * (*vec2++);
+		s1 += (*vec1++) * (*vec2++);
+	}
+	return s0 + s1;
+}*/
+/*real vdot(real *vec1, real *vec2, int n)
+{
+	real s = 0;
+	#pragma omp simd reduction(+:s)
+	for (int i=n>>3; i>0; i--) {
+		s += (*vec1++) * (*vec2++);
+		s += (*vec1++) * (*vec2++);
+		s += (*vec1++) * (*vec2++);
+		s += (*vec1++) * (*vec2++);
+		s += (*vec1++) * (*vec2++);
+		s += (*vec1++) * (*vec2++);
+		s += (*vec1++) * (*vec2++);
+		s += (*vec1++) * (*vec2++);
+	}
+	goto JUMP_TABLE[n&7];
+JUMP_TABLE[7]: s += (*vec1++) * (*vec2++);
+JUMP_TABLE[6]: s += (*vec1++) * (*vec2++);
+JUMP_TABLE[5]: s += (*vec1++) * (*vec2++);
+JUMP_TABLE[4]: s += (*vec1++) * (*vec2++);
+JUMP_TABLE[3]: s += (*vec1++) * (*vec2++);
+JUMP_TABLE[2]: s += (*vec1++) * (*vec2++);
+JUMP_TABLE[1]: s += (*vec1++) * (*vec2++);
+JUMP_TABLE[0]:
+	return s;
+}*/
 real vdot(real *vec1, real *vec2, int n)
 {
-	real s = 0.0;
+	real s = 0;
 	#pragma omp simd reduction(+:s)
-	for (int i=n; i>0; i--) {
+	for (int i=n>>3; i>0; i--) {
 		s += (*vec1++) * (*vec2++);
+		s += (*vec1++) * (*vec2++);
+		s += (*vec1++) * (*vec2++);
+		s += (*vec1++) * (*vec2++);
+		s += (*vec1++) * (*vec2++);
+		s += (*vec1++) * (*vec2++);
+		s += (*vec1++) * (*vec2++);
+		s += (*vec1++) * (*vec2++);
+	}
+	int k = n&7;
+	if (k) {
+		s += (*vec1++) * (*vec2++); k--;
+		if (k) {
+			s += (*vec1++) * (*vec2++); k--;
+			if (k) {
+				s += (*vec1++) * (*vec2++); k--;
+				if (k) {
+					s += (*vec1++) * (*vec2++); k--;
+					if (k) {
+						s += (*vec1++) * (*vec2++); k--;
+						if (k) {
+							s += (*vec1++) * (*vec2++); k--;
+							if (k) {
+								s += (*vec1++) * (*vec2++);
+							}
+						}
+					}
+				}
+			}
+		}
 	}
 	return s;
 }
 real vdotT(real *mat1, real *vec1, int r, int c)
 {
-	real s = 0.0;
+	real s = 0;
 	#pragma omp simd reduction(+:s)
 	for (int i=r; i>0; i--) {
 		s += *mat1 * (*vec1++);
