@@ -278,43 +278,9 @@ enum CATS_LP {
 #ifdef CATS_SSE
 #include "catseye_simd.h"	// deprecated!
 #else
-/*real vdot(real *vec1, real *vec2, int n)
-{
-	real s0, s1;
-	s0 = s1 = 0;
-	#pragma omp simd reduction(+:s)
-	for (int i=n>>1; i>0; i--) {
-		s0 += (*vec1++) * (*vec2++);
-		s1 += (*vec1++) * (*vec2++);
-	}
-	return s0 + s1;
-}*/
-/*real vdot(real *vec1, real *vec2, int n)
-{
-	real s = 0;
-	#pragma omp simd reduction(+:s)
-	for (int i=n>>3; i>0; i--) {
-		s += (*vec1++) * (*vec2++);
-		s += (*vec1++) * (*vec2++);
-		s += (*vec1++) * (*vec2++);
-		s += (*vec1++) * (*vec2++);
-		s += (*vec1++) * (*vec2++);
-		s += (*vec1++) * (*vec2++);
-		s += (*vec1++) * (*vec2++);
-		s += (*vec1++) * (*vec2++);
-	}
-	goto JUMP_TABLE[n&7];
-JUMP_TABLE[7]: s += (*vec1++) * (*vec2++);
-JUMP_TABLE[6]: s += (*vec1++) * (*vec2++);
-JUMP_TABLE[5]: s += (*vec1++) * (*vec2++);
-JUMP_TABLE[4]: s += (*vec1++) * (*vec2++);
-JUMP_TABLE[3]: s += (*vec1++) * (*vec2++);
-JUMP_TABLE[2]: s += (*vec1++) * (*vec2++);
-JUMP_TABLE[1]: s += (*vec1++) * (*vec2++);
-JUMP_TABLE[0]:
-	return s;
-}*/
-real vdot(real *vec1, real *vec2, int n)
+// vec1 * vec2
+// http://www.applied-mathematics.net/miniSSEL1BLAS/miniSSEL1BLAS.html
+real dotvv(real *vec1, real *vec2, int n)
 {
 	real s = 0;
 	#pragma omp simd reduction(+:s)
@@ -352,7 +318,7 @@ real vdot(real *vec1, real *vec2, int n)
 	}
 	return s;
 }
-real vdotT(real *mat1, real *vec1, int r, int c)
+real dotmv(real *mat1, real *vec1, int r, int c)
 {
 	real s = 0;
 	#pragma omp simd reduction(+:s)
@@ -388,8 +354,8 @@ void CatsEye_linear_layer_forward(real *x, real *w, real *z/*no use*/, real *o, 
 
 	CATS_ACT act = CatsEye_act[u[ACT]];
 	for (int i=out; i>0; i--) {
-		*o++ = act(vdotT(w++, x, in, out));
-//		*o++ = act(vdot(w, x, in));
+		*o++ = act(dotmv(w++, x, in, out));
+//		*o++ = act(dotvv(w, x, in));
 //		w += in;
 	}
 }
@@ -402,9 +368,9 @@ void CatsEye_linear_layer_backward(real *o, real *w, real *d, real *delta, int u
 	// calculate the error
 	CATS_ACT dact = CatsEye_dact[u[ACT-LPLEN]];
 	for (int i=0; i<=in; i++) {	// bias!!
-//if (i==19) printf("[%f,%f] ",vdot(&w[i*out], delta, out), dact(*o++));
-		*d++ = vdot(&w[i*out], delta, out) * dact(*o++);
-//		*d++ = vdotT(w++, delta, out, in+1) * dact(*o++);
+//if (i==19) printf("[%f,%f] ",dotvv(&w[i*out], delta, out), dact(*o++));
+		*d++ = dotvv(&w[i*out], delta, out) * dact(*o++);
+//		*d++ = dotmv(w++, delta, out, in+1) * dact(*o++);
 	}
 }
 void CatsEye_linear_layer_update(real eta, real *o, real *w, real *d, int u[])
@@ -626,8 +592,8 @@ void CatsEye_convolutional_layer_update(real eta, real *prev_out, real *w, real 
 					d = curr_delta;	// out
 					real a = 0;
 					for (int y=sy; y>0; y--) {
-						a += vdot(d, p, sx);
-//						a -= vdot(d, p, sx) * eta;
+						a += dotvv(d, p, sx);
+//						a -= dotvv(d, p, sx) * eta;
 						p += u[XSIZE];
 						d += sx;
 /*						for (int x=sx; x>0; x--) {
@@ -721,9 +687,9 @@ void CatsEye_maxpooling_layer_backward(real *o, real *w, real *d, real *delta, i
 /*void CatsEye_rnn_layer_forward(CatsEye_layer *l)
 {
 	for (int t=0; t<=l->inputs; t++) {	// +1 for bias
-		l->u[t] = vdotT(l->U, l->x[t], l->hiddens, l->inputs) +vdotT(l->W, s[t-1], l->hiddens, l->inputs));
+		l->u[t] = dotmv(l->U, l->x[t], l->hiddens, l->inputs) +dotmv(l->W, s[t-1], l->hiddens, l->inputs));
 		s[t] = l->act(u[t]);
-		v[t] = vdotT(V, s[t], in, out);
+		v[t] = dotmv(V, s[t], in, out);
 		y[t] = v[t];
 	}
 }
@@ -735,7 +701,7 @@ void CatsEye_rnn_layer_backward(CatsEye_layer *l)
 	CATS_ACT dact = CatsEye_dact[u[ACT-LPLEN]];
 	for (int t=in; t>=0; t--) {	// bias!!
 		dV += delta * s;
-		*eh++ = vdot(&V[t*out], delta, out) * dact(*u++);
+		*eh++ = dotvv(&V[t*out], delta, out) * dact(*u++);
 
 		for (int j=0; j<CATS_RNN_TRUNCATEDTIME; j++) {
 			if (t-z < 0) break;
@@ -744,7 +710,7 @@ void CatsEye_rnn_layer_backward(CatsEye_layer *l)
 
 			if (t-z-1 >= 0) {
 				dW += eh[t-z] * s[t-z-1];
-				eh[t-z-1] = vdot(eh[t-z], W) * dact(u[t-z-1]);
+				eh[t-z-1] = dotvv(eh[t-z], W) * dact(u[t-z-1]);
 			}
 		}
 	}
@@ -810,8 +776,8 @@ typedef struct layer {
 //	real *delta;
 //	real *weights;
 	real *W, *dW;
-	real *U, *dU;	// RNN (input -> hidden)[hidden * input]
-	real *V, *dV;	// RNN (hidden -> output)[output * hidden]
+	real *U, *dU;		// RNN (input -> hidden)[hidden * input]
+	real *V, *dV;		// RNN (hidden -> output)[output * hidden]
 	real *s;		// RNN [input * hidden]
 	real *u;		// RNN [input * hidden]
 	real *v;		// RNN [input * output]
