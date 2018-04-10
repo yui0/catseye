@@ -1,7 +1,7 @@
 //---------------------------------------------------------
 //	Cat's eye
 //
-//		©2016 Yuichiro Nakada
+//		©2016-2018 Yuichiro Nakada
 //---------------------------------------------------------
 
 // gcc mnist_train.c -o mnist_train -lm -Ofast -march=native -funroll-loops -fopenmp -lgomp
@@ -22,7 +22,7 @@ int main()
 	// 訓練データの読み込み
 	printf("Training data:\n");
 	int *t;
-	numerus *x = CatsEye_loadMnist("train-images-idx3-ubyte", "train-labels-idx1-ubyte", sample, &t);
+	real *x = CatsEye_loadMnist("train-images-idx3-ubyte", "train-labels-idx1-ubyte", sample, &t);
 
 	// 多層パーセプトロンの訓練
 	printf("Starting training using (stochastic) gradient descent\n");

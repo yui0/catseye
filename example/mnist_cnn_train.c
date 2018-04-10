@@ -1,7 +1,7 @@
 //---------------------------------------------------------
 //	Cat's eye
 //
-//		©2016 Yuichiro Nakada
+//		©2016-2018 Yuichiro Nakada
 //---------------------------------------------------------
 
 // gcc mnist_train.c -o mnist_cnn_train -lm -Ofast -fopenmp -lgomp
@@ -131,7 +131,7 @@ int main()
 //	CatsEye__construct(&cat, size, hidden, label, 0);
 	CatsEye__construct(&cat, 0, 0, layers, u);
 
-	numerus *x = malloc(sizeof(numerus)*size*sample);	// 訓練データ
+	real *x = malloc(sizeof(real)*size*sample);	// 訓練データ
 	int t[sample];			// ラベルデータ
 	unsigned char *data = malloc(sample*size);
 

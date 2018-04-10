@@ -1,7 +1,7 @@
 //---------------------------------------------------------
 //	Cat's eye
 //
-//		©2016 Yuichiro Nakada
+//		©2016-2018 Yuichiro Nakada
 //---------------------------------------------------------
 
 // gcc dae-illust.c -o dae-illust -lm -Ofast -fopenmp -lgomp -march=native -funroll-loops `pkg-config --libs --cflags OpenCL`
@@ -17,7 +17,7 @@
 
 #include <dirent.h>
 //#include <sys/stat.h>
-numerus *load(char *path, int w, int h, int *c)
+real *load(char *path, int w, int h, int *c)
 {
 	int n = 0;
 	struct dirent *de;
@@ -29,8 +29,8 @@ numerus *load(char *path, int w, int h, int *c)
 	n -= 2;
 
 	*c = n;
-	numerus *x = malloc(sizeof(numerus)*3*w*h*n);
-	numerus *p = x;
+	real *x = malloc(sizeof(real)*3*w*h*n);
+	real *p = x;
 
 	rewinddir(d);
 	while ((de = readdir(d))) {
@@ -70,7 +70,7 @@ int main()
 	int sample;
 
 	// データの読み込み
-	numerus *x = load("./illust/", w, h, &sample);
+	real *x = load("./illust/", w, h, &sample);
 	sample = 100;
 
 #if 1
@@ -115,7 +115,7 @@ int main()
 	// 結果の表示
 	unsigned char *pixels = malloc(size*100);
 	for (int i=0; i<50; i++) {
-		numerus mse = 0;
+		real mse = 0;
 		CatsEye_forward(&cat, x+size*i);
 
 		CatsEye_visualize(cat.o[2], w*h, w, &pixels[(i/10)*w*h*10 + (i%10)*w], w*10);

@@ -1,7 +1,7 @@
 //---------------------------------------------------------
 //	Cat's eye
 //
-//		©2016 Yuichiro Nakada
+//		©2016-2018 Yuichiro Nakada
 //---------------------------------------------------------
 
 // gcc cifar10_train.c -o cifar10_train -lm -Ofast -march=native -funroll-loops -fopenmp -lgomp
@@ -87,7 +87,6 @@ int main()
 		//CATS_MAXPOOL, 0, 0, 0, 0, 0, 2, 2,			// POOL9
 		CATS_LINEAR, CATS_ACT_LEAKY_RELU, 1, 512, 0, 0, 0, 0,*/
 
-		// http://qiita.com/nzw0301/items/c7a11baba0f2e029695e
 		CATS_CONV, CATS_ACT_LEAKY_RELU, 10, 0, 0, 0, 3, 1,	// CONV1
 		CATS_CONV, CATS_ACT_LEAKY_RELU, 10, 0, 0, 0, 3, 1,	// CONV2
 		CATS_MAXPOOL, 0, 0, 0, 0, 0, 2, 2,			// POOL3 97.7%(1000), 98.5%(3000)
@@ -104,11 +103,11 @@ int main()
 	// 訓練データの読み込み
 	printf("Training data:\n");
 	int *t;
-	numerus *x = CatsEye_loadCifar("data_batch_1.bin", sample, &t);
+	real *x = CatsEye_loadCifar("data_batch_1.bin", sample, &t);
 
 	// 訓練
 	printf("Starting training using (stochastic) gradient descent\n");
-	CatsEye_train(&cat, x, t, sample, 100/*repeat*/, 0.01);
+	CatsEye_train(&cat, x, t, sample, 1000/*repeat*/, 0.01);
 	printf("Training complete\n");
 //	CatsEye_save(&cat, "cifar10.weights");
 	CatsEye_saveJson(&cat, "cifar10.json");
@@ -124,7 +123,7 @@ int main()
 		else {
 			if (c<100) {
 //				CatsEye_visualize(x+size*i, size, k*3, &pixels[(c/10)*size*10+(c%10)*k*3], k*3*10);
-				numerus *xx = &x[size*i];
+				real *xx = &x[size*i];
 				unsigned char *p = &pixels[(c/10)*size*10+(c%10)*k*3];
 				for (int y=0; y<k; y++) {
 					for (int x=0; x<k; x++) {

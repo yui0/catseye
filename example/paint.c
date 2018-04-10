@@ -27,14 +27,14 @@ int main(int argc,char *argv[])
 	if (!pixels) return 0;
 	int sample = width * height;
 
-	numerus x[sample*2];
+	real x[sample*2];
 	for (int i=0; i<height; i++) {
 		for (int j=0; j<width; j++) {
-			x[(i*width+j)*2  ] = i / (numerus)width;
-			x[(i*width+j)*2+1] = j / (numerus)height;
+			x[(i*width+j)*2  ] = i / (real)width;
+			x[(i*width+j)*2+1] = j / (real)height;
 		}
 	}
-	numerus t[sample*3];
+	real t[sample*3];
 	for (int i=0; i<height; i++) {
 		for (int j=0; j<width; j++) {
 			t[(i*width+j)*3  ] = pixels[(i*width+j)*3  ] / 255.0;
@@ -76,7 +76,7 @@ int main(int argc,char *argv[])
 	CatsEye cat;
 	CatsEye__construct(&cat, 0, 0, layers, u);
 
-	numerus scale = 2.0;
+	real scale = 2.0;
 	width *= scale;
 	height *= scale;
 
@@ -93,9 +93,9 @@ int main(int argc,char *argv[])
 		for (int i=0; i<height; i++) {
 			for (int j=0; j<width; j++) {
 //				CatsEye_forward(&cat, x+2*(i*width+j));
-				numerus xx[2];
-				xx[0] = i / (numerus)width;
-				xx[1] = j / (numerus)height;
+				real xx[2];
+				xx[0] = i / (real)width;
+				xx[1] = j / (real)height;
 				CatsEye_forward(&cat, xx);
 				pixels[(i*width+j)*3  ] = cat.o[layers-1][0] * 255.0;
 				pixels[(i*width+j)*3+1] = cat.o[layers-1][1] * 255.0;
