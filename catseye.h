@@ -279,45 +279,6 @@ enum CATS_LP {
 #include "catseye_simd.h"	// deprecated!
 #else
 // vec1 * vec2
-// http://www.applied-mathematics.net/miniSSEL1BLAS/miniSSEL1BLAS.html
-/*real dotvv(real *vec1, real *vec2, int n)
-{
-	real s = 0;
-	#pragma omp simd reduction(+:s)
-	for (int i=n>>3; i>0; i--) {
-		s += (*vec1++) * (*vec2++);
-		s += (*vec1++) * (*vec2++);
-		s += (*vec1++) * (*vec2++);
-		s += (*vec1++) * (*vec2++);
-		s += (*vec1++) * (*vec2++);
-		s += (*vec1++) * (*vec2++);
-		s += (*vec1++) * (*vec2++);
-		s += (*vec1++) * (*vec2++);
-	}
-	int k = n&7;
-	if (k) {
-		s += (*vec1++) * (*vec2++); k--;
-		if (k) {
-			s += (*vec1++) * (*vec2++); k--;
-			if (k) {
-				s += (*vec1++) * (*vec2++); k--;
-				if (k) {
-					s += (*vec1++) * (*vec2++); k--;
-					if (k) {
-						s += (*vec1++) * (*vec2++); k--;
-						if (k) {
-							s += (*vec1++) * (*vec2++); k--;
-							if (k) {
-								s += (*vec1++) * (*vec2++);
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-	return s;
-}*/
 real dotvv(real *vec1, real *vec2, int n)
 {
 	real s = 0;
@@ -338,6 +299,7 @@ real dotvv(real *vec1, real *vec2, int n)
 	}
 	return s;
 }
+// mat * vec
 void dotmv(real *s, real *mat, real *vec, int n, int m)
 {
 	for (int i=m; i>0; i--) {
@@ -346,6 +308,7 @@ void dotmv(real *s, real *mat, real *vec, int n, int m)
 	}
 	return;
 }
+// vec += mat * vec
 void dotamv(real *s, real *mat, real *vec, int n, int m)
 {
 	for (int i=m; i>0; i--) {
@@ -416,10 +379,13 @@ void CatsEye_linear_layer_update(real eta, real *o, real *w, real *d, int u[])
 
 	// update the weights
 	for (int i=0; i<in; i++) {
-		real a = eta * (*o++);
+		real a = -eta * (*o++);
+		muladd(w, d, a, out);
+		w += out;
+		/*real a = eta * (*o++);
 		for (int j=0; j<out; j++) {
 			*w++ -= a*d[j];
-		}
+		}*/
 	}
 }
 void CatsEye_SVM_layer_update(real eta, real *o, real *w, real *d, int u[])
@@ -718,56 +684,6 @@ void CatsEye_maxpooling_layer_backward(real *o, real *w, real *d, real *delta, i
 		max++;
 	}
 }
-// RNN
-#define CATS_RNN_TRUNCATEDTIME	3
-/*void CatsEye_rnn_layer_forward(CatsEye_layer *l)
-{
-	for (int t=0; t<=l->times; t++) {
-		dotmv(l->u[t*l->hiddens], l->U, l->x, l->inputs+1, l->hiddens);
-		dotamv(l->u[t*l->hiddens], l->W, l->s[t-1], l->inputs+1, l->hiddens));
-
-		for (int n=0; n<=l->inputs; n++) {	// +1 for bias
-			l->s[n] = l->act(u[n]);
-			l->v[n] = dotTv(V, s[n], in, out);
-			l->y[n] = l->v[n];
-		}
-	}
-}
-void CatsEye_rnn_layer_backward(CatsEye_layer *l)
-{
-	int in = u[SIZE-LPLEN];
-	int out = u[SIZE];
-
-	CATS_ACT dact = CatsEye_dact[u[ACT-LPLEN]];
-	for (int t=in; t>=0; t--) {	// bias!!
-		dV += delta * s;
-		*eh++ = dotvv(&V[t*out], delta, out) * dact(*u++);
-
-		for (int j=0; j<CATS_RNN_TRUNCATEDTIME; j++) {
-			if (t-z < 0) break;
-
-			dU += eh[t-z] * x[t-z];
-
-			if (t-z-1 >= 0) {
-				dW += eh[t-z] * s[t-z-1];
-				eh[t-z-1] = dotvv(eh[t-z], W) * dact(u[t-z-1]);
-			}
-		}
-	}
-}
-void CatsEye_rnn_layer_update(CatsEye_layer *l)
-{
-	int in = u[SIZE-LPLEN]+1;	// +1 -> for bias
-	int out = u[SIZE];
-
-	for (int i=0; i<in; i++) {
-		for (int j=0; j<out; j++) {
-			*U++ -= eta*dU[j];
-			*V++ -= eta*dV[j];
-			*w++ -= eta*d[j];
-		}
-	}
-}*/
 void CatsEye_none_update(real eta, real *s, real *w, real *d, int u[])
 {
 }
@@ -858,6 +774,53 @@ typedef struct {
 	int in;
 	real *o3;
 } CatsEye;
+
+// RNN
+#define CATS_RNN_TRUNCATEDTIME	3
+void CatsEye_rnn_layer_forward(CatsEye_layer *l)
+{
+	for (int t=0; t<=l->times; t++) {
+		dotmv(&l->u[t*l->hiddens], l->U, l->x, l->inputs+1, l->hiddens);
+		dotamv(&l->u[t*l->hiddens], l->W, &l->s[(t-1)*l->hiddens], l->inputs+1, l->hiddens);
+//		l->s[t*l->hiddens] = l->act(l->u[t*l->hiddens]);
+		dotmv(&l->v[t*l->outputs], l->V, &l->s[t*l->hiddens], l->hiddens, l->outputs);
+//		l->y[t*l->outputs] = l->v[t*l->outputs];
+	}
+}
+/*void CatsEye_rnn_layer_backward(CatsEye_layer *l)
+{
+	int in = u[SIZE-LPLEN];
+	int out = u[SIZE];
+
+	CATS_ACT dact = CatsEye_dact[u[ACT-LPLEN]];
+	for (int t=in; t>=0; t--) {	// bias!!
+		dV += delta * s;
+		*eh++ = dotvv(&V[t*out], delta, out) * dact(*u++);
+
+		for (int j=0; j<CATS_RNN_TRUNCATEDTIME; j++) {
+			if (t-z < 0) break;
+
+			dU += eh[t-z] * x[t-z];
+
+			if (t-z-1 >= 0) {
+				dW += eh[t-z] * s[t-z-1];
+				eh[t-z-1] = dotvv(eh[t-z], W) * dact(u[t-z-1]);
+			}
+		}
+	}
+}*/
+void CatsEye_rnn_layer_update(CatsEye_layer *l)
+{
+	for (int i=0; i<=l->inputs; i++) {	// +1 for bias
+//		real a = -eta * (*o++);
+//		muladd(w, d, a, out);
+//		w += out;
+
+		muladd(l->U, l->dU, -l->eta, l->outputs);
+		muladd(l->V, l->dV, -l->eta, l->outputs);
+		muladd(l->W, l->dW, -l->eta, l->outputs);
+	}
+}
 
 #define CATS_MBATCH	8
 //#define CATS_OPENCL
