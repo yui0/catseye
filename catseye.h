@@ -280,7 +280,7 @@ enum CATS_LP {
 #else
 // vec1 * vec2
 // http://www.applied-mathematics.net/miniSSEL1BLAS/miniSSEL1BLAS.html
-real dotvv(real *vec1, real *vec2, int n)
+/*real dotvv(real *vec1, real *vec2, int n)
 {
 	real s = 0;
 	#pragma omp simd reduction(+:s)
@@ -317,8 +317,44 @@ real dotvv(real *vec1, real *vec2, int n)
 		}
 	}
 	return s;
+}*/
+real dotvv(real *vec1, real *vec2, int n)
+{
+	real s = 0;
+	int i = n;
+	#pragma omp simd reduction(+:s)
+	for (; i>=8; i-=8) {
+		s += (*vec1++) * (*vec2++);
+		s += (*vec1++) * (*vec2++);
+		s += (*vec1++) * (*vec2++);
+		s += (*vec1++) * (*vec2++);
+		s += (*vec1++) * (*vec2++);
+		s += (*vec1++) * (*vec2++);
+		s += (*vec1++) * (*vec2++);
+		s += (*vec1++) * (*vec2++);
+	}
+	for (; i>=0; i--) {
+		s += (*vec1++) * (*vec2++);
+	}
+	return s;
 }
-real dotmv(real *mat1, real *vec1, int r, int c)
+void dotmv(real *s, real *mat, real *vec, int n, int m)
+{
+	for (int i=m; i>0; i--) {
+		*s++ = dotvv(mat, vec, n);
+		mat += n;
+	}
+	return;
+}
+void dotamv(real *s, real *mat, real *vec, int n, int m)
+{
+	for (int i=m; i>0; i--) {
+		*s++ += dotvv(mat, vec, n);
+		mat += n;
+	}
+	return;
+}
+real dotTv(real *mat1, real *vec1, int r, int c)
 {
 	real s = 0;
 	#pragma omp simd reduction(+:s)
@@ -354,7 +390,7 @@ void CatsEye_linear_layer_forward(real *x, real *w, real *z/*no use*/, real *o, 
 
 	CATS_ACT act = CatsEye_act[u[ACT]];
 	for (int i=out; i>0; i--) {
-		*o++ = act(dotmv(w++, x, in, out));
+		*o++ = act(dotTv(w++, x, in, out));
 //		*o++ = act(dotvv(w, x, in));
 //		w += in;
 	}
@@ -370,7 +406,7 @@ void CatsEye_linear_layer_backward(real *o, real *w, real *d, real *delta, int u
 	for (int i=0; i<=in; i++) {	// bias!!
 //if (i==19) printf("[%f,%f] ",dotvv(&w[i*out], delta, out), dact(*o++));
 		*d++ = dotvv(&w[i*out], delta, out) * dact(*o++);
-//		*d++ = dotmv(w++, delta, out, in+1) * dact(*o++);
+//		*d++ = dotTv(w++, delta, out, in+1) * dact(*o++);
 	}
 }
 void CatsEye_linear_layer_update(real eta, real *o, real *w, real *d, int u[])
@@ -686,11 +722,15 @@ void CatsEye_maxpooling_layer_backward(real *o, real *w, real *d, real *delta, i
 #define CATS_RNN_TRUNCATEDTIME	3
 /*void CatsEye_rnn_layer_forward(CatsEye_layer *l)
 {
-	for (int t=0; t<=l->inputs; t++) {	// +1 for bias
-		l->u[t] = dotmv(l->U, l->x[t], l->hiddens, l->inputs) +dotmv(l->W, s[t-1], l->hiddens, l->inputs));
-		s[t] = l->act(u[t]);
-		v[t] = dotmv(V, s[t], in, out);
-		y[t] = v[t];
+	for (int t=0; t<=l->times; t++) {
+		dotmv(l->u[t*l->hiddens], l->U, l->x, l->inputs+1, l->hiddens);
+		dotamv(l->u[t*l->hiddens], l->W, l->s[t-1], l->inputs+1, l->hiddens));
+
+		for (int n=0; n<=l->inputs; n++) {	// +1 for bias
+			l->s[n] = l->act(u[n]);
+			l->v[n] = dotTv(V, s[n], in, out);
+			l->y[n] = l->v[n];
+		}
 	}
 }
 void CatsEye_rnn_layer_backward(CatsEye_layer *l)
@@ -766,7 +806,9 @@ typedef struct layer {
 	int stride;
 	int h, w, c;
 
+	int times;		// RNN
 	int truncatedTime;	// RNN
+
 	int inputs;
 	int hiddens;		// RNN
 	int outputs;
@@ -776,11 +818,11 @@ typedef struct layer {
 //	real *delta;
 //	real *weights;
 	real *W, *dW;
-	real *U, *dU;		// RNN (input -> hidden)[hidden * input]
-	real *V, *dV;		// RNN (hidden -> output)[output * hidden]
-	real *s;		// RNN [input * hidden]
-	real *u;		// RNN [input * hidden]
-	real *v;		// RNN [input * output]
+	real *U, *dU;		// RNN [hidden * input](input -> hidden)
+	real *V, *dV;		// RNN [output * hidden](hidden -> output)
+	real *s;		// RNN [time * hidden]
+	real *u;		// RNN [time * hidden]
+	real *v;		// RNN [time * output]
 
 	// auto config
 	real (*act)(real x);
