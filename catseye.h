@@ -319,6 +319,15 @@ void dotamv(real *s, real *mat, real *vec, int n, int m)
 	}
 	return;
 }
+void muldot(real *s, real *mat, real *vec, int n, int m)
+{
+	#pragma omp simd reduction(+:s)
+	for (int i=m; i>0; i--) {
+		*s++ *= dotvv(mat, vec, n);
+		mat += n;
+	}
+	return;
+}
 real dotTv(real *mat1, real *vec1, int r, int c)
 {
 	real s = 0;
@@ -336,7 +345,7 @@ void muladd(real *vec1, real *vec2, real a, int n)
 		*vec1++ += a * (*vec2++);
 	}
 }
-void outer(real *s, real *vec1, real *vec2, int n, int m)
+void outeradd(real *s, real *vec1, real *vec2, int n, int m)
 {
 	#pragma omp for simd
 	for (int i=m; i>0; i--) {
@@ -739,11 +748,12 @@ typedef struct layer {
 	real eta;
 	real *x;		// input
 	real *y;		// output
-//	real *delta;
+	real *delta;
 //	real *weights;
 	real *W, *dW;
 	real *U, *dU;		// RNN [hidden * input](input -> hidden)
 	real *V, *dV;		// RNN [output * hidden](hidden -> output)
+	real *eh;		// RNN [time * hidden]
 	real *s;		// RNN [time * hidden]
 	real *u;		// RNN [time * hidden]
 	real *v;		// RNN [time * output]
@@ -809,41 +819,48 @@ void CatsEye_rnn_layer_forward(CatsEye_layer *l)
 		v += l->outputs;
 	}
 }
-/*void CatsEye_rnn_layer_backward(CatsEye_layer *l)
+void CatsEye_rnn_layer_backward(CatsEye_layer *l)
 {
 	real *d = l->delta + (l->times-1)*l->outputs;
 	real *s = l->s + (l->times-1)*l->hiddens;
 	real *u = l->u + (l->times-1)*l->hiddens;
+	real *eh = l->u + (l->times-1)*l->hiddens;
 
 	for (int t=l->times; t>=0; t--) {
 		//muladd(dV, s, *d, l->hiddens);		// dV[] += d * s[]
-		outer(l->dV, d, s, l->hiddens, l->outputs);
-//		dact(u, l->hiddens);
-		dotmv(eh, d, l->V, l->outputs, l->hiddens);
+		outeradd(l->dV, d, s, l->hiddens, l->outputs);
+		l->dact(eh, u, l->hiddens);
+		//dotmv(eh, d, l->V, l->outputs, l->hiddens);
+		muldot(eh, d, l->V, l->outputs, l->hiddens);
 
+		s -= l->hiddens;
+		real *_s = s;
+		u -= l->hiddens;
+		real *_u = u;
+		real *_eh = eh;
 		for (int z=0; z<l->truncatedTime; z++) {
 			if (t-z < 0) break;
-
-			outer(l->dU, eh[t-z], x[t-z], l->outputs, l->hiddens);
+			outeradd(l->dU, _eh, l->x+(t-z)*l->inputs, l->inputs, l->hiddens);	// eh[t-z]
 
 			if (t-z-1 >= 0) {
-				dW += eh[t-z] * s[t-z-1];
-				eh[t-z-1] = dotvv(eh[t-z], W) * dact(u[t-z-1]);
+				outeradd(l->dW, _eh, _s, l->outputs, l->hiddens);		// s[t-z-1]
+				l->dact(_eh-l->hiddens, _u, l->hiddens);			// u[t-z-1]
+				muldot(_eh-l->hiddens, _eh, l->W, l->outputs, l->hiddens);
 			}
+			_s -= l->hiddens;
+			_u -= l->hiddens;
+			_eh -= l->hiddens;
 		}
+
+		d -= l->outputs;
+		eh -= l->hiddens;
 	}
-}*/
+}
 void CatsEye_rnn_layer_update(CatsEye_layer *l)
 {
-	for (int i=0; i<=l->inputs; i++) {	// +1 for bias
-//		real a = -eta * (*o++);
-//		muladd(w, d, a, out);
-//		w += out;
-
-		muladd(l->U, l->dU, -l->eta, l->outputs);
-		muladd(l->V, l->dV, -l->eta, l->outputs);
-		muladd(l->W, l->dW, -l->eta, l->outputs);
-	}
+	muladd(l->U, l->dU, -l->eta, l->hiddens * l->inputs);
+	muladd(l->V, l->dV, -l->eta, l->outputs * l->hiddens);
+	muladd(l->W, l->dW, -l->eta, l->outputs * l->hiddens);
 }
 
 #define CATS_MBATCH	8
