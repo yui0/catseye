@@ -302,6 +302,7 @@ real dotvv(real *vec1, real *vec2, int n)
 // mat * vec
 void dotmv(real *s, real *mat, real *vec, int n, int m)
 {
+	#pragma omp simd reduction(+:s)
 	for (int i=m; i>0; i--) {
 		*s++ = dotvv(mat, vec, n);
 		mat += n;
@@ -311,6 +312,7 @@ void dotmv(real *s, real *mat, real *vec, int n, int m)
 // vec += mat * vec
 void dotamv(real *s, real *mat, real *vec, int n, int m)
 {
+	#pragma omp simd reduction(+:s)
 	for (int i=m; i>0; i--) {
 		*s++ += dotvv(mat, vec, n);
 		mat += n;
@@ -332,6 +334,13 @@ void muladd(real *vec1, real *vec2, real a, int n)
 	#pragma omp for simd
 	for (int i=n; i>0; i--) {
 		*vec1++ += a * (*vec2++);
+	}
+}
+void outer(real *s, real *vec1, real *vec2, int n, int m)
+{
+	#pragma omp for simd
+	for (int i=m; i>0; i--) {
+		muladd(s, vec2, *vec1++, n);
 	}
 }
 void muladdx(real *vec1, real *vec2, real a, int n)
@@ -367,7 +376,6 @@ void CatsEye_linear_layer_backward(real *o, real *w, real *d, real *delta, int u
 	// calculate the error
 	CATS_ACT dact = CatsEye_dact[u[ACT-LPLEN]];
 	for (int i=0; i<=in; i++) {	// bias!!
-//if (i==19) printf("[%f,%f] ",dotvv(&w[i*out], delta, out), dact(*o++));
 		*d++ = dotvv(&w[i*out], delta, out) * dact(*o++);
 //		*d++ = dotTv(w++, delta, out, in+1) * dact(*o++);
 	}
@@ -741,8 +749,8 @@ typedef struct layer {
 	real *v;		// RNN [time * output]
 
 	// auto config
-	real (*act)(real x);
-	real (*dact)(real x);
+	void (*act)(real *z, real *x, int n);
+	void (*dact)(real *z, real *x, int n);
 	void (*forward)(struct layer*);
 	void (*backward)(struct layer*);
 	void (*update)(struct layer*);
@@ -776,31 +784,47 @@ typedef struct {
 } CatsEye;
 
 // RNN
-#define CATS_RNN_TRUNCATEDTIME	3
 void CatsEye_rnn_layer_forward(CatsEye_layer *l)
 {
-	for (int t=0; t<=l->times; t++) {
-		dotmv(&l->u[t*l->hiddens], l->U, l->x, l->inputs+1, l->hiddens);
-		dotamv(&l->u[t*l->hiddens], l->W, &l->s[(t-1)*l->hiddens], l->inputs+1, l->hiddens);
-//		l->s[t*l->hiddens] = l->act(l->u[t*l->hiddens]);
-		dotmv(&l->v[t*l->outputs], l->V, &l->s[t*l->hiddens], l->hiddens, l->outputs);
+	real *u = l->u;
+	real *s = l->s;
+	real *v = l->v;
+
+	// t=0
+	dotmv(u, l->U, l->x, l->inputs+1, l->hiddens);
+	l->act(s, u, l->hiddens);
+	dotmv(v, l->V, s, l->hiddens, l->outputs);
+//	l->y[t*l->outputs] = l->v[t*l->outputs];
+	u += l->hiddens;
+	v += l->outputs;
+
+	for (int t=1; t<=l->times; t++) {
+		dotmv(u, l->U, l->x, l->inputs+1, l->hiddens);
+		dotamv(u, l->W, s, l->inputs+1, l->hiddens);	// s[t-1]
+		s += l->hiddens;
+		l->act(s, u, l->hiddens);
+		dotmv(v, l->V, s, l->hiddens, l->outputs);
 //		l->y[t*l->outputs] = l->v[t*l->outputs];
+		u += l->hiddens;
+		v += l->outputs;
 	}
 }
 /*void CatsEye_rnn_layer_backward(CatsEye_layer *l)
 {
-	int in = u[SIZE-LPLEN];
-	int out = u[SIZE];
+	real *d = l->delta + (l->times-1)*l->outputs;
+	real *s = l->s + (l->times-1)*l->hiddens;
+	real *u = l->u + (l->times-1)*l->hiddens;
 
-	CATS_ACT dact = CatsEye_dact[u[ACT-LPLEN]];
-	for (int t=in; t>=0; t--) {	// bias!!
-		dV += delta * s;
-		*eh++ = dotvv(&V[t*out], delta, out) * dact(*u++);
+	for (int t=l->times; t>=0; t--) {
+		//muladd(dV, s, *d, l->hiddens);		// dV[] += d * s[]
+		outer(l->dV, d, s, l->hiddens, l->outputs);
+//		dact(u, l->hiddens);
+		dotmv(eh, d, l->V, l->outputs, l->hiddens);
 
-		for (int j=0; j<CATS_RNN_TRUNCATEDTIME; j++) {
+		for (int z=0; z<l->truncatedTime; z++) {
 			if (t-z < 0) break;
 
-			dU += eh[t-z] * x[t-z];
+			outer(l->dU, eh[t-z], x[t-z], l->outputs, l->hiddens);
 
 			if (t-z-1 >= 0) {
 				dW += eh[t-z] * s[t-z-1];
