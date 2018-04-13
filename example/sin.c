@@ -35,14 +35,14 @@ int main()
 	printf("Starting training using (stochastic) gradient descent\n");
 	CatsEye_train(&cat, x, t, sample, 2000/*repeat*/, 0.01);
 	printf("Training complete\n");
-	CatsEye_save(&cat, "sin.weights");
+//	CatsEye_save(&cat, "sin.weights");
 
 	// 結果の表示
 	FILE *fp = fopen("sin.csv", "w");
 	if (fp==NULL) return -1;
 	for (int i=0; i<sample; i++) {
 		CatsEye_forward(&cat, x+size*i);
-		fprintf(fp, "%d, %lf\n", i, cat.o3[0]);
+		fprintf(fp, "%d, %lf\n", i, cat.o[2][0]);
 	}
 	fclose(fp);
 
@@ -73,10 +73,10 @@ int main()
 	//PS_setgray(0.0);
 	PS_setrgb(1.0, 0.0, 0.0);
 	CatsEye_forward(&cat, x);
-	PS_plot(x[0], cat.o3[0], 3);
+	PS_plot(x[0], cat.o[2][0], 3);
 	for (int i=1; i<sample; i++) {
 		CatsEye_forward(&cat, x+size*i);
-		PS_plot(x[i], cat.o3[0], 2);
+		PS_plot(x[i], cat.o[2][0], 2);
 	}
 	PS_stroke();
 	PS_fin();
