@@ -864,26 +864,21 @@ void CatsEye_rnn_layer_update(CatsEye_layer *l)
 }
 
 enum CATS_LAYER {
-	CATS_LAYER_TYPE_,	// MLP, CONV, MAXPOOL
-	CATS_LAYER_ACT,		// activation function type
-	CATS_LAYER_SIZE,	// input size (ch * x * y)
+	CSIZE,		// input size
+	CTYPE,		// MLP, CONV, MAXPOOL
+	CACT,		// activation function type
 //	CHANNEL,
-//	XSIZE,			// width
-//	YSIZE,			// height
-//	KSIZE,			// kernel size
+//	XSIZE,		// width
+//	YSIZE,		// height
+//	KSIZE,		// kernel size
 //	STRIDE,
-	CATS_LAYER_PARAM,
-	CATS_LAYER_LEN		// length of layer params
+	CPARAM,
+	CLEN		// length of layer params
 };
-void CatsEye_construct(CatsEye *this, int *param)
+#define CatsEye_construct(t, p)	CatsEye__construct_(t, p, sizeof(p)/sizeof(int)/CLEN)
+void CatsEye__construct_(CatsEye *this, int *param, int layers)
 {
-	// count layers
-	this->layers = 0;
-	int *u = param;
-	while (u[CATS_LAYER_TYPE_] != CATS_LOSS) {
-		this->layers++;
-		u += CATS_LAYER_LEN;
-	}
+	this->layers = layers;
 	this->layer = calloc(this->layers, sizeof(CatsEye_layer));
 
 	// calculate parameters
@@ -894,15 +889,14 @@ void CatsEye_construct(CatsEye *this, int *param)
 	this->dsize = 0;
 	this->w = malloc(sizeof(real*)*(this->layers-1));	// weights
 	this->ws = malloc(sizeof(int)*(this->layers-1));
-	int n[this->layers-1], m[this->layers-1];
+	int n[this->layers], m[this->layers];
 	this->wsize = 0;
 	for (int i=0; i<this->layers; i++) {
-		int *u = &param[CATS_LAYER_LEN*i];
+		int *u = param+CLEN*i;
 
-		this->layer[i].inputs = u[SIZE];
-		//this->layer[i].hiddens = 0;
+		this->layer[i].inputs = u[CSIZE];
 		this->layer[i].outputs = 1;
-		if (i<this->layers-1) this->layer[i].outputs = u[SIZE+CATS_LAYER_LEN];
+		if (i<this->layers-1) this->layer[i].outputs = u[CSIZE+CLEN];
 
 		osize[i] = this->osize;
 		this->osize += this->layer[i].outputs+1;	// bias
@@ -910,8 +904,8 @@ void CatsEye_construct(CatsEye *this, int *param)
 		dsize[i] = this->dsize;
 		this->dsize += this->layer[i].outputs+1;	// bias
 
-/*		switch (u[TYPE]) {
-		case CATS_CONV:
+		switch (u[CTYPE]) {
+/*		case CATS_CONV:
 			n[i] = u[KSIZE] * u[KSIZE];		// kernel size
 			m[i] = u[CHANNEL] * u[CHANNEL-LPLEN];	// channel
 			printf("L%02d: CONV%d-%d (%d[ksize]x%d[ch])\n", i+1, u[KSIZE], u[CHANNEL], n[i], m[i]);
@@ -920,12 +914,12 @@ void CatsEye_construct(CatsEye *this, int *param)
 			n[i] = SIZE(i);
 			m[i] = 1;
 			printf("L%02d: POOL%d [%d]\n", i+1, u[KSIZE], n[i]);
-			break;
-		default:*/
-			n[i] = SIZE(i);
-			m[i] = SIZE(i+1);
+			break;*/
+		default:
+			n[i] = this->layer[i].inputs;
+			m[i] = this->layer[i].outputs;
 			printf("L%02d: LINEAR %d %d\n", i+1, n[i], m[i]);
-//		}
+		}
 		wsize[i] = this->wsize;
 		this->ws[i] = (n[i]+1)*m[i];
 		this->wsize += this->ws[i];
@@ -935,15 +929,16 @@ void CatsEye_construct(CatsEye *this, int *param)
 	this->dsize--;
 	this->ddata = calloc(this->dsize, sizeof(real));
 	this->wdata = calloc(this->wsize, sizeof(real));
-	for (int i=0; i<this->layers-1; i++) {
+	for (int i=0; i<this->layers; i++) {
 		this->o[i] = this->odata + osize[i];
-		this->o[i][this->layer[i].outputs] = 1;	// bias
-
 		this->d[i] = this->ddata + dsize[i];
+		this->w[i] = this->wdata + wsize[i];
+
+		if (i==this->layers-1) break;
+		this->o[i][this->layer[i].outputs] = 1;	// bias
 
 		// initialize weights (http://aidiary.hatenablog.com/entry/20150618/1434628272)
 		// range depends on the research of Y. Bengio et al. (2010)
-		this->w[i] = this->wdata + wsize[i];
 		xor128_init(time(0));
 		real range = sqrt(6)/sqrt(n[i]+m[i]+2);
 		for (int j=0; j<this->ws[i]; j++) {
@@ -973,7 +968,7 @@ void CatsEye_construct(CatsEye *this, int *param)
 
 	for (int i=0; i<this->layers; i++) {
 		CatsEye_layer *l = &this->layer[i];
-		printf("L%02d in:[%d/%ld-%ld-%ld] out:[%d]\n", i, l->inputs, this->o[i]-this->odata, this->d[i]-this->ddata, this->w[i]-this->wdata, l->outputs);
+		printf("L%02d in:%d out:%d (o:%ld-d:%ld-w:%ld)\n", i+1, l->inputs, l->outputs, this->o[i]-this->odata, this->d[i]-this->ddata, this->w[i]-this->wdata);
 //		printf("L%02d in:[%dx%dx%d] out:[%d]\n", i, u[CHANNEL-LPLEN], u[XSIZE], u[YSIZE], u[SIZE]);
 	}
 #ifdef CATS_OPENCL
