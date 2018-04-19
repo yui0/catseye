@@ -259,6 +259,15 @@ typedef enum {
 } CATS_ACTIVATION;
 typedef real (*CATS_ACT)(real x);
 
+void CatsEye_act_array(CATS_ACT act, real *z, real *x, int n)
+{
+	for (; n>0; n--) *z++ = act(*x++);
+}
+void CatsEye_dact_array(CATS_ACT dact, real *z, real *x, int n)
+{
+	for (; n>0; n--) *z++ = dact(*x++);
+}
+
 enum CATS_LP {
 	TYPE,		// MLP, CONV, MAXPOOL
 	ACT,		// activation function type
@@ -722,7 +731,7 @@ void (*CatsEye_layer_update[])(real eta, real *s, real *w, real *d, int u[]) = {
 	CatsEye_none_update,
 };
 typedef enum {
-	CATS_LINEAR, CATS_CONV, CATS_MAXPOOL, CATS_LOSS
+	CATS_LINEAR, CATS_CONV, CATS_MAXPOOL, CATS_RECURRENT, CATS_LOSS
 } CATS_LAYER_TYPE;
 
 typedef enum {
@@ -759,8 +768,10 @@ typedef struct layer {
 	real *v;		// RNN [time * output]
 
 	// auto config
-	void (*act)(real *z, real *x, int n);
-	void (*dact)(real *z, real *x, int n);
+//	void (*act)(real *z, real *x, int n);
+//	void (*dact)(real *z, real *x, int n);
+	CATS_ACT act;
+	CATS_ACT dact;
 	void (*forward)(struct layer*);
 	void (*backward)(struct layer*);
 	void (*update)(struct layer*);
@@ -793,6 +804,40 @@ typedef struct {
 	real *o3;
 } CatsEye;
 
+/*void _CatsEye_linear_layer_forward(CatsEye_layer *l)
+{
+	int in = u[SIZE-LPLEN]+1;	// +1 -> for bias
+	int out = u[SIZE];
+
+	CATS_ACT act = CatsEye_act[u[ACT]];
+	real *o = l->
+	for (int i=l->outputs; i>0; i--) {
+		*o++ = act(dotTv(w++, x, l->inputs+1, l->outputs));
+	}
+}
+void _CatsEye_linear_layer_backward(CatsEye_layer *l)
+{
+	int in = u[SIZE-LPLEN];
+	int out = u[SIZE];
+
+	// calculate the error
+	CATS_ACT dact = CatsEye_dact[u[ACT-LPLEN]];
+	for (int i=0; i<=in; i++) {	// bias!!
+		*d++ = dotvv(&w[i*out], delta, out) * dact(*o++);
+	}
+}
+void _CatsEye_linear_layer_update(CatsEye_layer *l)
+{
+	int in = u[SIZE-LPLEN]+1;	// +1 -> for bias
+	int out = u[SIZE];
+
+	// update the weights
+	for (int i=0; i<in; i++) {
+		real a = -eta * (*o++);
+		muladd(w, d, a, out);
+		w += out;
+	}
+}*/
 // RNN
 void CatsEye_rnn_layer_forward(CatsEye_layer *l)
 {
@@ -802,7 +847,8 @@ void CatsEye_rnn_layer_forward(CatsEye_layer *l)
 
 	// t=0
 	dotmv(u, l->U, l->x, l->inputs+1, l->hiddens);
-	l->act(s, u, l->hiddens);
+	//l->act(s, u, l->hiddens);
+	CatsEye_act_array(l->act, s, u, l->hiddens);
 	dotmv(v, l->V, s, l->hiddens, l->outputs);
 //	l->y[t*l->outputs] = l->v[t*l->outputs];
 	u += l->hiddens;
@@ -812,7 +858,8 @@ void CatsEye_rnn_layer_forward(CatsEye_layer *l)
 		dotmv(u, l->U, l->x, l->inputs+1, l->hiddens);
 		dotamv(u, l->W, s, l->inputs+1, l->hiddens);	// s[t-1]
 		s += l->hiddens;
-		l->act(s, u, l->hiddens);
+		//l->act(s, u, l->hiddens);
+		CatsEye_act_array(l->act, s, u, l->hiddens);
 		dotmv(v, l->V, s, l->hiddens, l->outputs);
 //		l->y[t*l->outputs] = l->v[t*l->outputs];
 		u += l->hiddens;
@@ -829,7 +876,8 @@ void CatsEye_rnn_layer_backward(CatsEye_layer *l)
 	for (int t=l->times-1; t>=0; t--) {
 		//muladd(dV, s, *d, l->hiddens);		// dV[] += d * s[]
 		outeradd(l->dV, d, s, l->hiddens, l->outputs);
-		l->dact(eh, u, l->hiddens);
+		//l->dact(eh, u, l->hiddens);
+		CatsEye_dact_array(l->dact, eh, u, l->hiddens);
 		//dotmv(eh, d, l->V, l->outputs, l->hiddens);
 		muldot(eh, d, l->V, l->outputs, l->hiddens);
 
@@ -844,7 +892,8 @@ void CatsEye_rnn_layer_backward(CatsEye_layer *l)
 
 			if (t-z-1 >= 0) {
 				outeradd(l->dW, _eh, _s, l->outputs, l->hiddens);		// s[t-z-1]
-				l->dact(_eh-l->hiddens, _u, l->hiddens);			// u[t-z-1]
+				//l->dact(_eh-l->hiddens, _u, l->hiddens);			// u[t-z-1]
+				CatsEye_dact_array(l->dact, _eh-l->hiddens, _u, l->hiddens);
 				muldot(_eh-l->hiddens, _eh, l->W, l->outputs, l->hiddens);
 			}
 			_s -= l->hiddens;
@@ -899,7 +948,7 @@ void CatsEye__construct_(CatsEye *this, int *param, int layers)
 		if (i<this->layers-1) this->layer[i].outputs = u[CSIZE+CLEN];
 
 		osize[i] = this->osize;
-		this->osize += this->layer[i].outputs+1;	// bias
+		this->osize += this->layer[i].inputs+1;	// bias
 
 		dsize[i] = this->dsize;
 		this->dsize += this->layer[i].outputs+1;	// bias
@@ -930,6 +979,11 @@ void CatsEye__construct_(CatsEye *this, int *param, int layers)
 	this->ddata = calloc(this->dsize, sizeof(real));
 	this->wdata = calloc(this->wsize, sizeof(real));
 	for (int i=0; i<this->layers; i++) {
+		this->layer[i].x = this->odata + osize[i];
+		if (i<this->layers-1) this->layer[i].y = this->odata + osize[i+1];
+		this->layer[i].dW = this->ddata + dsize[i];
+		this->layer[i].W = this->wdata + wsize[i];
+
 		this->o[i] = this->odata + osize[i];
 		this->d[i] = this->ddata + dsize[i];
 		this->w[i] = this->wdata + wsize[i];
@@ -1257,6 +1311,7 @@ void CatsEye_propagate(CatsEye *this, int n)	// FIXME
 }
 
 // calculate forward propagation of input x
+#if 0
 void CatsEye_forward(CatsEye *this, real *x)
 {
 	// calculation of input layer
@@ -1265,6 +1320,28 @@ void CatsEye_forward(CatsEye *this, real *x)
 #ifdef CATS_DENOISING_AUTOENCODER
 	// Denoising Autoencoder (http://kiyukuta.github.io/2013/08/20/hello_autoencoder.html)
 	for (int i=0; i<SIZE(0); i++) {
+		this->o[0][i] *= binomial(/*0.7(30%)*/0.5);
+	}
+#endif
+
+	// caluculation of hidden and output layer [z = wx, o = f(z)]
+	// z[hidden] += w[in * hidden] * o[0][in]
+	// o[1][hidden] = act(z[hidden])
+	CatsEye_layer_forward[TYPE(1)](this->o[0], this->w[0], this->z[0], this->o[1], &this->u[LPLEN*1]);
+	for (int i=1; i<this->layers-1; i++) {
+		this->o[i][SIZE(i)] = 1;	// for bias
+		CatsEye_layer_forward[TYPE(i+1)](this->o[i], this->w[i], this->z[i], this->o[i+1], &this->u[LPLEN*(i+1)]);
+	}
+}
+#endif
+void CatsEye_forward(CatsEye *this, real *x)
+{
+	// calculation of input layer
+	memcpy(this->o[0], x, this->layer[0].inputs*sizeof(real));
+	this->o[0][this->layer[0].inputs] = 1;	// for bias
+#ifdef CATS_DENOISING_AUTOENCODER
+	// Denoising Autoencoder (http://kiyukuta.github.io/2013/08/20/hello_autoencoder.html)
+	for (int i=this->layer[0].inputs-1; i>=0; i--) {
 		this->o[0][i] *= binomial(/*0.7(30%)*/0.5);
 	}
 #endif
