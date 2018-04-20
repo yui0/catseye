@@ -379,6 +379,8 @@ void CatsEye_linear_layer_forward(real *x, real *w, real *z/*no use*/, real *o, 
 	int out = u[SIZE];
 
 	CATS_ACT act = CatsEye_act[u[ACT]];
+//	dotmv(o, w, x, in, out);
+//	CatsEye_act_array(act, o, o, out);
 	for (int i=out; i>0; i--) {
 		*o++ = act(dotTv(w++, x, in, out));
 //		*o++ = act(dotvv(w, x, in));
@@ -393,6 +395,11 @@ void CatsEye_linear_layer_backward(real *o, real *w, real *d, real *delta, int u
 
 	// calculate the error
 	CATS_ACT dact = CatsEye_dact[u[ACT-LPLEN]];
+	//real s[in+1];
+//	//outeradd(l->dV, d, s, in+1, out);
+	//CatsEye_dact_array(dact, s, o, in+1);
+//	//outeradd(l->dV, s, delta, in+1, out);
+	//muldot(s, delta, w, out, in+1);
 	for (int i=0; i<=in; i++) {	// bias!!
 		*d++ = dotvv(&w[i*out], delta, out) * dact(*o++);
 //		*d++ = dotTv(w++, delta, out, in+1) * dact(*o++);
@@ -804,40 +811,33 @@ typedef struct {
 	real *o3;
 } CatsEye;
 
-/*void _CatsEye_linear_layer_forward(CatsEye_layer *l)
+// FNN
+void _CatsEye_linear_layer_forward(CatsEye_layer *l)
 {
-	int in = u[SIZE-LPLEN]+1;	// +1 -> for bias
-	int out = u[SIZE];
-
-	CATS_ACT act = CatsEye_act[u[ACT]];
-	real *o = l->
+	real *o = l->y;
+	real *w = l->W;
 	for (int i=l->outputs; i>0; i--) {
-		*o++ = act(dotTv(w++, x, l->inputs+1, l->outputs));
+		*o++ = l->act(dotTv(w++, l->x, l->inputs+1, l->outputs));	// bias!!
 	}
 }
 void _CatsEye_linear_layer_backward(CatsEye_layer *l)
 {
-	int in = u[SIZE-LPLEN];
-	int out = u[SIZE];
-
-	// calculate the error
-	CATS_ACT dact = CatsEye_dact[u[ACT-LPLEN]];
-	for (int i=0; i<=in; i++) {	// bias!!
-		*d++ = dotvv(&w[i*out], delta, out) * dact(*o++);
+	real *o = l->y;
+	real *d = l->dW;
+	for (int i=0; i<=l->inputs; i++) {	// bias!!
+		*d++ = dotvv(&l->W[i*l->outputs], l->delta, l->outputs) * l->dact(*o++);
 	}
 }
 void _CatsEye_linear_layer_update(CatsEye_layer *l)
 {
-	int in = u[SIZE-LPLEN]+1;	// +1 -> for bias
-	int out = u[SIZE];
-
-	// update the weights
-	for (int i=0; i<in; i++) {
-		real a = -eta * (*o++);
-		muladd(w, d, a, out);
-		w += out;
+	real *o = l->y;
+	real *w = l->W;
+	for (int i=0; i<=l->inputs; i++) {	// bias!!
+		real a = -l->eta * (*o++);
+		muladd(w, l->dW, a, l->outputs);
+		w += l->outputs;
 	}
-}*/
+}
 // RNN
 void CatsEye_rnn_layer_forward(CatsEye_layer *l)
 {
@@ -847,7 +847,6 @@ void CatsEye_rnn_layer_forward(CatsEye_layer *l)
 
 	// t=0
 	dotmv(u, l->U, l->x, l->inputs+1, l->hiddens);
-	//l->act(s, u, l->hiddens);
 	CatsEye_act_array(l->act, s, u, l->hiddens);
 	dotmv(v, l->V, s, l->hiddens, l->outputs);
 //	l->y[t*l->outputs] = l->v[t*l->outputs];
@@ -858,7 +857,6 @@ void CatsEye_rnn_layer_forward(CatsEye_layer *l)
 		dotmv(u, l->U, l->x, l->inputs+1, l->hiddens);
 		dotamv(u, l->W, s, l->inputs+1, l->hiddens);	// s[t-1]
 		s += l->hiddens;
-		//l->act(s, u, l->hiddens);
 		CatsEye_act_array(l->act, s, u, l->hiddens);
 		dotmv(v, l->V, s, l->hiddens, l->outputs);
 //		l->y[t*l->outputs] = l->v[t*l->outputs];
@@ -876,7 +874,6 @@ void CatsEye_rnn_layer_backward(CatsEye_layer *l)
 	for (int t=l->times-1; t>=0; t--) {
 		//muladd(dV, s, *d, l->hiddens);		// dV[] += d * s[]
 		outeradd(l->dV, d, s, l->hiddens, l->outputs);
-		//l->dact(eh, u, l->hiddens);
 		CatsEye_dact_array(l->dact, eh, u, l->hiddens);
 		//dotmv(eh, d, l->V, l->outputs, l->hiddens);
 		muldot(eh, d, l->V, l->outputs, l->hiddens);
@@ -892,8 +889,7 @@ void CatsEye_rnn_layer_backward(CatsEye_layer *l)
 
 			if (t-z-1 >= 0) {
 				outeradd(l->dW, _eh, _s, l->outputs, l->hiddens);		// s[t-z-1]
-				//l->dact(_eh-l->hiddens, _u, l->hiddens);			// u[t-z-1]
-				CatsEye_dact_array(l->dact, _eh-l->hiddens, _u, l->hiddens);
+				CatsEye_dact_array(l->dact, _eh-l->hiddens, _u, l->hiddens);	// u[t-z-1]
 				muldot(_eh-l->hiddens, _eh, l->W, l->outputs, l->hiddens);
 			}
 			_s -= l->hiddens;
@@ -1311,7 +1307,7 @@ void CatsEye_propagate(CatsEye *this, int n)	// FIXME
 }
 
 // calculate forward propagation of input x
-#if 0
+#if 1
 void CatsEye_forward(CatsEye *this, real *x)
 {
 	// calculation of input layer
@@ -1333,7 +1329,7 @@ void CatsEye_forward(CatsEye *this, real *x)
 		CatsEye_layer_forward[TYPE(i+1)](this->o[i], this->w[i], this->z[i], this->o[i+1], &this->u[LPLEN*(i+1)]);
 	}
 }
-#endif
+#else
 void CatsEye_forward(CatsEye *this, real *x)
 {
 	// calculation of input layer
@@ -1355,6 +1351,7 @@ void CatsEye_forward(CatsEye *this, real *x)
 		CatsEye_layer_forward[TYPE(i+1)](this->o[i], this->w[i], this->z[i], this->o[i+1], &this->u[LPLEN*(i+1)]);
 	}
 }
+#endif
 
 #ifndef CATS_OPENCL
 /* train: multi layer perceptron
