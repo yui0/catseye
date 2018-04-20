@@ -22,15 +22,14 @@ int main()
 	int layers = sizeof(u)/sizeof(int)/LPLEN;
 
 	CatsEye cat;
+	CatsEye__construct(&cat, 0, 0, layers, u);
+
 /*	int _u[] = {
-		size, CATS_LINEAR, CATS_ACT_IDENTITY, 0,
-		 100, CATS_LINEAR, CATS_ACT_SIGMOID,  0,
+		size, CATS_LINEAR, CATS_ACT_SIGMOID,  0,
+		 100, CATS_LINEAR, CATS_ACT_IDENTITY, 0,
 		   1, CATS_LOSS,   CATS_LOSS_MSE,     0,
 	};
 	CatsEye_construct(&cat, _u);*/
-
-//	CatsEye cat;
-	CatsEye__construct(&cat, 0, 0, layers, u);
 
 	// 訓練データ
 	double x[sample];

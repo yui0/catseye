@@ -427,7 +427,7 @@ void _CatsEye_linear_layer_forward(CatsEye_layer *l)
 }
 void _CatsEye_linear_layer_backward(CatsEye_layer *l)
 {
-	real *o = l->y;
+	real *o = l->x;
 	real *d = l->dW;
 	for (int i=0; i<=l->inputs; i++) {	// bias!!
 		*d++ = dotvv(&l->W[i*l->outputs], l->delta, l->outputs) * l->dact(*o++);
@@ -435,7 +435,7 @@ void _CatsEye_linear_layer_backward(CatsEye_layer *l)
 }
 void _CatsEye_linear_layer_update(CatsEye_layer *l)
 {
-	real *o = l->y;
+	real *o = l->x;
 	real *w = l->W;
 	for (int i=0; i<=l->inputs; i++) {	// bias!!
 		real a = -l->eta * (*o++);
@@ -865,6 +865,7 @@ void CatsEye_none_update(CatsEye_layer *l, real eta, real *s, real *w, real *d, 
 
 void (*CatsEye_layer_forward[])(CatsEye_layer *l, real *s, real *w, real *z, real *o, int u[]) = {
 	CatsEye_linear_layer_forward,
+	//_CatsEye_linear_layer_forward,
 	CatsEye_convolutional_layer_forward,
 	CatsEye_maxpooling_layer_forward,
 	CatsEye_rnn_layer_forward,
@@ -877,6 +878,7 @@ void (*CatsEye_layer_backward[])(CatsEye_layer *l, real *o, real *w, real *d, re
 };
 void (*CatsEye_layer_update[])(CatsEye_layer *l, real eta, real *s, real *w, real *d, int u[]) = {
 	CatsEye_linear_layer_update,
+	//_CatsEye_linear_layer_update,
 //	CatsEye_SVM_layer_update,
 	CatsEye_convolutional_layer_update,
 	CatsEye_none_update,
@@ -933,12 +935,12 @@ void CatsEye__construct_(CatsEye *this, int *param, int layers)
 
 	// calculate parameters
 	int osize[this->layers], dsize[this->layers], wsize[this->layers];
-	this->o = malloc(sizeof(real*)*(this->layers));	// outputs
+//	this->o = malloc(sizeof(real*)*(this->layers));	// outputs
 	this->osize = 0;
-	this->d = malloc(sizeof(real*)*(this->layers-1));	// errors
+//	this->d = malloc(sizeof(real*)*(this->layers-1));	// errors
 	this->dsize = 0;
-	this->w = malloc(sizeof(real*)*(this->layers-1));	// weights
-	this->ws = malloc(sizeof(int)*(this->layers-1));
+//	this->w = malloc(sizeof(real*)*(this->layers-1));	// weights
+//	this->ws = malloc(sizeof(int)*(this->layers-1));
 	int n[this->layers], m[this->layers];
 	this->wsize = 0;
 	for (int i=0; i<this->layers; i++) {
@@ -947,6 +949,8 @@ void CatsEye__construct_(CatsEye *this, int *param, int layers)
 		this->layer[i].inputs = u[CSIZE];
 		this->layer[i].outputs = 1;
 		if (i<this->layers-1) this->layer[i].outputs = u[CSIZE+CLEN];
+		this->layer[i].act = CatsEye_act[u[CACT]];
+		this->layer[i].dact = CatsEye_dact[u[CACT]];
 
 		osize[i] = this->osize;
 		this->osize += this->layer[i].inputs+1;	// bias
@@ -975,10 +979,10 @@ void CatsEye__construct_(CatsEye *this, int *param, int layers)
 		this->wsize += this->ws[i];
 	}
 	this->osize--;	// bias
-	this->odata = calloc(this->osize, sizeof(real));
+//	this->odata = calloc(this->osize, sizeof(real));
 	this->dsize--;
-	this->ddata = calloc(this->dsize, sizeof(real));
-	this->wdata = calloc(this->wsize, sizeof(real));
+//	this->ddata = calloc(this->dsize, sizeof(real));
+//	this->wdata = calloc(this->wsize, sizeof(real));
 	for (int i=0; i<this->layers; i++) {
 		this->layer[i].x = this->odata + osize[i];
 		if (i<this->layers-1) this->layer[i].y = this->odata + osize[i+1];
