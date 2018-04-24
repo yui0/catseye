@@ -4,8 +4,8 @@
 //		©2016-2018 Yuichiro Nakada
 //---------------------------------------------------------
 
-// gcc sin.c -o sin -lm -fopenmp -lgomp
-// clang sin.c -o sin -lm
+// gcc sin_rnn.c -o sin_rnn -lm -fopenmp -lgomp
+// clang sin_rnn.c -o sin_rnn -lm
 // ps2pdf sin.ps (ghostscript-core)
 #include "../catseye.h"
 #include "../pssub.h"
@@ -14,22 +14,14 @@ int main()
 {
 	int size = 1;		// 入力層
 	int sample = 360;
+
 	int u[] = {
-		CATS_LINEAR, CATS_ACT_IDENTITY, 1/*ch*/, size/*input*/, 0, 0, 0, 500,
-		CATS_LINEAR, CATS_ACT_SIGMOID,  1/*ch*/, 100/*hidden*/, 0, 0, 0, 0,
-		CATS_LINEAR, CATS_ACT_IDENTITY, 1/*ch*/,   1/*output*/, 0, 0, 0, CATS_LOSS_MSE,
-	};
-	int layers = sizeof(u)/sizeof(int)/LPLEN;
-
-	CatsEye cat;
-	CatsEye__construct(&cat, 0, 0, layers, u);
-
-	/*int _u[] = {
 		size, CATS_LINEAR, CATS_ACT_SIGMOID,  0,
 		 100, CATS_LINEAR, CATS_ACT_IDENTITY, 0,
 		   1, CATS_LOSS,   CATS_LOSS_MSE,     0,
 	};
-	CatsEye_construct(&cat, _u);*/
+	CatsEye cat;
+	_CatsEye__construct(&cat, u);
 
 	// 訓練データ
 	double x[sample];
@@ -40,15 +32,15 @@ int main()
 
 	// 多層パーセプトロンの訓練
 	printf("Starting training using (stochastic) gradient descent\n");
-	CatsEye_train(&cat, x, t, sample, 2000/*repeat*/, 0.01);
+	_CatsEye_train(&cat, x, t, sample, 2000/*repeat*/, 0.01);
 	printf("Training complete\n");
 //	CatsEye_save(&cat, "sin.weights");
 
 	// 結果の表示
-	FILE *fp = fopen("sin.csv", "w");
+	FILE *fp = fopen("sin_rnn.csv", "w");
 	if (fp==NULL) return -1;
 	for (int i=0; i<sample; i++) {
-		CatsEye_forward(&cat, x+size*i);
+		_CatsEye_forward(&cat, x+size*i);
 		fprintf(fp, "%d, %lf\n", i, cat.o[2][0]);
 	}
 	fclose(fp);
@@ -79,15 +71,15 @@ int main()
 	PS_linewidth(1.5);		// output
 	//PS_setgray(0.0);
 	PS_setrgb(1.0, 0.0, 0.0);
-	CatsEye_forward(&cat, x);
+	_CatsEye_forward(&cat, x);
 	PS_plot(x[0], cat.o[2][0], 3);
 	for (int i=1; i<sample; i++) {
-		CatsEye_forward(&cat, x+size*i);
+		_CatsEye_forward(&cat, x+size*i);
 		PS_plot(x[i], cat.o[2][0], 2);
 	}
 	PS_stroke();
 	PS_fin();
-	system("ps2pdf sin.ps");
+	system("ps2pdf sin_rnn.ps");
 
 	CatsEye__destruct(&cat);
 
