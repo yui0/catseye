@@ -15,11 +15,20 @@ int main()
 	int size = 1;		// 入力層
 	int sample = 360;
 
-	int u[] = {
+/*	int u[] = {
 		size, CATS_LINEAR, CATS_ACT_SIGMOID,  0,
 		 100, CATS_LINEAR, CATS_ACT_IDENTITY, 0,
 		   1, CATS_LOSS,   CATS_LOSS_MSE,     0,
+	};*/
+	CatsEye_layer u[] = {
+		{ size, CATS_LINEAR, CATS_ACT_SIGMOID }, 
+		{ 100, CATS_LINEAR, CATS_ACT_IDENTITY },
+		{   1, CATS_LOSS,   CATS_LOSS_MSE     },
 	};
+	/*int u[] = {
+		size, CATS_RECURRENT, CATS_ACT_SIGMOID,  &(int[]){100,3,0.1,tanh,rnd},
+		   1, CATS_LOSS,      CATS_LOSS_MSE,     0,
+	};*/
 	CatsEye cat;
 	_CatsEye__construct(&cat, u);
 
@@ -46,7 +55,7 @@ int main()
 	fclose(fp);
 
 	// postscriptで表示
-	PS_init("sin.ps");
+	PS_init("sin_rnn.ps");
 	PS_viewport(0.2, 0.2, 0.8, 0.8);
 	PS_xyworld(-0.5, -1.2, 2.0*M_PI+0.5, 1.2);
 	PS_linewidth(1.0);

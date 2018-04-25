@@ -372,11 +372,12 @@ void muladdx(real *vec1, real *vec2, real a, int n)
 #endif
 
 typedef struct layer {
-//	CATS_LAYER_TYPE type;
-//	CATS_ACTIVATION activation;
-//	CATS_COST_TYPE cost_type;
+	int inputs;
+
 	int type;
 	int activation;
+
+	real eta;
 
 	int size;
 	int kernel_size;	// CNN
@@ -387,14 +388,10 @@ typedef struct layer {
 	int truncatedTime;	// RNN
 
 	// auto config
-	int inputs;
 	int hiddens;		// RNN
 	int outputs;
-	real eta;
 	real *x;		// input
 	real *y;		// output
-//	real *delta;
-//	real *weights;
 	real *W, *dW, *prev_dw;
 	real *U, *dU;		// RNN [hidden * input](input -> hidden)
 	real *V, *dV;		// RNN [output * hidden](hidden -> output)
@@ -424,13 +421,8 @@ void _CatsEye_linear_layer_forward(CatsEye_layer *l)
 		*o++ = l->act(dotTv(w++, l->x, l->inputs+1, l->outputs));	// bias!!
 	}
 }
-void _CatsEye_linear_layer_backward(CatsEye_layer *l/*, real *_o, real *w, real *_d, real *delta, int u[]*/)
+void _CatsEye_linear_layer_backward(CatsEye_layer *l)
 {
-	/*int in = u[SIZE-LPLEN];
-	int out = u[SIZE];
-	CATS_ACT dact = CatsEye_dact[u[ACT-LPLEN]];
-	printf("in:%d:%d out:%d:%d dact:%d w:%x:%x d:%x:%x delta:%x:%x o:%x:%x\n", in, l->inputs, out, l->outputs, u[ACT-LPLEN], w, l->W, _d, l->prev_dw, delta, l->dW, _o, l->x);*/
-
 	real *o = l->x;
 	real *d = l->prev_dw;
 	for (int i=0; i<=l->inputs; i++) {	// bias!!
@@ -961,16 +953,21 @@ typedef struct {
 	real *o3;
 } CatsEye;
 
-enum CATS_LAYER {
+/*enum CATS_LAYER {
 	CSIZE,		// input size
 	CTYPE,		// MLP, CONV, MAXPOOL
 	CACT,		// activation function type
+//	CETA,		// learning rate
 	CPARAM,
 	CLEN		// length of layer params
-};
-#define _CatsEye__construct(t, p)	__CatsEye__construct(t, p, sizeof(p)/sizeof(int)/CLEN)
-void __CatsEye__construct(CatsEye *this, int *param, int layers)
+};*/
+//#define _CatsEye__construct(t, p)	__CatsEye__construct(t, p, sizeof(p)/sizeof(int)/CLEN)
+//void __CatsEye__construct(CatsEye *this, int *param, int layers)
+#define _CatsEye__construct(t, p)	__CatsEye__construct(t, p, sizeof(p)/sizeof(CatsEye_layer))
+void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 {
+	this->u = 0;
+	this->z = 0;
 	this->layers = layers;
 	this->layer = calloc(this->layers, sizeof(CatsEye_layer));
 
@@ -985,23 +982,31 @@ void __CatsEye__construct(CatsEye *this, int *param, int layers)
 	int n[this->layers], m[this->layers];
 	this->wsize = 0;
 	for (int i=0; i<this->layers; i++) {
-		int *u = param+CLEN*i;
+//		int *u = param+CLEN*i;
 
-		this->layer[i].inputs = u[CSIZE];
+//		this->layer[i].inputs = u[CSIZE];
+		this->layer[i].inputs = layer[i].inputs;
 		if (i<this->layers-1) {
-			this->layer[i].outputs = u[CSIZE+CLEN];
+/*			this->layer[i].outputs = u[CSIZE+CLEN];
 			this->layer[i].forward = _CatsEye_layer_forward[u[CTYPE]];
 			this->layer[i].backward = _CatsEye_layer_backward[u[CTYPE]];
-			this->layer[i].update = _CatsEye_layer_update[u[CTYPE]];
+			this->layer[i].update = _CatsEye_layer_update[u[CTYPE]];*/
+			this->layer[i].outputs = layer[i+1].inputs;
+			this->layer[i].forward = _CatsEye_layer_forward[layer[i].type];
+			this->layer[i].backward = _CatsEye_layer_backward[layer[i].type];
+			this->layer[i].update = _CatsEye_layer_update[layer[i].type];
 		} else {
 			this->layer[i].outputs = 1;
 			this->layer[i].forward = 0;
 			this->layer[i].backward = 0;
 			this->layer[i].update = 0;
-			this->layer[i].loss = _CatsEye_loss[u[CACT]];
+//			this->layer[i].loss = _CatsEye_loss[u[CACT]];
+			this->layer[i].loss = _CatsEye_loss[layer[i].activation];
 		}
-		this->layer[i].act = CatsEye_act[u[CACT]];
-		if (i>0) this->layer[i].dact = CatsEye_dact[u[CACT-CLEN]];
+//		this->layer[i].act = CatsEye_act[u[CACT]];
+//		if (i>0) this->layer[i].dact = CatsEye_dact[u[CACT-CLEN]];
+		this->layer[i].act = CatsEye_act[layer[i].activation];
+		if (i>0) this->layer[i].dact = CatsEye_dact[layer[i-1].activation];
 
 		osize[i] = this->osize;
 		this->osize += this->layer[i].inputs+1;	// bias
@@ -1009,7 +1014,8 @@ void __CatsEye__construct(CatsEye *this, int *param, int layers)
 		dsize[i] = this->dsize;
 		this->dsize += this->layer[i].outputs+1;	// bias
 
-		switch (u[CTYPE]) {
+//		switch (u[CTYPE]) {
+		switch (layer[i].type) {
 /*		case CATS_CONV:
 			n[i] = u[KSIZE] * u[KSIZE];		// kernel size
 			m[i] = u[CHANNEL] * u[CHANNEL-LPLEN];	// channel
@@ -1126,30 +1132,26 @@ void _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, real eta
 			_CatsEye_forward(this, x+sample*this->layer[0].inputs);
 
 			// calculate the error of output layer
-//printf("+%x %d %x %d\n",this->layer[a].loss,a,t,sample);
 			this->layer[a].loss(&this->layer[a], t, sample);
 			// calculate the error of hidden layer
 			for (int i=this->layers-2; i>0; i--) {
 				this->layer[i].backward(&this->layer[i]);
-//				CatsEye_layer_backward[TYPE(i+1)](&this->layer[i], this->o[i], this->w[i], this->d[i-1], this->d[i], &this->u[LPLEN*(i+1)]);
 			}
 
 			// update the weights of hidden layer
 			for (int i=this->layers-2; i>0; i--) {
 				this->layer[i-1].update(&this->layer[i-1]);
-//				CatsEye_layer_update[TYPE(i)](&this->layer[i-1], eta, this->o[i-1], this->w[i-1], this->d[i-1], &this->u[LPLEN*i]);
 			}
 			// update the weights of output layer
 			this->layer[a-1].update(&this->layer[a-1]);
-//			CatsEye_layer_update[TYPE(a)](&this->layer[a-1], eta, this->o[a-1], this->w[a-1], this->d[a-1], &this->u[LPLEN*a]);
 #ifdef CATS_AUTOENCODER
 			// tied weight
-			real *dst = this->w[1];
+			/*real *dst = this->w[1];
 			for (int i=0; i<SIZE(1); i++) {
 				for (int j=0; j<SIZE(0); j++) {
 					this->w[1][j + SIZE(1)*i] = this->w[0][SIZE(1)*j + i];
 				}
-			}
+			}*/
 #endif
 		}
 		real err = 0;
@@ -1337,7 +1339,7 @@ void CatsEye__destruct(CatsEye *this)
 #endif
 	// delete arrays
 //	for (int i=0; i<this->layers-1; i++) free(this->z[i]);
-	free(this->z);
+	if (this->z) free(this->z);
 	free(this->odata);
 	free(this->o);
 	free(this->ddata);
@@ -1351,7 +1353,7 @@ void CatsEye__destruct(CatsEye *this)
 	free(this->ws);
 	free(this->wdata);
 	free(this->w);
-	free(this->u);
+	if (this->u) free(this->u);
 }
 
 // calculate the error of output layer
