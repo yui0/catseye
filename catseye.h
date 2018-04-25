@@ -953,16 +953,6 @@ typedef struct {
 	real *o3;
 } CatsEye;
 
-/*enum CATS_LAYER {
-	CSIZE,		// input size
-	CTYPE,		// MLP, CONV, MAXPOOL
-	CACT,		// activation function type
-//	CETA,		// learning rate
-	CPARAM,
-	CLEN		// length of layer params
-};*/
-//#define _CatsEye__construct(t, p)	__CatsEye__construct(t, p, sizeof(p)/sizeof(int)/CLEN)
-//void __CatsEye__construct(CatsEye *this, int *param, int layers)
 #define _CatsEye__construct(t, p)	__CatsEye__construct(t, p, sizeof(p)/sizeof(CatsEye_layer))
 void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 {
@@ -970,6 +960,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 	this->z = 0;
 	this->layers = layers;
 	this->layer = calloc(this->layers, sizeof(CatsEye_layer));
+	memcpy(this->layer, layer, this->layers*sizeof(CatsEye_layer));
 
 	// calculate parameters
 	int osize[this->layers], dsize[this->layers], wsize[this->layers];
@@ -982,15 +973,8 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 	int n[this->layers], m[this->layers];
 	this->wsize = 0;
 	for (int i=0; i<this->layers; i++) {
-//		int *u = param+CLEN*i;
-
-//		this->layer[i].inputs = u[CSIZE];
 		this->layer[i].inputs = layer[i].inputs;
 		if (i<this->layers-1) {
-/*			this->layer[i].outputs = u[CSIZE+CLEN];
-			this->layer[i].forward = _CatsEye_layer_forward[u[CTYPE]];
-			this->layer[i].backward = _CatsEye_layer_backward[u[CTYPE]];
-			this->layer[i].update = _CatsEye_layer_update[u[CTYPE]];*/
 			this->layer[i].outputs = layer[i+1].inputs;
 			this->layer[i].forward = _CatsEye_layer_forward[layer[i].type];
 			this->layer[i].backward = _CatsEye_layer_backward[layer[i].type];
@@ -1000,11 +984,8 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			this->layer[i].forward = 0;
 			this->layer[i].backward = 0;
 			this->layer[i].update = 0;
-//			this->layer[i].loss = _CatsEye_loss[u[CACT]];
 			this->layer[i].loss = _CatsEye_loss[layer[i].activation];
 		}
-//		this->layer[i].act = CatsEye_act[u[CACT]];
-//		if (i>0) this->layer[i].dact = CatsEye_dact[u[CACT-CLEN]];
 		this->layer[i].act = CatsEye_act[layer[i].activation];
 		if (i>0) this->layer[i].dact = CatsEye_dact[layer[i-1].activation];
 
@@ -1014,7 +995,6 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		dsize[i] = this->dsize;
 		this->dsize += this->layer[i].outputs+1;	// bias
 
-//		switch (u[CTYPE]) {
 		switch (layer[i].type) {
 /*		case CATS_CONV:
 			n[i] = u[KSIZE] * u[KSIZE];		// kernel size
