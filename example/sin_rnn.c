@@ -16,13 +16,13 @@ int main()
 	int sample = 360;
 
 	CatsEye_layer u[] = {
-		{ size, CATS_LINEAR, CATS_ACT_SIGMOID,  0.01 }, 
+		{ size, CATS_LINEAR, CATS_ACT_SIGMOID,  0.01 },
 		{  100, CATS_LINEAR, CATS_ACT_IDENTITY, 0.01 },
 		{    1, CATS_LOSS,   CATS_LOSS_MSE,     0.01 },
 	};
-	/*int u[] = {
-		size, CATS_RECURRENT, CATS_ACT_SIGMOID,  &(int[]){100,3,0.1,tanh,rnd},
-		   1, CATS_LOSS,      CATS_LOSS_MSE,     0,
+	/*CatsEye_layer u[] = {
+		{ size, CATS_RECURRENT, CATS_ACT_SIGMOID,  0.1, .hiddens=100, .truncatedTime=3 },
+		{    1, CATS_LOSS,      CATS_LOSS_MSE,     0.1 },
 	};*/
 	CatsEye cat;
 	_CatsEye__construct(&cat, u);
@@ -36,7 +36,7 @@ int main()
 
 	// 多層パーセプトロンの訓練
 	printf("Starting training using (stochastic) gradient descent\n");
-	_CatsEye_train(&cat, x, t, sample, 2000/*repeat*/, 0.01);
+	_CatsEye_train(&cat, x, t, sample, 2000/*repeat*/);
 	printf("Training complete\n");
 //	CatsEye_save(&cat, "sin.weights");
 
