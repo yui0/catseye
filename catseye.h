@@ -392,8 +392,11 @@ typedef struct layer {
 	real *x;		// input
 	real *z;		// output
 	real *W, *dW, *prev_dw;
-	real *U, *dU;		// RNN [hidden * time](input -> hidden)
-	real *V, *dV;		// RNN [output * hidden](hidden -> output)
+	real *Wi, *dWi;		// RNN [hidden * time](input -> hidden) = W, dW
+	real *Wr, *dWr;		// RNN [hidden * hidden]
+	real *Wo, *dWo;		// RNN [output * hidden](hidden -> output)
+//	real *U, *dU;		// RNN [hidden * time](input -> hidden)
+//	real *V, *dV;		// RNN [output * hidden](hidden -> output)
 	real *eh;		// RNN [time * hidden]
 	real *s;		// RNN [time * hidden]
 	real *u;		// RNN [time * hidden]
@@ -448,9 +451,9 @@ void CatsEye_rnn_layer_forward(CatsEye_layer *l)
 	real *y = l->z;
 
 	// t=0
-	dotmv(u, l->U, l->x, l->inputs+1, l->hiddens);
+	dotmv(u, l->Wi, l->x, l->inputs+1, l->hiddens);
 	CatsEye_act_array(l->act, s, u, l->hiddens);
-	dotmv(v, l->V, s, l->hiddens, l->outputs);
+	dotmv(v, l->Wo, s, l->hiddens, l->outputs);
 	CatsEye_act_array(l->act2, y, v, l->outputs);
 
 	for (int t=1; t<=l->inputs; t++) {
@@ -458,11 +461,11 @@ void CatsEye_rnn_layer_forward(CatsEye_layer *l)
 		v += l->outputs;
 		y += l->outputs;
 
-		dotmv(u, l->U, l->x, l->inputs+1, l->hiddens);
-		dotamv(u, l->W, s, l->inputs+1, l->hiddens);	// s[t-1]
+		dotmv(u, l->Wi, l->x, l->inputs+1, l->hiddens);
+		dotamv(u, l->Wr, s, l->inputs+1, l->hiddens);	// s[t-1]
 		s += l->hiddens;
 		CatsEye_act_array(l->act, s, u, l->hiddens);
-		dotmv(v, l->V, s, l->hiddens, l->outputs);
+		dotmv(v, l->Wo, s, l->hiddens, l->outputs);
 		CatsEye_act_array(l->act2, y, v, l->outputs);
 	}
 }
@@ -475,10 +478,10 @@ void CatsEye_rnn_layer_backward(CatsEye_layer *l)
 
 	for (int t=l->inputs-1; t>=0; t--) {
 		//muladd(dV, s, *d, l->hiddens);		// dV[] += d * s[]
-		outeradd(l->dV, d, s, l->hiddens, l->outputs);
+		outeradd(l->dWo, d, s, l->hiddens, l->outputs);
 		CatsEye_dact_array(l->dact, eh, u, l->hiddens);
 		//dotmv(eh, d, l->V, l->outputs, l->hiddens);
-		muldot(eh, d, l->V, l->outputs, l->hiddens);
+		muldot(eh, d, l->Wo, l->outputs, l->hiddens);
 
 		s -= l->hiddens;
 		u -= l->hiddens;
@@ -487,12 +490,12 @@ void CatsEye_rnn_layer_backward(CatsEye_layer *l)
 		real *_eh = eh;
 		for (int z=0; z<l->truncatedTime; z++) {
 			if (t-z < 0) break;
-			outeradd(l->dU, _eh, l->x+(t-z)*l->inputs, l->inputs, l->hiddens);	// eh[t-z]
+			outeradd(l->dWi, _eh, l->x+(t-z)*l->inputs, l->inputs, l->hiddens);	// eh[t-z]
 
 			if (t-z-1 >= 0) {
-				outeradd(l->dW, _eh, _s, l->outputs, l->hiddens);		// s[t-z-1]
+				outeradd(l->dWr, _eh, _s, l->outputs, l->hiddens);		// s[t-z-1]
 				CatsEye_dact_array(l->dact, _eh-l->hiddens, _u, l->hiddens);	// u[t-z-1]
-				muldot(_eh-l->hiddens, _eh, l->W, l->outputs, l->hiddens);
+				muldot(_eh-l->hiddens, _eh, l->Wr, l->outputs, l->hiddens);
 			}
 			_s -= l->hiddens;
 			_u -= l->hiddens;
@@ -505,9 +508,9 @@ void CatsEye_rnn_layer_backward(CatsEye_layer *l)
 }
 void CatsEye_rnn_layer_update(CatsEye_layer *l)
 {
-	muladd(l->U, l->dU, -l->eta, l->hiddens * l->inputs);
-	muladd(l->V, l->dV, -l->eta, l->outputs * l->hiddens);
-	muladd(l->W, l->dW, -l->eta, l->outputs * l->hiddens);
+	muladd(l->Wi, l->dWi, -l->eta, l->hiddens * l->inputs);
+	muladd(l->Wo, l->dWo, -l->eta, l->outputs * l->hiddens);
+	muladd(l->Wr, l->dWr, -l->eta, l->outputs * l->hiddens);
 }
 
 // calculate forward propagation of input x
@@ -1013,6 +1016,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		}
 		this->layer[i].act = CatsEye_act[layer[i].activation];
 		if (i>0) this->layer[i].dact = CatsEye_dact[layer[i-1].activation];
+		else this->layer[i].dact = CatsEye_dact[layer[i].activation];
 
 		osize[i] = this->osize;
 		this->osize += this->layer[i].inputs+1;	// bias
@@ -1032,8 +1036,13 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			printf("L%02d: POOL%d [%d]\n", i+1, u[KSIZE], n[i]);
 			break;*/
 		case CATS_RECURRENT:
-			this->layer[i].U = calloc(this->layer[i].inputs * this->layer[i].hiddens, sizeof(real));
-			this->layer[i].V = calloc(this->layer[i].hiddens * this->layer[i].outputs, sizeof(real));
+			this->layer[i].Wi = calloc(this->layer[i].inputs * this->layer[i].hiddens, sizeof(real));
+//			this->layer[i].Wi = this->layer[i].W;
+			this->layer[i].Wr = calloc(this->layer[i].hiddens * this->layer[i].hiddens, sizeof(real));
+			this->layer[i].Wo = calloc(this->layer[i].hiddens * this->layer[i].outputs, sizeof(real));
+			this->layer[i].dWi = calloc(this->layer[i].inputs * this->layer[i].hiddens, sizeof(real));
+			this->layer[i].dWr = calloc(this->layer[i].hiddens * this->layer[i].hiddens, sizeof(real));
+			this->layer[i].dWo = calloc(this->layer[i].hiddens * this->layer[i].outputs, sizeof(real));
 			this->layer[i].eh = calloc(this->layer[i].inputs * this->layer[i].hiddens, sizeof(real));
 			this->layer[i].s = calloc(this->layer[i].inputs * this->layer[i].hiddens, sizeof(real));
 			this->layer[i].u = calloc(this->layer[i].inputs * this->layer[i].hiddens, sizeof(real));
@@ -1042,7 +1051,8 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 //			this->layer[i].y = this->layer[i].z;
 			this->layer[i].act2 = CatsEye_act[CATS_ACT_IDENTITY];
 			this->layer[i].dact2 = CatsEye_dact[CATS_ACT_IDENTITY];
-			n[i] = this->layer[i].hiddens;
+//			n[i] = this->layer[i].hiddens;
+			n[i] = this->layer[i].inputs;
 			m[i] = this->layer[i].hiddens;
 			printf("L%02d: RECURRENT %d %d\n", i+1, n[i], m[i]);
 			break;
@@ -1146,9 +1156,6 @@ void _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat)
 			for (int i=this->layers-2; i>=0; i--) {
 				this->layer[i].update(&this->layer[i]);
 			}
-			/*for (int i=0; i<this->layers-1; i++) {//???
-				this->layer[i].update(&this->layer[i]);
-			}*/
 #ifdef CATS_AUTOENCODER
 			// tied weight
 			/*real *dst = this->w[1];
