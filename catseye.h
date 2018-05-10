@@ -879,6 +879,9 @@ void (*CatsEye_layer_update[])(CatsEye_layer *l, real eta, real *s, real *w, rea
 	CatsEye_convolutional_layer_update,
 	CatsEye_none_update,
 };
+void CatsEye_none(CatsEye_layer *l)
+{
+}
 void (*_CatsEye_layer_forward[])(CatsEye_layer *l) = {
 	_CatsEye_linear_layer_forward,
 	_CatsEye_linear_layer_forward,//FIXME
@@ -1005,13 +1008,14 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		if (i<this->layers-1) {
 			this->layer[i].outputs = layer[i+1].inputs;
 			this->layer[i].forward = _CatsEye_layer_forward[layer[i].type];
-			this->layer[i].backward = _CatsEye_layer_backward[layer[i].type];
+			if (i) this->layer[i].backward = _CatsEye_layer_backward[layer[i].type];
+			else this->layer[i].backward = CatsEye_none;
 			this->layer[i].update = _CatsEye_layer_update[layer[i].type];
 		} else {
 			this->layer[i].outputs = 1;
-			this->layer[i].forward = 0;
-			this->layer[i].backward = 0;
-			this->layer[i].update = 0;
+			this->layer[i].forward = CatsEye_none;
+			this->layer[i].backward = CatsEye_none;
+			this->layer[i].update = CatsEye_none;
 			this->layer[i].loss = _CatsEye_loss[layer[i].activation];
 		}
 		this->layer[i].act = CatsEye_act[layer[i].activation];
@@ -1128,7 +1132,6 @@ void _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat)
 	int batch = N;			// for random
 //	if (RANDOM) batch = RANDOM;
 
-//	int a = this->layers-1;
 	struct timeval start, stop;
 	gettimeofday(&start, NULL);
 	for (int times=0; times<repeat; times++) {
@@ -1142,16 +1145,10 @@ void _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat)
 			// calculate the error of output layer
 			this->layer[a].loss(&this->layer[a], t, sample);
 			// calculate the error of hidden layer
-			for (int i=this->layers-2; i>0; i--) {
+			for (int i=this->layers-2; i>=0; i--) { // i=0 -> RNN
 				this->layer[i].backward(&this->layer[i]);
 			}
 
-/*			// update the weights of hidden layer
-			for (int i=this->layers-2; i>0; i--) {
-				this->layer[i-1].update(&this->layer[i-1]);
-			}
-			// update the weights of output layer
-			this->layer[a-1].update(&this->layer[a-1]);*/
 			// update the weights
 			for (int i=this->layers-2; i>=0; i--) {
 				this->layer[i].update(&this->layer[i]);
