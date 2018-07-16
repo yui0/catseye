@@ -15,15 +15,15 @@ int main()
 	int size = 1;		// 入力層
 	int sample = 360;
 
-	CatsEye_layer u[] = {
+	/*CatsEye_layer u[] = {
 		{ size, CATS_LINEAR, CATS_ACT_SIGMOID,  0.01 },
 		{  100, CATS_LINEAR, CATS_ACT_IDENTITY, 0.01 },
 		{    1, CATS_LOSS,   CATS_LOSS_MSE,     0.01 },
-	};
-	/*CatsEye_layer u[] = {
+	};*/
+	CatsEye_layer u[] = {
 		{ size, CATS_RECURRENT, CATS_ACT_SIGMOID,  0.1, .hiddens=100, .truncatedTime=3 },
 		{    1, CATS_LOSS,      CATS_LOSS_MSE,     0.1 },
-	};*/
+	};
 	CatsEye cat;
 	_CatsEye__construct(&cat, u);
 
@@ -45,7 +45,8 @@ int main()
 	if (fp==NULL) return -1;
 	for (int i=0; i<sample; i++) {
 		_CatsEye_forward(&cat, x+size*i);
-		fprintf(fp, "%d, %lf\n", i, cat.o[2][0]);
+//		fprintf(fp, "%d, %lf\n", i, cat.o[2][0]);
+		fprintf(fp, "%d, %lf\n", i, cat.o[1][0]);
 	}
 	fclose(fp);
 
@@ -76,10 +77,12 @@ int main()
 	//PS_setgray(0.0);
 	PS_setrgb(1.0, 0.0, 0.0);
 	_CatsEye_forward(&cat, x);
-	PS_plot(x[0], cat.o[2][0], 3);
+//	PS_plot(x[0], cat.o[2][0], 3);
+	PS_plot(x[0], cat.o[1][0], 3);
 	for (int i=1; i<sample; i++) {
 		_CatsEye_forward(&cat, x+size*i);
-		PS_plot(x[i], cat.o[2][0], 2);
+//		PS_plot(x[i], cat.o[2][0], 2);
+		PS_plot(x[i], cat.o[1][0], 2);
 	}
 	PS_stroke();
 	PS_fin();
