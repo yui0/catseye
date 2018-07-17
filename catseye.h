@@ -698,19 +698,19 @@ void CatsEye_none(CatsEye_layer *l)
 }
 void (*_CatsEye_layer_forward[])(CatsEye_layer *l) = {
 	_CatsEye_linear_layer_forward,
-	_CatsEye_linear_layer_forward,//FIXME CNN
-	_CatsEye_linear_layer_forward,//FIXME MAXPOOL
+	_CatsEye_convolutional_layer_forward,
+	_CatsEye_maxpooling_layer_forward,
 	CatsEye_rnn_layer_forward,
 };
 void (*_CatsEye_layer_backward[])(CatsEye_layer *l) = {
 	_CatsEye_linear_layer_backward,
-	_CatsEye_linear_layer_backward,//FIXME CNN
-	_CatsEye_linear_layer_backward,//FIXME MAXPOOL
+	_CatsEye_convolutional_layer_backward,
+	_CatsEye_maxpooling_layer_backward,
 	CatsEye_rnn_layer_backward,
 };
 void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
 	_CatsEye_linear_layer_update,
-	_CatsEye_linear_layer_update,//FIXME CNN
+	_CatsEye_convolutional_layer_update,
 	CatsEye_none,
 	CatsEye_rnn_layer_update,
 };
@@ -794,7 +794,6 @@ void CatsEye_convolutional_layer_forward(CatsEye_layer *l, real *s, real *w, rea
 	int sx = u[XSIZE] - m;	// out
 	int sy = u[YSIZE] - m;
 	int ch = u[CHANNEL-LPLEN];
-//	int size = u[SIZE-LPLEN] / ch;
 	int step = u[XSIZE] - ks;
 	CATS_ACT act = CatsEye_act[u[ACT]];
 
@@ -935,7 +934,6 @@ void CatsEye_convolutional_layer_update(CatsEye_layer *l, real eta, real *prev_o
 	int sx = u[XSIZE] - m;	// out
 	int sy = u[YSIZE] - m;
 	int ch = u[CHANNEL-LPLEN];
-//	int size = u[SIZE-LPLEN]/ch;
 	int step = u[XSIZE] - ks;
 
 #ifdef CATS_FASTCONV
