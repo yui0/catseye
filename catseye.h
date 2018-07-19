@@ -1208,16 +1208,16 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		this->dsize += this->layer[i].outputs+1;	// bias
 
 		switch (layer[i].type) {
-/*		case CATS_CONV:
-			n[i] = u[KSIZE] * u[KSIZE];		// kernel size
-			m[i] = u[CHANNEL] * u[CHANNEL-LPLEN];	// channel
-			printf("L%02d: CONV%d-%d (%d[ksize]x%d[ch])\n", i+1, u[KSIZE], u[CHANNEL], n[i], m[i]);
+		case CATS_CONV:
+			n[i] = this->layer[i].ksize * this->layer[i].ksize;	// kernel size
+			m[i] = this->layer[i].ch * this->layer[i].ich;	// channel
+			printf("L%02d: CONV%d-%d (%d[ksize]x%d[ch])\n", i+1, this->layer[i].ksize, this->layer[i].ch, n[i], m[i]);
 			break;
 		case CATS_MAXPOOL:
-			n[i] = SIZE(i);
+			n[i] = this->layer[i].ch * this->layer[i].sx * this->layer[i].sy;//SIZE(i);
 			m[i] = 1;
-			printf("L%02d: POOL%d [%d]\n", i+1, u[KSIZE], n[i]);
-			break;*/
+			printf("L%02d: POOL%d [%d]\n", i+1, this->layer[i].ksize, n[i]);
+			break;
 		case CATS_RECURRENT:
 			this->layer[i].Wi = calloc(this->layer[i].inputs * this->layer[i].hiddens, sizeof(real));
 //			this->layer[i].Wi = this->layer[i].W;
