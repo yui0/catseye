@@ -12,10 +12,9 @@
 
 int main()
 {
-	int size = 1;		// 入力層
 	int sample = 360;
 	int u[] = {
-		CATS_LINEAR, CATS_ACT_IDENTITY, 1/*ch*/, size/*input*/, 0, 0, 0, 500,
+		CATS_LINEAR, CATS_ACT_IDENTITY, 1/*ch*/,   1/*input*/,  0, 0, 0, 500,
 		CATS_LINEAR, CATS_ACT_SIGMOID,  1/*ch*/, 100/*hidden*/, 0, 0, 0, 0,
 		CATS_LINEAR, CATS_ACT_IDENTITY, 1/*ch*/,   1/*output*/, 0, 0, 0, CATS_LOSS_MSE,
 	};
@@ -45,16 +44,16 @@ int main()
 //	CatsEye_save(&cat, "sin.weights");
 
 	// 結果の表示
-	FILE *fp = fopen("sin.csv", "w");
+	FILE *fp = fopen("/tmp/sin.csv", "w");
 	if (fp==NULL) return -1;
 	for (int i=0; i<sample; i++) {
-		CatsEye_forward(&cat, x+size*i);
+		CatsEye_forward(&cat, x+i);
 		fprintf(fp, "%d, %lf\n", i, cat.o[2][0]);
 	}
 	fclose(fp);
 
 	// postscriptで表示
-	PS_init("sin.ps");
+	PS_init("/tmp/sin.ps");
 	PS_viewport(0.2, 0.2, 0.8, 0.8);
 	PS_xyworld(-0.5, -1.2, 2.0*M_PI+0.5, 1.2);
 	PS_linewidth(1.0);
@@ -82,12 +81,12 @@ int main()
 	CatsEye_forward(&cat, x);
 	PS_plot(x[0], cat.o[2][0], 3);
 	for (int i=1; i<sample; i++) {
-		CatsEye_forward(&cat, x+size*i);
+		CatsEye_forward(&cat, x+i);
 		PS_plot(x[i], cat.o[2][0], 2);
 	}
 	PS_stroke();
 	PS_fin();
-	system("ps2pdf sin.ps");
+	system("ps2pdf /tmp/sin.ps sin_.pdf");
 
 	CatsEye__destruct(&cat);
 
