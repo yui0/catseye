@@ -11,6 +11,8 @@
 #include <math.h>
 #include <sys/time.h>
 
+#define _debug(...)	{ printf("%s(%d):", __func__, __LINE__); printf(__VA_ARGS__); }
+
 #ifdef CATS_USE_FIXED
 #define real		short
 #elif defined CATS_USE_FLOAT
@@ -1157,10 +1159,10 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 	int osize[this->layers], dsize[this->layers], wsize[this->layers];
 	this->o = malloc(sizeof(real*)*(this->layers));	// outputs
 	this->osize = 0;
-	this->d = malloc(sizeof(real*)*(this->layers-1));	// errors
+	this->d = malloc(sizeof(real*)*(this->layers/*-1*/));	// errors
 	this->dsize = 0;
-	this->w = malloc(sizeof(real*)*(this->layers-1));	// weights
-	this->ws = malloc(sizeof(int)*(this->layers-1));
+	this->w = malloc(sizeof(real*)*(this->layers/*-1*/));	// weights
+	this->ws = malloc(sizeof(int)*(this->layers/*-1*/));
 	this->wsize = 0;
 
 	int n[this->layers], m[this->layers];
@@ -1168,7 +1170,6 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		CatsEye_layer *l = &this->layer[i];
 
 		if (i<this->layers-1) {
-//			l->outputs = layer[i+1].inputs;
 			l->forward = _CatsEye_layer_forward[layer[i].type];
 			l->backward = _CatsEye_layer_backward[layer[i].type];
 			if (!i && layer[i].type!=CATS_RECURRENT) l->backward = CatsEye_none;
@@ -1186,12 +1187,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		else l->dact = CatsEye_dact[layer[i].activation];
 
 		if (i>0) {
-//			this->layer[i-1].outputs = l->inputs;
 			l->ich = this->layer[i-1].ch;
-/*			if (!l->sx && l->ich) {
-//				printf("%d/%d\n", this->layer[i-1].inputs, l->ich);
-				l->sx = l->sy = sqrt(this->layer[i-1].inputs/l->ich);
-			}*/
 			if (!l->inputs) l->inputs = this->layer[i-1].outputs;
 		} else {
 			if (!l->ch) l->ch = 1;
@@ -1201,23 +1197,19 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 
 		switch (layer[i].type) {
 		case CATS_CONV:
-//			l->inputs = l->ch * (l->sx - l->ksize/2*2) * (l->sy - l->ksize/2*2);
 			l->outputs = l->ch * (l->sx - l->ksize/2*2) * (l->sy - l->ksize/2*2);
 //			printf("L%02d in:[%dx%dx%d] out:[%d]\n", i, u[CHANNEL-LPLEN], u[XSIZE], u[YSIZE], u[SIZE]);
 			n[i] = l->ksize * l->ksize;	// kernel size
 			m[i] = l->ch * l->ich;		// channel
 			printf("L%02d: CONV%d-%d i/o:%d/%d (%d[ksize^2]x%d[ch])\n", i+1, l->ksize, l->ch, l->inputs, l->outputs, n[i], m[i]);
-//			this->layer[i-1].outputs = l->inputs;
 			break;
 		case CATS_MAXPOOL:
 			l->ch = l->ich;
-//			l->inputs = l->ch * (l->sx - l->ksize) * (l->sy - l->ksize);
 			l->outputs = l->ch * (l->sx/l->ksize) * (l->sy/l->ksize);
 //			printf("L%02d in:[%dx%dx%d] out:[%d]\n", i, u[CHANNEL-LPLEN], u[XSIZE], u[YSIZE], u[SIZE]);
 			n[i] = l->ch * l->sx * l->sy;//SIZE(i);
 			m[i] = 1;
 			printf("L%02d: POOL%d-%d (sx:%d sy:%d [%d])\n", i+1, l->ksize, l->ch, l->sx, l->sy, n[i]);
-//			this->layer[i-1].outputs = l->inputs;
 			break;
 		case CATS_RECURRENT:
 			l->Wi = calloc(l->inputs * l->hiddens, sizeof(real));
@@ -1317,7 +1309,7 @@ void _CatsEye_forward(CatsEye *this, real *x)
 		this->layer[i].forward(&this->layer[i]);
 	}
 }
-void _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat)
+void _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, int random)
 {
 	int a = this->layers-1;
 	this->layer[a].z = t;
@@ -1326,14 +1318,14 @@ void _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat)
 	this->xsize = N;
 
 	int batch = N;			// for random
-//	if (RANDOM) batch = RANDOM;
+	if (random) batch = random;
 
 	struct timeval start, stop;
 	gettimeofday(&start, NULL);
 	for (int times=0; times<repeat; times++) {
 		for (int n=0; n<batch; n++) {
-//			int sample = RANDOM ? (frand()*N) : n;
-			int sample = frand()*N;
+			int sample = random ? (frand()*N) : n;
+//			int sample = frand()*N;
 
 			// forward propagation
 			_CatsEye_forward(this, x+sample*this->layer[0].inputs);
@@ -1373,6 +1365,24 @@ void _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat)
 		printf(" [%.2fs]", (stop.tv_sec - start.tv_sec) + (stop.tv_usec - start.tv_usec)*0.001*0.001);
 		printf("\n");
 	}
+}
+// return most probable label to the input x
+int _CatsEye_predict(CatsEye *this, real *x)
+{
+	// forward propagation
+	_CatsEye_forward(this, x);
+
+	// biggest output means most probable label
+	int a = this->layers-1;
+	real max = this->o[a][0];
+	int ans = 0;
+	for (int i=1; i<this->layer[a].inputs; i++) {
+		if (this->o[a][i] > max) {
+			max = this->o[a][i];
+			ans = i;
+		}
+	}
+	return ans;
 }
 
 #define CATS_MBATCH	8
