@@ -23,17 +23,9 @@ int main()
 	CatsEye cat;
 	CatsEye__construct(&cat, 0, 0, layers, u);
 
-	/*int _u[] = {
-		size, CATS_LINEAR, CATS_ACT_SIGMOID,  0,
-		 100, CATS_LINEAR, CATS_ACT_IDENTITY, 0,
-		   1, CATS_LOSS,   CATS_LOSS_MSE,     0,
-	};
-	CatsEye_construct(&cat, _u);*/
-
 	// 訓練データ
 	double x[sample];
 	for (int i=0; i<sample; i++) x[i] = 2.0*M_PI / sample * i;
-	// ラベルデータ
 	double t[sample];
 	for (int i=0; i<sample; i++) t[i] = sin(x[i]);
 

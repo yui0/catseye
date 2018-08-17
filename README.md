@@ -47,13 +47,13 @@ for more information, see example/
 	$ ./sin
 
 ## Demo
-- Recognizing handwritten digits by MNIST training (example/mnist_train.c)
+- Recognizing handwritten digits by MNIST training ([example/mnist_train.c](example/mnist_train.c))
   - http://yui0.github.io/catseye/example/html/mnist.html
 
-- Recognizing pictures (example/cifar10_train.c)
+- Recognizing pictures ([example/cifar10_train.c](example/cifar10_train.c))
   - http://yui0.github.io/catseye/example/html/cifar10.html
 
-- Neural Network 'paints' an image (example/paint.c)
+- Neural Network 'paints' an image ([example/paint.c](example/paint.c))
 
   ![Sakura](example/paint_sakura.png)
   [![Sakura](example/paint_sakura0499.png)](http://www.youtube.com/watch?v=445ilzeKtto)
@@ -64,12 +64,12 @@ for more information, see example/
   ![Nyanko](example/paint_cat.png)
   [![Nyanko](example/paint_cat0499.png)](http://www.youtube.com/watch?v=qy_R2gp5rx0)
 
-- Function approximation (example/sin.c)
+- Function approximation ([example/sin.c](example/sin.c))
 
   ![sin](example/sin.png)
   ![quadratic function](example/quadratic.png)
 
-- Autoencoder (example/mnist_autoencoder.c)
+- Autoencoder ([example/mnist_autoencoder.c](example/mnist_autoencoder.c))
   - Unit 64 [tied weight]
 
   ![epoch=100](example/mnist_autoencoder_u64ae_s100.png "epoch=100")

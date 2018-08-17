@@ -1161,19 +1161,20 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 	this->dsize = 0;
 	this->w = malloc(sizeof(real*)*(this->layers-1));	// weights
 	this->ws = malloc(sizeof(int)*(this->layers-1));
-	int n[this->layers], m[this->layers];
 	this->wsize = 0;
+
+	int n[this->layers], m[this->layers];
 	for (int i=0; i<this->layers; i++) {
 		CatsEye_layer *l = &this->layer[i];
 
 		if (i<this->layers-1) {
-			l->outputs = layer[i+1].inputs;
+//			l->outputs = layer[i+1].inputs;
 			l->forward = _CatsEye_layer_forward[layer[i].type];
 			l->backward = _CatsEye_layer_backward[layer[i].type];
 			if (!i && layer[i].type!=CATS_RECURRENT) l->backward = CatsEye_none;
 			l->update = _CatsEye_layer_update[layer[i].type];
 		} else { // last layer
-			l->outputs = 1;
+			if (!l->outputs) l->outputs = 1;
 			l->forward = CatsEye_none;
 			l->backward = CatsEye_none;
 			l->update = CatsEye_none;
@@ -1184,29 +1185,39 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		if (i>0) l->dact = CatsEye_dact[layer[i-1].activation];
 		else l->dact = CatsEye_dact[layer[i].activation];
 
-/*		if (i>0 && layer[i].type!=CATS_LINEAR) {
-			this->layer[i-1].outputs = l->inputs;
+		if (i>0) {
+//			this->layer[i-1].outputs = l->inputs;
 			l->ich = this->layer[i-1].ch;
-			if (!l->sx) {
+/*			if (!l->sx && l->ich) {
+//				printf("%d/%d\n", this->layer[i-1].inputs, l->ich);
 				l->sx = l->sy = sqrt(this->layer[i-1].inputs/l->ich);
-			}
-		}*/
+			}*/
+			if (!l->inputs) l->inputs = this->layer[i-1].outputs;
+		} else {
+			if (!l->ch) l->ch = 1;
+			if (!l->ich) l->ich = 1;
+		}
+		if (!l->sx && l->ich) l->sx = l->sy = sqrt(l->inputs/l->ich);
 
 		switch (layer[i].type) {
 		case CATS_CONV:
-			l->inputs = l->ch * (l->sx - l->ksize/2*2) * (l->sy - l->ksize/2*2);
+//			l->inputs = l->ch * (l->sx - l->ksize/2*2) * (l->sy - l->ksize/2*2);
+			l->outputs = l->ch * (l->sx - l->ksize/2*2) * (l->sy - l->ksize/2*2);
 //			printf("L%02d in:[%dx%dx%d] out:[%d]\n", i, u[CHANNEL-LPLEN], u[XSIZE], u[YSIZE], u[SIZE]);
 			n[i] = l->ksize * l->ksize;	// kernel size
 			m[i] = l->ch * l->ich;		// channel
-			printf("L%02d: CONV%d-%d (%d[ksize]x%d[ch])\n", i+1, l->ksize, l->ch, n[i], m[i]);
+			printf("L%02d: CONV%d-%d i/o:%d/%d (%d[ksize^2]x%d[ch])\n", i+1, l->ksize, l->ch, l->inputs, l->outputs, n[i], m[i]);
+//			this->layer[i-1].outputs = l->inputs;
 			break;
 		case CATS_MAXPOOL:
 			l->ch = l->ich;
-			l->inputs = l->ch * (l->sx - l->ksize) * (l->sy - l->ksize);
+//			l->inputs = l->ch * (l->sx - l->ksize) * (l->sy - l->ksize);
+			l->outputs = l->ch * (l->sx/l->ksize) * (l->sy/l->ksize);
 //			printf("L%02d in:[%dx%dx%d] out:[%d]\n", i, u[CHANNEL-LPLEN], u[XSIZE], u[YSIZE], u[SIZE]);
 			n[i] = l->ch * l->sx * l->sy;//SIZE(i);
 			m[i] = 1;
-			printf("L%02d: POOL%d [%d]\n", i+1, l->ksize, n[i]);
+			printf("L%02d: POOL%d-%d (sx:%d sy:%d [%d])\n", i+1, l->ksize, l->ch, l->sx, l->sy, n[i]);
+//			this->layer[i-1].outputs = l->inputs;
 			break;
 		case CATS_RECURRENT:
 			l->Wi = calloc(l->inputs * l->hiddens, sizeof(real));
@@ -1231,7 +1242,9 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			m[i] = l->hiddens;
 			printf("L%02d: RECURRENT %d %d\n", i+1, n[i], m[i]);
 			break;
-		default:
+		default: // LINEAR
+//			if (i>0 && !l->inputs) l->inputs = this->layer[i-1].outputs;
+			if (i<this->layers-1) l->outputs = layer[i+1].inputs;
 			n[i] = l->inputs;
 			m[i] = l->outputs;
 			printf("L%02d: LINEAR %d %d\n", i+1, n[i], m[i]);
@@ -1239,6 +1252,9 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		wsize[i] = this->wsize;
 		this->ws[i] = (n[i]+1)*m[i];
 		this->wsize += this->ws[i];
+//	}
+//	for (int i=0; i<this->layers; i++) {
+//		CatsEye_layer *l = &this->layer[i];
 
 		osize[i] = this->osize;
 		this->osize += l->inputs+1;	// bias
