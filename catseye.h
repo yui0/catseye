@@ -552,9 +552,11 @@ void _CatsEye_convolutional_layer_forward(CatsEye_layer *l)
 		}
 		o = z;
 	}
+	real avoid_nan = 1.0/(ks*ks);
 	for (int c=l->ch*l->ox*l->oy; c>0; c--) {	// out
 		o--;
-		*o = l->act(*o);
+//		*o = l->act(*o);
+		*o = l->act(*o *avoid_nan);
 	}
 //	CatsEye_act_array(l->act, l->z, l->z, l->ch*ox*oy);
 }
@@ -675,8 +677,7 @@ void _CatsEye_maxpooling_layer_backward(CatsEye_layer *l)
 	real *o = l->x;
 	memset(d, 0, sizeof(real)*l->inputs);
 	for (int i=0; i<l->outputs; i++) {
-		d[*max] = (*delta++);// * l->dact(o[*max]);
-		max++;
+		d[*max++] = (*delta++);// * l->dact(o[*max]);
 	}
 }
 
@@ -1195,11 +1196,13 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			break;
 		case CATS_MAXPOOL:
 			l->ch = l->ich;
-			l->outputs = l->ch * (l->sx/l->ksize) * (l->sy/l->ksize);
+			l->ox = l->sx/l->ksize;
+			l->oy = l->sy/l->ksize;
+			l->outputs = l->ch * l->ox * l->oy;
 //			printf("L%02d in:[%dx%dx%d] out:[%d]\n", i, u[CHANNEL-LPLEN], u[XSIZE], u[YSIZE], u[SIZE]);
 			n[i] = l->ch * l->sx * l->sy;//SIZE(i);
 			m[i] = 1;
-			printf("L%02d: POOL%d-%d (sx:%d sy:%d [%d])\n", i+1, l->ksize, l->ch, l->sx, l->sy, n[i]);
+			printf("L%02d: POOL%d-%d (sx:%d sy:%d [%d])\n", i+1, l->ksize, l->ch, l->ox, l->oy, n[i]);
 			break;
 		case CATS_RECURRENT:
 			l->Wi = calloc(l->inputs * l->hiddens, sizeof(real));
