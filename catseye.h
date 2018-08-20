@@ -385,8 +385,9 @@ typedef struct layer {
 
 	int ksize;		// CNN
 	int stride;		// CNN
+	int padding;		// CNN
 	int ich, ch;		// CNN
-	int sx, sy, ox, oy;	// CNN
+	int sx, sy, ox, oy, px;// CNN
 
 	int hiddens;		// RNN
 	int truncatedTime;	// RNN
@@ -394,7 +395,7 @@ typedef struct layer {
 	// auto config
 	int outputs;		// output size
 	real *x;		// input
-	real *z;		// output
+	real *z, *pz;		// output
 	real *W, *dW, *prev_dw;
 	real *Wi, *dWi;		// RNN [hidden * time](input -> hidden) = W, dW
 	real *Wr, *dWr;		// RNN [hidden * hidden]
@@ -1156,7 +1157,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 	this->ws = malloc(sizeof(int)*(this->layers/*-1*/));
 	this->wsize = 0;
 
-	int n[this->layers], m[this->layers];
+	int n[this->layers], m[this->layers], pz=0;
 	for (int i=0; i<this->layers; i++) {
 		CatsEye_layer *l = &this->layer[i];
 
@@ -1186,24 +1187,22 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		}
 		if (!l->sx && l->ich) l->sx = l->sy = sqrt(l->inputs/l->ich);
 
-		int ks;
 		switch (layer[i].type) {
 		case CATS_CONV:
-			ks = l->ksize/2*2;
-			l->ox = l->sx -ks;
-			l->oy = l->sy -ks;
+			pz = l->padding/2 +l->padding/2*l->px;
+			l->px = l->sx;
+			l->ox = (l->sx +2*l->padding -l->ksize) /l->stride +1;
+			l->oy = (l->sy +2*l->padding -l->ksize) /l->stride +1;
 			l->outputs = l->ch * l->ox * l->oy;
-//			printf("L%02d in:[%dx%dx%d] out:[%d]\n", i, u[CHANNEL-LPLEN], u[XSIZE], u[YSIZE], u[SIZE]);
 			n[i] = l->ksize * l->ksize;	// kernel size
 			m[i] = l->ch * l->ich;		// channel
 			printf("L%02d: CONV%d-%d i/o:%d/%d (%d[ksize^2]x%d[ch])\n", i+1, l->ksize, l->ch, l->inputs, l->outputs, n[i], m[i]);
 			break;
 		case CATS_MAXPOOL:
 			l->ch = l->ich;
-			l->ox = l->sx/l->ksize;
-			l->oy = l->sy/l->ksize;
+			l->ox = (l->sx +2*l->padding -l->ksize) /l->stride +1;
+			l->oy = (l->sy +2*l->padding -l->ksize) /l->stride +1;
 			l->outputs = l->ch * l->ox * l->oy;
-//			printf("L%02d in:[%dx%dx%d] out:[%d]\n", i, u[CHANNEL-LPLEN], u[XSIZE], u[YSIZE], u[SIZE]);
 			n[i] = l->ch * l->sx * l->sy;//SIZE(i);
 			m[i] = 1;
 			printf("L%02d: POOL%d-%d (sx:%d sy:%d [%d])\n", i+1, l->ksize, l->ch, l->ox, l->oy, n[i]);
@@ -1258,7 +1257,8 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 
 		l->x = this->odata + osize[i];
 		if (i<this->layers-1) l->z = this->odata + osize[i+1];	// output
-		else l->z = this->odata + osize[i];
+//		else l->z = this->odata + osize[i];
+		l->pz = l->z + pz;
 		l->dW = this->ddata + dsize[i];
 		l->W = this->wdata + wsize[i];
 		if (i>0) l->prev_dw = this->ddata + dsize[i-1];
