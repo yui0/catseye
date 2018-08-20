@@ -520,6 +520,7 @@ void CatsEye_rnn_layer_update(CatsEye_layer *l)
 // calculate forward propagation
 void _CatsEye_convolutional_layer_forward(CatsEye_layer *l)
 {
+	real k2 = 1.0 / (l->ksize * l->ksize);
 	int ks = l->ksize;
 	int step = l->sx - ks;
 
@@ -538,8 +539,11 @@ void _CatsEye_convolutional_layer_forward(CatsEye_layer *l)
 				for (int wx=ks; wx>0; wx--) {
 					real *p = s++;	// in
 					z = o;		// out
+//					real avoid_nan = *w * 0.1;
+					real avoid_nan = *w * k2;
 					for (int y=l->oy; y>0; y--) {
-						muladd(z, p, *w, l->ox);	// *z++ += (*p++) * (*w); p += m;
+//						muladd(z, p, *w, l->ox);	// *z++ += (*p++) * (*w); p += m;
+						muladd(z, p, avoid_nan, l->ox);	// *z++ += (*p++) * (*w); p += m;
 						p += l->sx;
 						z += l->ox;
 					}
@@ -552,11 +556,11 @@ void _CatsEye_convolutional_layer_forward(CatsEye_layer *l)
 		}
 		o = z;
 	}
-	real avoid_nan = 1.0/(ks*ks);
+//	real avoid_nan = 1.0/(ks*ks);
 	for (int c=l->ch*l->ox*l->oy; c>0; c--) {	// out
 		o--;
-//		*o = l->act(*o);
-		*o = l->act(*o *avoid_nan);
+		*o = l->act(*o);
+//		*o = l->act(*o *avoid_nan);
 	}
 //	CatsEye_act_array(l->act, l->z, l->z, l->ch*ox*oy);
 }
