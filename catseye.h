@@ -568,6 +568,7 @@ void _CatsEye_convolutional_layer_forward(CatsEye_layer *l)
 // calculate back propagation
 void _CatsEye_convolutional_layer_backward(CatsEye_layer *l)
 {
+	real k2 = 1.0 / (l->ksize * l->ksize);
 	int ks = l->ksize;	// kernel size
 	int step = l->sx - ks;
 
@@ -586,8 +587,10 @@ void _CatsEye_convolutional_layer_backward(CatsEye_layer *l)
 				for (int wx=ks; wx>0; wx--) {
 					real *p = prev_delta++;	// in
 					d = delta;		// out
+					real avoid_nan = *w * k2;
 					for (int y=l->oy; y>0; y--) {
-						muladd(p, d, *w, l->ox);	// *p++ += (*d++) * (*w);
+//						muladd(p, d, *w, l->ox);	// *p++ += (*d++) * (*w);
+						muladd(p, d, avoid_nan, l->ox);	// *p++ += (*d++) * (*w);
 						p += l->sx;
 						d += l->ox;
 					}
