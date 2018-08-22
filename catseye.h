@@ -295,9 +295,9 @@ enum CATS_LP {
 real dotvv(real *vec1, real *vec2, int n)
 {
 	real s = 0;
-	int i = n;
-//	#pragma omp simd reduction(+:s)
-	for (; i>=8; i-=8) {
+	int i;
+	#pragma omp simd reduction(+:s)
+	for (i=n; i>=8; i-=8) {
 		s += (*vec1++) * (*vec2++);
 		s += (*vec1++) * (*vec2++);
 		s += (*vec1++) * (*vec2++);
@@ -315,7 +315,7 @@ real dotvv(real *vec1, real *vec2, int n)
 // mat * vec
 void dotmv(real *s, real *mat, real *vec, int n, int m)
 {
-	#pragma omp parallel for
+	#pragma omp parallel for simd
 	for (int i=m; i>0; i--) {
 		*s++ = dotvv(mat, vec, n);
 		mat += n;
@@ -325,7 +325,7 @@ void dotmv(real *s, real *mat, real *vec, int n, int m)
 // vec += mat * vec
 void dotamv(real *s, real *mat, real *vec, int n, int m)
 {
-	#pragma omp parallel for
+	#pragma omp parallel for simd
 	for (int i=m; i>0; i--) {
 		*s++ += dotvv(mat, vec, n);
 		mat += n;
@@ -334,7 +334,7 @@ void dotamv(real *s, real *mat, real *vec, int n, int m)
 }
 void muldot(real *s, real *mat, real *vec, int n, int m)
 {
-	#pragma omp parallel for
+	#pragma omp parallel for simd
 	for (int i=m; i>0; i--) {
 		*s++ *= dotvv(mat, vec, n);
 		mat += n;
@@ -541,10 +541,10 @@ void _CatsEye_convolutional_layer_forward(CatsEye_layer *l)
 					real *p = s++;	// in
 					z = o;		// out
 //					real avoid_nan = *w * 0.1;
-					real avoid_nan = *w * k2;
+//					real avoid_nan = *w * k2;
 					for (int y=l->oy; y>0; y--) {
-//						muladd(z, p, *w, l->ox);	// *z++ += (*p++) * (*w); p += m;
-						muladd(z, p, avoid_nan, l->ox);	// *z++ += (*p++) * (*w); p += m;
+						muladd(z, p, *w, l->ox);	// *z++ += (*p++) * (*w); p += m;
+//						muladd(z, p, avoid_nan, l->ox);	// *z++ += (*p++) * (*w); p += m;
 						p += l->sx;
 						z += l->ox;
 					}
@@ -557,18 +557,18 @@ void _CatsEye_convolutional_layer_forward(CatsEye_layer *l)
 		}
 		o = z;
 	}
-//	real avoid_nan = 1.0/(ks*ks);
 	for (int c=l->ch*l->ox*l->oy; c>0; c--) {	// out
 		o--;
-		*o = l->act(*o);
+//		*o = l->act(*o);
 //		*o = l->act(*o *avoid_nan);
+		*o = l->act(*o * k2);
 	}
 //	CatsEye_act_array(l->act, l->z, l->z, l->ch*ox*oy);
 }
 // calculate back propagation
 void _CatsEye_convolutional_layer_backward(CatsEye_layer *l)
 {
-	real k2 = 1.0 / (l->ksize * l->ksize);
+//	real k2 = 1.0 / (l->ksize * l->ksize);
 	int ks = l->ksize;	// kernel size
 	int step = l->sx - ks;
 
@@ -587,10 +587,10 @@ void _CatsEye_convolutional_layer_backward(CatsEye_layer *l)
 				for (int wx=ks; wx>0; wx--) {
 					real *p = prev_delta++;	// in
 					d = delta;		// out
-					real avoid_nan = *w * k2;
+//					real avoid_nan = *w * k2;
 					for (int y=l->oy; y>0; y--) {
-//						muladd(p, d, *w, l->ox);	// *p++ += (*d++) * (*w);
-						muladd(p, d, avoid_nan, l->ox);	// *p++ += (*d++) * (*w);
+						muladd(p, d, *w, l->ox);	// *p++ += (*d++) * (*w);
+//						muladd(p, d, avoid_nan, l->ox);	// *p++ += (*d++) * (*w);
 						p += l->sx;
 						d += l->ox;
 					}
