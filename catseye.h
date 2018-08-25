@@ -527,7 +527,7 @@ void _CatsEye_convolutional_layer_forward(CatsEye_layer *l)
 	// c[out], c[in], ksize, h, w
 	real *z;
 	real *w = l->W;
-	real *s = l->x;
+	real *s;// = l->x;
 	real *o = l->z;// + l->pz;
 	memset(o, 0, sizeof(real)*l->ch*l->ox*l->oy);
 	for (int c=l->ch; c>0; c--) {	// out
@@ -575,9 +575,9 @@ void _CatsEye_convolutional_layer_backward(CatsEye_layer *l)
 	real *d;
 	real *w = l->W;
 	real *delta = l->dW;
-	real *prev_delta = l->prev_dw;
+	real *prev_delta;// = l->prev_dw;
 	for (int c=l->ch; c>0; c--) {	// out
-		real *r = prev_delta;
+		real *r = prev_delta = l->prev_dw;
 		for (int cc=l->ich; cc>0; cc--) {	// in
 			for (int wy=l->ksize; wy>0; wy--) {
 				for (int wx=l->ksize; wx>0; wx--) {
@@ -596,7 +596,7 @@ void _CatsEye_convolutional_layer_backward(CatsEye_layer *l)
 			prev_delta = r;
 		}
 		delta = d;
-		prev_delta = l->prev_dw;
+//		prev_delta = l->prev_dw;
 	}
 
 //	real avoid_nan = 1.0 / (l->ksize * l->ksize);
@@ -614,10 +614,10 @@ void _CatsEye_convolutional_layer_update(CatsEye_layer *l)
 	// c[out], c[in], ksize, h, w
 	real *w = l->W;
 	real *d;
-	real *prev_out = l->x;
+	real *prev_out;// = l->x;
 	real *curr_delta = l->dW;
 	for (int c=l->ch; c>0; c--) {	// out
-		real *r = prev_out;
+		real *r = prev_out = l->x;
 		for (int cc=l->ich; cc>0; cc--) {	// in
 			for (int wy=l->ksize; wy>0; wy--) {
 				for (int wx=l->ksize; wx>0; wx--) {
@@ -625,8 +625,7 @@ void _CatsEye_convolutional_layer_update(CatsEye_layer *l)
 					d = curr_delta;		// out
 					real a = 0;
 					for (int y=l->oy; y>0; y--) {
-//						a += dotvv(d, p, l->ox);	// a += d * p;
-						a += dotvv(d, p, l->sx);	// a += d * p;
+						a += dotvv(d, p, l->ox);	// a += d * p;
 						p += l->sx;
 						d += l->ox;
 					}
@@ -638,7 +637,7 @@ void _CatsEye_convolutional_layer_update(CatsEye_layer *l)
 			prev_out = r;
 		}
 		curr_delta = d;
-		prev_out = l->x;
+//		prev_out = l->x;
 	}
 }
 
