@@ -566,7 +566,6 @@ void _CatsEye_convolutional_layer_forward(CatsEye_layer *l)
 // calculate back propagation
 void _CatsEye_convolutional_layer_backward(CatsEye_layer *l)
 {
-//	real k2 = 1.0 / (l->ksize * l->ksize);
 	int step = l->sx - l->ksize;
 
 	// calculate the error
@@ -584,10 +583,8 @@ void _CatsEye_convolutional_layer_backward(CatsEye_layer *l)
 				for (int wx=l->ksize; wx>0; wx--) {
 					real *p = prev_delta++;	// in
 					d = delta;		// out
-//					real avoid_nan = *w * k2;
 					for (int y=l->oy; y>0; y--) {
 						muladd(p, d, *w, l->ox);	// *p++ += (*d++) * (*w);
-//						muladd(p, d, avoid_nan, l->ox);	// *p++ += (*d++) * (*w);
 						p += l->sx;
 						d += l->ox;
 					}
@@ -602,9 +599,11 @@ void _CatsEye_convolutional_layer_backward(CatsEye_layer *l)
 		prev_delta = l->prev_dw;
 	}
 
+//	real avoid_nan = 1.0 / (l->ksize * l->ksize);
 	real *prev_out = l->x;
 	for (int i=l->ich*l->sx*l->sy; i>0; i--) {
 		*prev_delta++ *= l->dact(*prev_out++);
+//		*prev_delta++ *= l->dact(*prev_out++) *avoid_nan;
 	}
 }
 // update the weights
@@ -626,7 +625,8 @@ void _CatsEye_convolutional_layer_update(CatsEye_layer *l)
 					d = curr_delta;		// out
 					real a = 0;
 					for (int y=l->oy; y>0; y--) {
-						a += dotvv(d, p, l->ox);	// a += d * p;
+//						a += dotvv(d, p, l->ox);	// a += d * p;
+						a += dotvv(d, p, l->sx);	// a += d * p;
 						p += l->sx;
 						d += l->ox;
 					}
@@ -1193,11 +1193,10 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			l->px -= l->padding*2;
 			l->py -= l->padding*2;
 			l->pz = l->padding +l->padding*l->ox;
-//printf("%d %d %d\n",l->ox,l->oy,l->pz);
 			l->outputs = l->ch * l->ox * l->oy;
 			n[i] = l->ksize * l->ksize;	// kernel size
 			m[i] = l->ch * l->ich;		// channel
-			printf("L%02d: CONV%d-%d i/o:%d/%d[%dx%d] (%d[ksize^2]x%d[ch])\n", i+1, l->ksize, l->ch, l->inputs, l->outputs, l->ox, l->oy, n[i], m[i]);
+			printf("L%02d: CONV%d-%d i/o:%d/%d[%dx%d/%dx%d] (%d[ksize^2]x%d[ch])\n", i+1, l->ksize, l->ch, l->inputs, l->outputs, l->sx, l->sy, l->ox, l->oy, n[i], m[i]);
 			break;
 		case CATS_MAXPOOL:
 			l->ch = l->ich;
