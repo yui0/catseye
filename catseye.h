@@ -522,9 +522,7 @@ void CatsEye_rnn_layer_update(CatsEye_layer *l)
 // calculate forward propagation
 void _CatsEye_convolutional_layer_forward(CatsEye_layer *l)
 {
-	real k2 = 1.0 / (l->ksize * l->ksize);
-	int ks = l->ksize;
-	int step = l->sx - ks;
+	int step = l->sx - l->ksize;
 
 	// c[out], c[in], ksize, h, w
 	real *z;
@@ -538,8 +536,8 @@ void _CatsEye_convolutional_layer_forward(CatsEye_layer *l)
 		o = l->z + l->pz + (l->ch-c)*l->ox*l->oy;
 		for (int cc=l->ich; cc>0; cc--) {	// in
 //			s = l->x + (l->ich-cc)*l->sx*l->sy;
-			for (int wy=ks; wy>0; wy--) {
-				for (int wx=ks; wx>0; wx--) {
+			for (int wy=l->ksize; wy>0; wy--) {
+				for (int wx=l->ksize; wx>0; wx--) {
 					real *p = s++;	// in
 					z = o;		// out
 					for (int y=l->py/*ox*/; y>0; y--) {
@@ -557,11 +555,11 @@ void _CatsEye_convolutional_layer_forward(CatsEye_layer *l)
 		}
 //		o = z + l->pz;
 	}
+	real avoid_nan = 1.0 / (l->ksize * l->ksize);
 	for (int c=l->ch*l->ox*l->oy; c>0; c--) {	// out
 		o--;
 //		*o = l->act(*o);
-//		*o = l->act(*o *avoid_nan);
-		*o = l->act(*o * k2);
+		*o = l->act(*o *avoid_nan);
 	}
 //	CatsEye_act_array(l->act, l->z, l->z, l->ch*ox*oy);
 }
@@ -569,8 +567,7 @@ void _CatsEye_convolutional_layer_forward(CatsEye_layer *l)
 void _CatsEye_convolutional_layer_backward(CatsEye_layer *l)
 {
 //	real k2 = 1.0 / (l->ksize * l->ksize);
-	int ks = l->ksize;	// kernel size
-	int step = l->sx - ks;
+	int step = l->sx - l->ksize;
 
 	// calculate the error
 	memset(l->prev_dw, 0, sizeof(real)*l->ich*l->sx*l->sy);
@@ -583,8 +580,8 @@ void _CatsEye_convolutional_layer_backward(CatsEye_layer *l)
 	for (int c=l->ch; c>0; c--) {	// out
 		real *r = prev_delta;
 		for (int cc=l->ich; cc>0; cc--) {	// in
-			for (int wy=ks; wy>0; wy--) {
-				for (int wx=ks; wx>0; wx--) {
+			for (int wy=l->ksize; wy>0; wy--) {
+				for (int wx=l->ksize; wx>0; wx--) {
 					real *p = prev_delta++;	// in
 					d = delta;		// out
 //					real avoid_nan = *w * k2;
@@ -613,8 +610,7 @@ void _CatsEye_convolutional_layer_backward(CatsEye_layer *l)
 // update the weights
 void _CatsEye_convolutional_layer_update(CatsEye_layer *l)
 {
-	int ks = l->ksize;
-	int step = l->sx - ks;
+	int step = l->sx - l->ksize;
 
 	// c[out], c[in], ksize, h, w
 	real *w = l->W;
@@ -624,8 +620,8 @@ void _CatsEye_convolutional_layer_update(CatsEye_layer *l)
 	for (int c=l->ch; c>0; c--) {	// out
 		real *r = prev_out;
 		for (int cc=l->ich; cc>0; cc--) {	// in
-			for (int wy=ks; wy>0; wy--) {
-				for (int wx=ks; wx>0; wx--) {
+			for (int wy=l->ksize; wy>0; wy--) {
+				for (int wx=l->ksize; wx>0; wx--) {
 					real *p = prev_out++;	// in
 					d = curr_delta;		// out
 					real a = 0;
@@ -1192,18 +1188,16 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 
 		switch (l->type) {
 		case CATS_CONV:
-			l->ox = (l->sx +2*l->padding -l->ksize) /l->stride +1;
-			l->oy = (l->sy +2*l->padding -l->ksize) /l->stride +1;
-			l->py = l->oy;
-			l->px = l->ox;
-			l->ox += l->padding*2;
-			l->oy += l->padding*2;
+			l->ox = l->px = (l->sx +2*l->padding -l->ksize) /l->stride +1;
+			l->oy = l->py = (l->sy +2*l->padding -l->ksize) /l->stride +1;
+			l->px -= l->padding*2;
+			l->py -= l->padding*2;
 			l->pz = l->padding +l->padding*l->ox;
 //printf("%d %d %d\n",l->ox,l->oy,l->pz);
 			l->outputs = l->ch * l->ox * l->oy;
 			n[i] = l->ksize * l->ksize;	// kernel size
 			m[i] = l->ch * l->ich;		// channel
-			printf("L%02d: CONV%d-%d i/o:%d/%d (%d[ksize^2]x%d[ch])\n", i+1, l->ksize, l->ch, l->inputs, l->outputs, n[i], m[i]);
+			printf("L%02d: CONV%d-%d i/o:%d/%d[%dx%d] (%d[ksize^2]x%d[ch])\n", i+1, l->ksize, l->ch, l->inputs, l->outputs, l->ox, l->oy, n[i], m[i]);
 			break;
 		case CATS_MAXPOOL:
 			l->ch = l->ich;
