@@ -528,7 +528,7 @@ void _CatsEye_convolutional_layer_forward(CatsEye_layer *l)
 	real *z;
 	real *w = l->W;
 	real *s;// = l->x;
-	real *o = l->z;// + l->pz;
+	real *o;// = l->z;// + l->pz;
 	memset(o, 0, sizeof(real)*l->ch*l->ox*l->oy);
 	for (int c=l->ch; c>0; c--) {	// out
 		real *r = s = l->x;
@@ -555,11 +555,13 @@ void _CatsEye_convolutional_layer_forward(CatsEye_layer *l)
 		}
 //		o = z + l->pz;
 	}
-	real avoid_nan = 1.0 / (l->ksize * l->ksize);
+	o = l->z;
+//	real avoid_nan = 1.0 / (l->ksize * l->ksize);
 	for (int c=l->ch*l->ox*l->oy; c>0; c--) {	// out
-		o--;
-//		*o = l->act(*o);
-		*o = l->act(*o *avoid_nan);
+//		o--;
+		*o = l->act(*o);
+//		*o = l->act(*o *avoid_nan);
+		o++;
 	}
 //	CatsEye_act_array(l->act, l->z, l->z, l->ch*ox*oy);
 }
@@ -677,10 +679,9 @@ void _CatsEye_maxpooling_layer_backward(CatsEye_layer *l)
 	int *max = (int*)l->W; // temp
 	real *delta = l->dW;
 	real *d = l->prev_dw;
-	real *o = l->x;
 	memset(d, 0, sizeof(real)*l->inputs);
 	for (int i=0; i<l->outputs; i++) {
-		d[*max++] = (*delta++);// * l->dact(o[*max]);
+		d[*max++] = (*delta++) * l->dact(l->x[*max]);
 	}
 }
 

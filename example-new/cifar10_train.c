@@ -34,11 +34,11 @@ int main()
 	CatsEye cat;
 	CatsEye__construct(&cat, 0, 0, layers, u);*/
 
-	CatsEye_layer u[] = {	// 37%(100), 65%(1000), 95%(2000)
-		{   size, CATS_CONV,   CATS_ACT_LEAKY_RELU,  0.01, .ksize=3, .stride=1, .ch=10, .ich=3 },
-		{      0, CATS_CONV,   CATS_ACT_LEAKY_RELU,  0.01, .ksize=3, .stride=1, .ch=10 },
-//		{   size, CATS_CONV,   CATS_ACT_LEAKY_RELU,  0.01, .ksize=3, .stride=1, .ch=10, .padding=1, .ich=3 },
-//		{      0, CATS_CONV,   CATS_ACT_LEAKY_RELU,  0.01, .ksize=3, .stride=1, .ch=10, .padding=1 },
+	CatsEye_layer u[] = {	// 44.7%(100), 73%(1000), 98.6%(2000)
+//		{   size, CATS_CONV,   CATS_ACT_LEAKY_RELU,  0.01, .ksize=3, .stride=1, .ch=10, .ich=3 },
+//		{      0, CATS_CONV,   CATS_ACT_LEAKY_RELU,  0.01, .ksize=3, .stride=1, .ch=10 },
+		{   size, CATS_CONV,   CATS_ACT_LEAKY_RELU,  0.01, .ksize=3, .stride=1, .ch=10, .padding=1, .ich=3 },
+		{      0, CATS_CONV,   CATS_ACT_LEAKY_RELU,  0.01, .ksize=3, .stride=1, .ch=10, .padding=1 },
 		{      0, CATS_MAXPOOL,                  0,  0.01, .ksize=2, .stride=2 },
 		{      0, CATS_LINEAR, CATS_ACT_LEAKY_RELU,  0.01 },
 		{    256, CATS_LINEAR,   CATS_ACT_IDENTITY,  0.01 },
@@ -101,9 +101,9 @@ int main()
 	// 訓練
 	printf("Starting training using (stochastic) gradient descent\n");
 //	CatsEye_train(&cat, x, t, sample, 1000/*repeat*/, 0.01);
-	_CatsEye_train(&cat, x, t, sample, 100/*repeat*/, 100/*random batch*/);
+//	_CatsEye_train(&cat, x, t, sample, 100/*repeat*/, 100/*random batch*/);
 //	_CatsEye_train(&cat, x, t, sample, 1000/*repeat*/, 100/*random batch*/);
-//	_CatsEye_train(&cat, x, t, sample, 2000/*repeat*/, 100/*random batch*/);
+	_CatsEye_train(&cat, x, t, sample, 2000/*repeat*/, 100/*random batch*/);
 	printf("Training complete\n");
 //	CatsEye_save(&cat, "cifar10.weights");
 //	CatsEye_saveJson(&cat, "cifar10.json");
