@@ -101,9 +101,9 @@ int main()
 	// 訓練
 	printf("Starting training using (stochastic) gradient descent\n");
 //	CatsEye_train(&cat, x, t, sample, 1000/*repeat*/, 0.01);
-//	_CatsEye_train(&cat, x, t, sample, 100/*repeat*/, 100/*random batch*/);
+	_CatsEye_train(&cat, x, t, sample, 100/*repeat*/, 100/*random batch*/);
 //	_CatsEye_train(&cat, x, t, sample, 1000/*repeat*/, 100/*random batch*/);
-	_CatsEye_train(&cat, x, t, sample, 2000/*repeat*/, 100/*random batch*/);
+//	_CatsEye_train(&cat, x, t, sample, 2000/*repeat*/, 100/*random batch*/);
 	printf("Training complete\n");
 //	CatsEye_save(&cat, "cifar10.weights");
 //	CatsEye_saveJson(&cat, "cifar10.json");

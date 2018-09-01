@@ -525,10 +525,9 @@ void _CatsEye_convolutional_layer_forward(CatsEye_layer *l)
 	int step = l->sx - l->ksize;
 
 	// c[out], c[in], ksize, h, w
-	real *z;
+	real *s, *z;
 	real *w = l->W;
-	real *s;// = l->x;
-	real *o;// = l->z;// + l->pz;
+	real *o = l->z;	// need!
 	memset(o, 0, sizeof(real)*l->ch*l->ox*l->oy);
 	for (int c=l->ch; c>0; c--) {	// out
 		real *r = s = l->x;
@@ -540,8 +539,7 @@ void _CatsEye_convolutional_layer_forward(CatsEye_layer *l)
 				for (int wx=l->ksize; wx>0; wx--) {
 					real *p = s++;	// in
 					z = o;		// out
-					for (int y=l->py/*ox*/; y>0; y--) {
-//						muladd(z, p, *w, l->ox);	// *z++ += (*p++) * (*w); p += m;
+					for (int y=l->py; y>0; y--) {
 						muladd(z, p, *w, l->px);	// *z++ += (*p++) * (*w); p += m;
 						p += l->sx;
 						z += l->ox;
@@ -556,11 +554,8 @@ void _CatsEye_convolutional_layer_forward(CatsEye_layer *l)
 //		o = z + l->pz;
 	}
 	o = l->z;
-//	real avoid_nan = 1.0 / (l->ksize * l->ksize);
 	for (int c=l->ch*l->ox*l->oy; c>0; c--) {	// out
-//		o--;
 		*o = l->act(*o);
-//		*o = l->act(*o *avoid_nan);
 		o++;
 	}
 //	CatsEye_act_array(l->act, l->z, l->z, l->ch*ox*oy);
@@ -574,10 +569,9 @@ void _CatsEye_convolutional_layer_backward(CatsEye_layer *l)
 	memset(l->prev_dw, 0, sizeof(real)*l->ich*l->sx*l->sy);
 
 	// c[out], c[in], ksize, h, w
-	real *d;
+	real *d, *prev_delta;
 	real *w = l->W;
 	real *delta = l->dW;
-	real *prev_delta;// = l->prev_dw;
 	for (int c=l->ch; c>0; c--) {	// out
 		real *r = prev_delta = l->prev_dw;
 		for (int cc=l->ich; cc>0; cc--) {	// in
@@ -601,11 +595,9 @@ void _CatsEye_convolutional_layer_backward(CatsEye_layer *l)
 //		prev_delta = l->prev_dw;
 	}
 
-//	real avoid_nan = 1.0 / (l->ksize * l->ksize);
 	real *prev_out = l->x;
 	for (int i=l->ich*l->sx*l->sy; i>0; i--) {
 		*prev_delta++ *= l->dact(*prev_out++);
-//		*prev_delta++ *= l->dact(*prev_out++) *avoid_nan;
 	}
 }
 // update the weights
@@ -615,8 +607,7 @@ void _CatsEye_convolutional_layer_update(CatsEye_layer *l)
 
 	// c[out], c[in], ksize, h, w
 	real *w = l->W;
-	real *d;
-	real *prev_out;// = l->x;
+	real *d, *prev_out;
 	real *curr_delta = l->dW;
 	for (int c=l->ch; c>0; c--) {	// out
 		real *r = prev_out = l->x;
