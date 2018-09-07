@@ -44,7 +44,7 @@ int main()
 		{    256, CATS_LINEAR,   CATS_ACT_IDENTITY,  0.01 },
 		{  label, CATS_LOSS,         CATS_LOSS_0_1,  0.01 },
 	};
-	/*CatsEye_layer u[] = {!!!
+	/*CatsEye_layer u[] = {	// 43.9%(100)
 		{   size, CATS_CONV,         CATS_ACT_RELU,  0.01, .ksize=3, .stride=1, .ch=10, .ich=3 },
 		{      0, CATS_CONV,         CATS_ACT_RELU,  0.01, .ksize=3, .stride=1, .ch=10 },
 		{      0, CATS_MAXPOOL,                  0,  0.01, .ksize=2, .stride=2 },
@@ -52,7 +52,7 @@ int main()
 		{    256, CATS_LINEAR,   CATS_ACT_IDENTITY,  0.01 },
 		{  label, CATS_LOSS,         CATS_LOSS_0_1,  0.01 },
 	};*/
-	/*CatsEye_layer u[] = {!!!
+	/*CatsEye_layer u[] = {	// !!!
 		{   size, CATS_CONV,         CATS_ACT_TANH,  0.01, .ksize=3, .stride=1, .ch=10, .ich=3 },
 		{      0, CATS_CONV,         CATS_ACT_TANH,  0.01, .ksize=3, .stride=1, .ch=10 },
 		{      0, CATS_MAXPOOL,                  0,  0.01, .ksize=2, .stride=2 },
@@ -68,7 +68,7 @@ int main()
 	  (fc2): Linear(in_features=120, out_features=84)
 	  (fc3): Linear(in_features=84, out_features=10)
 	)*/
-	/*CatsEye_layer u[] = {
+	/*CatsEye_layer u[] = {	// 32.4%(100)
 		{   size, CATS_CONV,       CATS_ACT_RELU,  0.01, .ksize=5, .stride=1, .ch=6, .ich=3 },
 		{      0, CATS_MAXPOOL,                0,  0.01, .ksize=2, .stride=2 },
 		{      0, CATS_CONV,       CATS_ACT_RELU,  0.01, .ksize=5, .stride=1, .ch=16 },
@@ -78,7 +78,7 @@ int main()
 		{  label, CATS_LOSS,       CATS_LOSS_0_1,  0.01 },
 	};*/
 	// https://cs.stanford.edu/people/karpathy/convnetjs/demo/cifar10.html
-	/*CatsEye_layer u[] = {
+	/*CatsEye_layer u[] = {	// 33.2%(100)
 		{   size, CATS_CONV,       CATS_ACT_RELU,  0.01, .ksize=5, .stride=1, .ch=16, .ich=3 },
 		{      0, CATS_MAXPOOL,                0,  0.01, .ksize=2, .stride=2 },
 		{      0, CATS_CONV,       CATS_ACT_RELU,  0.01, .ksize=5, .stride=1, .ch=20 },

@@ -386,9 +386,9 @@ typedef struct layer {
 	int ksize;		// CNN
 	int stride;		// CNN
 	int padding;		// CNN
-	int px, py, pz;	// CNN (padding)
+	int px, py, pz;	// CNN (AUTO: padding)
 	int ich, ch;		// CNN
-	int sx, sy, ox, oy;	// CNN (i/o size)
+	int sx, sy, ox, oy;	// CNN (AUTO: i/o size)
 
 	int hiddens;		// RNN
 	int truncatedTime;	// RNN
@@ -1168,10 +1168,16 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		if (i>0) l->dact = CatsEye_dact[(l-1)->activation];
 		else l->dact = CatsEye_dact[l->activation];
 
+		osize[i] = 0;
 		if (i>0) {
 			l->ich = (l-1)->ch;
 			if (!l->inputs) l->inputs = (l-1)->outputs;
-		} else {
+			else if (l->inputs<0) { // select the layer
+				l->inputs = (l+l->inputs)->outputs;
+				osize[i] = osize[i+l->inputs];
+			}
+//			if (l->inputs<=0) l->inputs = (l-1+l->inputs)->outputs;
+		} else { // first layer
 			if (!l->ch) l->ch = 1;
 			if (!l->ich) l->ich = 1;
 		}
@@ -1232,8 +1238,10 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		this->ws[i] = (n[i]+1)*m[i];
 		this->wsize += this->ws[i];
 
-		osize[i] = this->osize;
-		this->osize += l->inputs+1;	// bias
+		if (!osize[i]) {
+			osize[i] = this->osize;
+			this->osize += l->inputs+1;	// bias
+		}
 
 		dsize[i] = this->dsize;
 		this->dsize += l->outputs+1;	// bias
