@@ -42,7 +42,7 @@ int main(int argc, char* argv[])
 	int32_t num;
 
 	LS_LIST *ls = ls_dir(name, 1, &num);
-	fwrite(&num, sizeof(int32_t), 1, fp);
+//	fwrite(&num, sizeof(int32_t), 1, fp);
 	for (int i=0; i<num; i++) {
 //		printf("\n%s\n", ls[i].d_name);
 		char buff[256];
@@ -68,5 +68,6 @@ int main(int argc, char* argv[])
 	}*/
 	free(ls);
 
+	printf("Total %d\n", num);
 	fclose(fp);
 }
