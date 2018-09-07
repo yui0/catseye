@@ -94,8 +94,8 @@ int main()
 
 	// 訓練データの読み込み
 	printf("Training data: loading...");
-	int *t;
-	real *x = CatsEye_loadCifar("../example/data_batch_1.bin", sample, &t);
+	int16_t *t;
+	real *x = _CatsEye_loadCifar("../example/data_batch_1.bin", 32, 32, 1, sample, &t);
 	printf("OK\n");
 
 	// 訓練

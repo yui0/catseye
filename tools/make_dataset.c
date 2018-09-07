@@ -45,9 +45,6 @@ int main(int argc, char* argv[])
 	fwrite(&num, sizeof(int32_t), 1, fp);
 	for (int i=0; i<num; i++) {
 //		printf("\n%s\n", ls[i].d_name);
-		make_dataset(fp, ls[i].d_name, 12, 12);
-	}
-	for (int i=0; i<num; i++) {
 		char buff[256];
 		strcpy(buff, ls[i].d_name);
 		char *p = strrchr(buff, '/');
@@ -56,7 +53,19 @@ int main(int argc, char* argv[])
 //		printf("%s\n", p+1);
 		int16_t label = atoi(p+1);
 		fwrite(&label, sizeof(int16_t), 1, fp);
+
+		make_dataset(fp, ls[i].d_name, 12, 12);
 	}
+	/*for (int i=0; i<num; i++) {
+		char buff[256];
+		strcpy(buff, ls[i].d_name);
+		char *p = strrchr(buff, '/');
+		*p = 0;
+		p = strrchr(buff, '/');
+//		printf("%s\n", p+1);
+		int16_t label = atoi(p+1);
+		fwrite(&label, sizeof(int16_t), 1, fp);
+	}*/
 	free(ls);
 
 	fclose(fp);

@@ -672,7 +672,8 @@ void _CatsEye_maxpooling_layer_backward(CatsEye_layer *l)
 	real *d = l->prev_dw;
 	memset(d, 0, sizeof(real)*l->inputs);
 	for (int i=0; i<l->outputs; i++) {
-		d[*max++] = (*delta++) * l->dact(l->x[*max]);
+		d[*max] = (*delta++) * l->dact(l->x[*max]);
+		max++;
 	}
 }
 
@@ -1072,7 +1073,7 @@ void _CatsEye_loss_0_1(CatsEye_layer *l, void *t, int n)
 	real *d = l->prev_dw;
 	real *o = l->x;
 
-	int a = ((int*)t)[n];
+	int a = ((int16_t*)t)[n];
 	for (int i=0; i<l->inputs; i++) {
 		// 0-1 loss function
 		*d++ = a==i ? o[i]-1 : o[i];	// 1-of-K
@@ -1246,9 +1247,9 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		dsize[i] = this->dsize;
 		this->dsize += l->outputs+1;	// bias
 	}
-	this->osize--;	// bias
+//	this->osize--;	// bias
 	this->odata = calloc(this->osize, sizeof(real));
-	this->dsize--;
+//	this->dsize--;
 	this->ddata = calloc(this->dsize, sizeof(real));
 	this->wdata = calloc(this->wsize, sizeof(real));
 	for (int i=0; i<this->layers; i++) {
@@ -1573,6 +1574,33 @@ void CatsEye__destruct(CatsEye *this)
 	free(this->w);
 	if (this->u) free(this->u);
 }
+
+// https://www.cs.toronto.edu/~kriz/cifar.html
+real *_CatsEye_loadCifar(char *name, int sx, int sy, int lsize, int sample, int16_t **label)
+{
+	int size = sx*sy*3;
+	unsigned char *data = malloc((size+lsize)*sample);	// +1 for label
+	if (!data) return 0;
+	int16_t *t = malloc(sizeof(int16_t)*sample);
+	if (!t) return 0;
+	real *x = malloc(sizeof(real)*(size+1)*(sample+1));	// +1 for bias
+	if (!x) return 0;
+
+	FILE *fp = fopen(name, "rb");
+	if (!fp) return 0;
+	fread(data, (size+lsize)*sample, 1, fp);
+	for (int n=0; n<sample; n++) {
+		t[n] = data[n*(size+lsize)];
+		for (int i=0; i<size; i++) x[n*size+i] = data[n*(size+lsize)+lsize+i] * (1.0/255.0);
+	}
+	fclose(fp);
+	free(data);
+
+	*label = t;
+	return x;
+}
+
+
 
 // calculate the error of output layer
 void CatsEye_loss_0_1(CatsEye *this, int c, void *t, int n)
