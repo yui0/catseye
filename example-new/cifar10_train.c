@@ -6,8 +6,7 @@
 
 // gcc cifar10_train.c -o cifar10_train -lm -Ofast -march=native -funroll-loops -fopenmp -lgomp
 // clang cifar10_train.c -o cifar10_train -lm -Ofast -march=native -funroll-loops
-//#define CATS_SSE
-//#define CATS_AVX
+
 #define CATS_USE_FLOAT
 #include "../catseye.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -15,26 +14,12 @@
 
 int main()
 {
-	int k = 32;
+	int k = 32;		// image size
 	int size = 32*32*3;	// 入力層
 	int label = 10;	// 出力層
 	int sample = 10000;
 
-/*	int u[] = {
-		0, 0, 3, size, 0, 0, 0, 100,				// input 32x32x3, mini batch size is 100 by random
-
-		CATS_CONV, CATS_ACT_LEAKY_RELU, 10, 0, 0, 0, 3, 1,	// CONV1
-		CATS_CONV, CATS_ACT_LEAKY_RELU, 10, 0, 0, 0, 3, 1,	// CONV2
-		CATS_MAXPOOL, 0, 0, 0, 0, 0, 2, 2,			// POOL3 97.7%(1000), 98.5%(3000)
-		CATS_LINEAR, CATS_ACT_LEAKY_RELU, 1, 256, 0, 0, 0, 0,
-
-		CATS_LINEAR, CATS_ACT_SIGMOID, 1, label, 0, 0, 0, 0,
-	};
-	int layers = sizeof(u)/sizeof(int)/LPLEN;
-	CatsEye cat;
-	CatsEye__construct(&cat, 0, 0, layers, u);*/
-
-	CatsEye_layer u[] = {	// 44.7%(100), 73%(1000), 98.6%(2000)
+	CatsEye_layer u[] = {	// 44.7%(100), 85.1%(1000), 98.6%(2000)
 //		{   size, CATS_CONV,   CATS_ACT_LEAKY_RELU,  0.01, .ksize=3, .stride=1, .ch=10, .ich=3 },
 //		{      0, CATS_CONV,   CATS_ACT_LEAKY_RELU,  0.01, .ksize=3, .stride=1, .ch=10 },
 		{   size, CATS_CONV,   CATS_ACT_LEAKY_RELU,  0.01, .ksize=3, .stride=1, .ch=10, .padding=1, .ich=3 },
@@ -100,7 +85,6 @@ int main()
 
 	// 訓練
 	printf("Starting training using (stochastic) gradient descent\n");
-//	CatsEye_train(&cat, x, t, sample, 1000/*repeat*/, 0.01);
 //	_CatsEye_train(&cat, x, t, sample, 100/*repeat*/, 100/*random batch*/);
 	_CatsEye_train(&cat, x, t, sample, 1000/*repeat*/, 100/*random batch*/);
 //	_CatsEye_train(&cat, x, t, sample, 2000/*repeat*/, 100/*random batch*/);
@@ -114,7 +98,6 @@ int main()
 	int c = 0;
 	int r = 0;
 	for (int i=0; i<sample; i++) {
-//		int p = CatsEye_predict(&cat, x+size*i);
 		int p = _CatsEye_predict(&cat, x+size*i);
 		if (p==t[i]) r++;
 		else {
@@ -138,20 +121,19 @@ int main()
 //		printf("%d -> %d\n", p, t[i]);
 	}
 	printf("Prediction accuracy on training data = %f%%\n", (float)r/sample*100.0);
-//	stbi_write_png("cifar10_train_wrong.png", k*10, k*10, 1, pixels, 0);
-	stbi_write_png("cifar10_train_wrong.png", k*10, k*10, 3, pixels, 0);
+	stbi_write_png("cifar10_train_wrong.png", k*10, k*10, 3/*bpp*/, pixels, 0);
 
-/*	int n[10];
+	int n[10]; // 10 classes 
 	memset(n, 0, sizeof(int)*10);
 	memset(pixels, 0, size*100);
 	for (int i=0; i<10*10; i++) {
-//		int p = CatsEye_predict(&cat, x+size*i);
 		int p = _CatsEye_predict(&cat, x+size*i);
 
+		CatsEye_visualize(x+size*i, size/3, k, &pixels[p*k*k*10+(n[p]%10)*k], k*10);
 //		CatsEye_visualizeUnits(&cat, 0, 0, 0, &pixels[p*k*k*10+(n[p]%10)*k], k*10);
 		n[p]++;
 	}
-	stbi_write_png("cifar10_classify.png", k*10, k*10, 1, pixels, 0);*/
+	stbi_write_png("cifar10_classify.png", k*10, k*10, 1, pixels, 0);
 
 	memset(pixels, 0, size*100);
 	/*for (int i=0; i<10*10; i++)*/ {
@@ -186,7 +168,7 @@ int main()
 			}
 		}
 	}
-	stbi_write_png("cifar10_classify.png", k*10, k*10, 1, pixels, 0);
+	stbi_write_png("cifar10_predict.png", k*10, k*10, 1, pixels, 0);
 
 /*	memset(pixels, 0, size*100);
 	for (int i=0; i<10; i++) {

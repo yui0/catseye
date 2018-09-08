@@ -8,8 +8,6 @@
 // clang face-detection.c -o face-detection -lm -Ofast -march=native -funroll-loops
 // ./make_dataset ./datasets/face-detection
 
-//#define CATS_SSE
-//#define CATS_AVX
 #define CATS_USE_FLOAT
 #include "../catseye.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -21,6 +19,7 @@ int main()
 	int size = 12*12*3;	// 入力層
 	int sample = 18925;
 
+	// https://www.cv-foundation.org/openaccess/content_cvpr_2015/papers/Li_A_Convolutional_Neural_2015_CVPR_paper.pdf
 	CatsEye_layer u[] = {	// 12-net
 		{   size, CATS_CONV,   CATS_ACT_LEAKY_RELU,  0.01, .ksize=3, .stride=1, .padding=1, .ch=16, .ich=3 },
 		{      0, CATS_MAXPOOL,                  0,  0.01, .ksize=2, .stride=2 },

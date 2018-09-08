@@ -922,6 +922,32 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 	CatsEye_clSetup(this);
 #endif
 }
+
+// deconstructor
+void CatsEye__destruct(CatsEye *this)
+{
+#ifdef CATS_OPENCL
+	CatsEye_clFinish();
+#endif
+	// delete arrays
+//	for (int i=0; i<this->layers-1; i++) free(this->z[i]);
+	if (this->z) free(this->z);
+	free(this->odata);
+	free(this->o);
+	free(this->ddata);
+	free(this->d);
+/*	free(this->e2);
+	free(this->e3);
+	free(this->m2);
+	free(this->m3);
+	free(this->v2);
+	free(this->v3);*/
+	free(this->ws);
+	free(this->wdata);
+	free(this->w);
+	if (this->u) free(this->u);
+}
+
 void _CatsEye_forward(CatsEye *this, real *x)
 {
 //	this->layer[0].x = x;	//FIXME
@@ -937,6 +963,7 @@ void _CatsEye_forward(CatsEye *this, real *x)
 		this->layer[i].forward(&this->layer[i]);
 	}
 }
+
 void _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, int random)
 {
 	int a = this->layers-1;
@@ -1018,6 +1045,53 @@ int _CatsEye_predict(CatsEye *this, real *x)
 	}
 	return ans;
 }
+
+/*void _CatsEye_visualizeUnits(CatsEye *this, int n, int l, int ch, unsigned char *p, int width)
+{
+	int *u = &this->u[(l+1)*LPLEN];
+	real *s;
+	int size, w;
+	switch (n) {
+	case 0:
+		size = l->sx * l->sy;
+		w = l->sx;
+		s = &this->o[l][ch * size];
+		break;
+	case 1:
+		size = l->ksize * l->ksize;
+		w = l->ksize;
+		s = &this->w[l][ch * size];
+	}
+	CatsEye_visualize(s, size, w, p, width);
+}*/
+
+// https://www.cs.toronto.edu/~kriz/cifar.html
+real *_CatsEye_loadCifar(char *name, int sx, int sy, int lsize, int sample, int16_t **label)
+{
+	int size = sx*sy*3;
+	unsigned char *data = malloc((size+lsize)*sample);	// +1 for label
+	if (!data) return 0;
+	int16_t *t = malloc(sizeof(int16_t)*sample);
+	if (!t) return 0;
+	real *x = malloc(sizeof(real)*(size+1)*(sample+1));	// +1 for bias
+	if (!x) return 0;
+
+	FILE *fp = fopen(name, "rb");
+	if (!fp) return 0;
+	fread(data, (size+lsize)*sample, 1, fp);
+	for (int n=0; n<sample; n++) {
+		t[n] = data[n*(size+lsize)];
+		for (int i=0; i<size; i++) x[n*size+i] = data[n*(size+lsize)+lsize+i] * (1.0/255.0);
+	}
+	fclose(fp);
+	free(data);
+
+	*label = t;
+	return x;
+}
+
+
+
 
 #define CATS_MBATCH	8
 //#define CATS_OPENCL
@@ -1184,59 +1258,6 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 //		printf("L%02d in:[%dx%dx%d] out:[%d]\n", i, u[CHANNEL-LPLEN], u[XSIZE], u[YSIZE], u[SIZE]);
 	}*/
 }
-
-// deconstructor
-void CatsEye__destruct(CatsEye *this)
-{
-#ifdef CATS_OPENCL
-	CatsEye_clFinish();
-#endif
-	// delete arrays
-//	for (int i=0; i<this->layers-1; i++) free(this->z[i]);
-	if (this->z) free(this->z);
-	free(this->odata);
-	free(this->o);
-	free(this->ddata);
-	free(this->d);
-/*	free(this->e2);
-	free(this->e3);
-	free(this->m2);
-	free(this->m3);
-	free(this->v2);
-	free(this->v3);*/
-	free(this->ws);
-	free(this->wdata);
-	free(this->w);
-	if (this->u) free(this->u);
-}
-
-// https://www.cs.toronto.edu/~kriz/cifar.html
-real *_CatsEye_loadCifar(char *name, int sx, int sy, int lsize, int sample, int16_t **label)
-{
-	int size = sx*sy*3;
-	unsigned char *data = malloc((size+lsize)*sample);	// +1 for label
-	if (!data) return 0;
-	int16_t *t = malloc(sizeof(int16_t)*sample);
-	if (!t) return 0;
-	real *x = malloc(sizeof(real)*(size+1)*(sample+1));	// +1 for bias
-	if (!x) return 0;
-
-	FILE *fp = fopen(name, "rb");
-	if (!fp) return 0;
-	fread(data, (size+lsize)*sample, 1, fp);
-	for (int n=0; n<sample; n++) {
-		t[n] = data[n*(size+lsize)];
-		for (int i=0; i<size; i++) x[n*size+i] = data[n*(size+lsize)+lsize+i] * (1.0/255.0);
-	}
-	fclose(fp);
-	free(data);
-
-	*label = t;
-	return x;
-}
-
-
-
 
 // calculate forward propagation of input x
 // f(x) = h(scale*x+bias)
