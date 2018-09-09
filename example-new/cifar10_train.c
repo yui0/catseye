@@ -80,14 +80,14 @@ int main()
 	// 訓練データの読み込み
 	printf("Training data: loading...");
 	int16_t *t;
-	real *x = _CatsEye_loadCifar("../example/data_batch_1.bin", 32, 32, 1, sample, &t);
+	real *x = _CatsEye_loadCifar("../example/data_batch_1.bin", 32*32*3, 1, sample, &t);
 	printf("OK\n");
 
 	// 訓練
 	printf("Starting training using (stochastic) gradient descent\n");
 //	_CatsEye_train(&cat, x, t, sample, 100/*repeat*/, 100/*random batch*/);
-	_CatsEye_train(&cat, x, t, sample, 1000/*repeat*/, 100/*random batch*/);
-//	_CatsEye_train(&cat, x, t, sample, 2000/*repeat*/, 100/*random batch*/);
+//	_CatsEye_train(&cat, x, t, sample, 1000/*repeat*/, 100/*random batch*/);
+	_CatsEye_train(&cat, x, t, sample, 2000/*repeat*/, 100/*random batch*/);
 	printf("Training complete\n");
 //	CatsEye_save(&cat, "cifar10.weights");
 //	CatsEye_saveJson(&cat, "cifar10.json");
@@ -130,7 +130,6 @@ int main()
 		int p = _CatsEye_predict(&cat, x+size*i);
 
 		CatsEye_visualize(x+size*i, size/3, k, &pixels[p*k*k*10+(n[p]%10)*k], k*10);
-//		CatsEye_visualizeUnits(&cat, 0, 0, 0, &pixels[p*k*k*10+(n[p]%10)*k], k*10);
 		n[p]++;
 	}
 	stbi_write_png("cifar10_classify.png", k*10, k*10, 1, pixels, 0);
@@ -158,6 +157,8 @@ int main()
 
 			int mch = l->ch > 10 ? 10 : l->ch;
 			for (int ch=0; ch<mch; ch++) {
+//				CatsEye_visualize(&l->z[ch*l->ox*l->oy], size/3, k, &pixels[n*(k+2) +ch*(k+2)*k*10], k*10);
+
 				unsigned char *p = &pixels[n*(k+2) +ch*(k+2)*k*10];
 				for (int y=0; y<l->oy; y++) {
 					for (int x=0; x<l->ox; x++) {

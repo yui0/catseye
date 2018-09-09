@@ -17,14 +17,14 @@
 #include <string.h>
 #include "ls.h"
 
-void make_dataset(FILE *fp, char *name, int sx, int sy)
+void make_dataset(FILE *fp, char *name, int sx, int sy, int label)
 {
 	uint8_t *pixels;
 	int w, h, bpp;
 	pixels = stbi_load(name, &w, &h, &bpp, 3);
 //	printf("[%s]\n", name);
 	assert(pixels);
-	printf("%s %dx%d %d\n", name, w, h, bpp);
+	printf("#%d %s %dx%d %d\n", label, name, w, h, bpp);
 	bpp = 3;
 
 	// resize
@@ -45,16 +45,18 @@ int main(int argc, char* argv[])
 //	fwrite(&num, sizeof(int32_t), 1, fp);
 	for (int i=0; i<num; i++) {
 //		printf("\n%s\n", ls[i].d_name);
-		char buff[256];
+/*		char buff[256];
 		strcpy(buff, ls[i].d_name);
 		char *p = strrchr(buff, '/');
 		*p = 0;
 		p = strrchr(buff, '/');
 //		printf("%s\n", p+1);
-		int16_t label = atoi(p+1);
+		int16_t label = atoi(p+1);*/
+		char *p = strstr(ls[i].d_name, "/label_");
+		int16_t label = atoi(p+7);
 		fwrite(&label, sizeof(int16_t), 1, fp);
 
-		make_dataset(fp, ls[i].d_name, 12, 12);
+		make_dataset(fp, ls[i].d_name, 12, 12, label);
 	}
 	/*for (int i=0; i<num; i++) {
 		char buff[256];

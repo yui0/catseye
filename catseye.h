@@ -1066,14 +1066,14 @@ int _CatsEye_predict(CatsEye *this, real *x)
 }*/
 
 // https://www.cs.toronto.edu/~kriz/cifar.html
-real *_CatsEye_loadCifar(char *name, int sx, int sy, int lsize, int sample, int16_t **label)
+real *_CatsEye_loadCifar(char *name, int size, int lsize, int sample, int16_t **label)
 {
-	int size = sx*sy*3;
 	unsigned char *data = malloc((size+lsize)*sample);	// +1 for label
 	if (!data) return 0;
 	int16_t *t = malloc(sizeof(int16_t)*sample);
 	if (!t) return 0;
-	real *x = malloc(sizeof(real)*(size+1)*(sample+1));	// +1 for bias
+//	real *x = malloc(sizeof(real)*(size+1)*(sample+1));	// +1 for bias
+	real *x = malloc(sizeof(real)*size*sample);
 	if (!x) return 0;
 
 	FILE *fp = fopen(name, "rb");
