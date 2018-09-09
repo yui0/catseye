@@ -1046,25 +1046,6 @@ int _CatsEye_predict(CatsEye *this, real *x)
 	return ans;
 }
 
-/*void _CatsEye_visualizeUnits(CatsEye *this, int n, int l, int ch, unsigned char *p, int width)
-{
-	int *u = &this->u[(l+1)*LPLEN];
-	real *s;
-	int size, w;
-	switch (n) {
-	case 0:
-		size = l->sx * l->sy;
-		w = l->sx;
-		s = &this->o[l][ch * size];
-		break;
-	case 1:
-		size = l->ksize * l->ksize;
-		w = l->ksize;
-		s = &this->w[l][ch * size];
-	}
-	CatsEye_visualize(s, size, w, p, width);
-}*/
-
 // https://www.cs.toronto.edu/~kriz/cifar.html
 real *_CatsEye_loadCifar(char *name, int size, int lsize, int sample, int16_t **label)
 {

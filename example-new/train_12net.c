@@ -52,18 +52,6 @@ int main()
 		else {
 			if (c<100) {
 				CatsEye_visualize(x+size*i, size, k*3, &pixels[(c/10)*size*10+(c%10)*k*3], k*3*10);
-/*				real *xx = &x[size*i];
-				unsigned char *p = &pixels[(c/10)*size*10+(c%10)*k*3];
-				for (int y=0; y<k; y++) {
-					for (int x=0; x<k; x++) {
-						p[(y*k*10+x)*3  ] = xx[y*k+x] * 255.0;
-						p[(y*k*10+x)*3+1] = xx[k*k+y*k+x] * 255.0;
-						p[(y*k*10+x)*3+2] = xx[2*k*k+y*k+x] * 255.0;
-					}
-				}*/
-
-				//CatsEye_visualize(cat.o[0], k*k, k, &pixels[(c/10)*k*k*10+(c%10)*k], k*10);
-//				CatsEye_visualizeUnits(&cat, 0, 0, 0, &pixels[(c/10)*k*k*10+(c%10)*k], k*10);
 			}
 			c++;
 		}
@@ -94,30 +82,13 @@ int main()
 				continue;
 			}
 
-/*			int mch = l->ich > 10 ? 10 : l->ich;
-			for (int ch=0; ch<mch; ch++) {
-				unsigned char *p = &pixels[n*(k+2) +ch*(k+2)*k*10];
-				for (int y=0; y<l->sy; y++) {
-					for (int x=0; x<l->sx; x++) {
-//						p[(y*k*10+x)] = l->x[y*l->sx+x +ch*l->sx*l->sy] * 255.0;
-						p[(y*k*10+x)] = l->x[y*l->sx+x +ch*l->sx*l->sy] * 200.0;
-					}
-				}
-			}*/
-
 			int mch = l->ch > 10 ? 10 : l->ch;
 			for (int ch=0; ch<mch; ch++) {
-				unsigned char *p = &pixels[n*(k+2) +ch*(k+2)*k*10];
-				for (int y=0; y<l->oy; y++) {
-					for (int x=0; x<l->ox; x++) {
-//						p[(y*k*10+x)] = l->z[y*l->ox+x +ch*l->ox*l->oy] * 255.0;
-						p[(y*k*10+x)] = l->z[y*l->ox+x +ch*l->ox*l->oy] * 200.0;
-					}
-				}
+				CatsEye_visualize(&l->z[ch*l->ox*l->oy], l->ox*l->oy, l->ox, &pixels[n*(k+2) +ch*(k+2)*k*10], k*10);
 			}
 		}
 	}
-	stbi_write_png("train_12net_classify.png", k*10, k*10, 1, pixels, 0);
+	stbi_write_png("train_12net_predict.png", k*10, k*10, 1, pixels, 0);
 
 /*	memset(pixels, 0, size*100);
 	for (int i=0; i<10; i++) {

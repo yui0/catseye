@@ -19,11 +19,11 @@ int main()
 	int label = 10;	// 出力層
 	int sample = 10000;
 
-	CatsEye_layer u[] = {	// 44.7%(100), 85.1%(1000), 98.6%(2000)
-//		{   size, CATS_CONV,   CATS_ACT_LEAKY_RELU,  0.01, .ksize=3, .stride=1, .ch=10, .ich=3 },
-//		{      0, CATS_CONV,   CATS_ACT_LEAKY_RELU,  0.01, .ksize=3, .stride=1, .ch=10 },
-		{   size, CATS_CONV,   CATS_ACT_LEAKY_RELU,  0.01, .ksize=3, .stride=1, .ch=10, .padding=1, .ich=3 },
-		{      0, CATS_CONV,   CATS_ACT_LEAKY_RELU,  0.01, .ksize=3, .stride=1, .ch=10, .padding=1 },
+	CatsEye_layer u[] = {	// 46.4%(100), 95.8%(1000), 99.7%(2000)
+		{   size, CATS_CONV,   CATS_ACT_LEAKY_RELU,  0.01, .ksize=3, .stride=1, .ch=10, .ich=3 },
+		{      0, CATS_CONV,   CATS_ACT_LEAKY_RELU,  0.01, .ksize=3, .stride=1, .ch=10 },
+//		{   size, CATS_CONV,   CATS_ACT_LEAKY_RELU,  0.01, .ksize=3, .stride=1, .ch=10, .padding=1, .ich=3 },
+//		{      0, CATS_CONV,   CATS_ACT_LEAKY_RELU,  0.01, .ksize=3, .stride=1, .ch=10, .padding=1 },
 		{      0, CATS_MAXPOOL,                  0,  0.01, .ksize=2, .stride=2 },
 		{      0, CATS_LINEAR, CATS_ACT_LEAKY_RELU,  0.01 },
 		{    256, CATS_LINEAR,   CATS_ACT_IDENTITY,  0.01 },
@@ -85,9 +85,9 @@ int main()
 
 	// 訓練
 	printf("Starting training using (stochastic) gradient descent\n");
-//	_CatsEye_train(&cat, x, t, sample, 100/*repeat*/, 100/*random batch*/);
+	_CatsEye_train(&cat, x, t, sample, 100/*repeat*/, 100/*random batch*/);
 //	_CatsEye_train(&cat, x, t, sample, 1000/*repeat*/, 100/*random batch*/);
-	_CatsEye_train(&cat, x, t, sample, 2000/*repeat*/, 100/*random batch*/);
+//	_CatsEye_train(&cat, x, t, sample, 2000/*repeat*/, 100/*random batch*/);
 	printf("Training complete\n");
 //	CatsEye_save(&cat, "cifar10.weights");
 //	CatsEye_saveJson(&cat, "cifar10.json");
@@ -144,28 +144,9 @@ int main()
 				continue;
 			}
 
-/*			int mch = l->ich > 10 ? 10 : l->ich;
-			for (int ch=0; ch<mch; ch++) {
-				unsigned char *p = &pixels[n*(k+2) +ch*(k+2)*k*10];
-				for (int y=0; y<l->sy; y++) {
-					for (int x=0; x<l->sx; x++) {
-//						p[(y*k*10+x)] = l->x[y*l->sx+x +ch*l->sx*l->sy] * 255.0;
-						p[(y*k*10+x)] = l->x[y*l->sx+x +ch*l->sx*l->sy] * 200.0;
-					}
-				}
-			}*/
-
 			int mch = l->ch > 10 ? 10 : l->ch;
 			for (int ch=0; ch<mch; ch++) {
-//				CatsEye_visualize(&l->z[ch*l->ox*l->oy], size/3, k, &pixels[n*(k+2) +ch*(k+2)*k*10], k*10);
-
-				unsigned char *p = &pixels[n*(k+2) +ch*(k+2)*k*10];
-				for (int y=0; y<l->oy; y++) {
-					for (int x=0; x<l->ox; x++) {
-//						p[(y*k*10+x)] = l->z[y*l->ox+x +ch*l->ox*l->oy] * 255.0;
-						p[(y*k*10+x)] = l->z[y*l->ox+x +ch*l->ox*l->oy] * 200.0;
-					}
-				}
+				CatsEye_visualize(&l->z[ch*l->ox*l->oy], l->ox*l->oy, l->ox, &pixels[n*(k+2) +ch*(k+2)*k*10], k*10);
 			}
 		}
 	}
