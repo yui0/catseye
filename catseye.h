@@ -1020,6 +1020,7 @@ void _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, int rand
 		printf("\n");
 	}
 }
+
 // return most probable label to the input x
 int _CatsEye_predict(CatsEye *this, real *x)
 {
@@ -1044,6 +1045,45 @@ int _CatsEye_predict(CatsEye *this, real *x)
 		}
 	}
 	return ans;
+}
+
+// save weights to json file
+int _CatsEye_saveJson(CatsEye *this, char *filename)
+{
+	FILE *fp = fopen(filename, "w");
+	if (fp==NULL) return -1;
+
+	CatsEye_layer *l = this->layer;
+	for (int n=0; n<this->layers; n++) {
+		fprintf(fp, "var u%d = [%d,%d,%d,%d,%d,%d,%d,%d];\n", n, l->type, l->activation,
+			l->ch, l->inputs, l->sx, l->sy, l->ksize, l->stride);
+		l++;
+	}
+	fprintf(fp, "var u = [u0");
+	for (int n=1; n<this->layers; n++) {
+		fprintf(fp, ",u%d", n);
+	}
+	fprintf(fp, "];\n");
+
+	for (int n=0; n<this->layers-1; n++) {
+		int i;
+		fprintf(fp, "var w%d = [", n+1);
+//		if (this->u[TYPE+LPLEN*n] != CATS_MAXPOOL) {
+			for (i=0; i<this->ws[n]; i++) {
+				fprintf(fp, "%lf,", this->w[n][i]);
+			}
+			fprintf(fp, "%lf", this->w[n][i]);
+//		}
+		fprintf(fp, "];\n");
+	}
+	fprintf(fp, "var w = [w1");
+	for (int n=1; n<this->layers-1; n++) {
+		fprintf(fp, ",w%d", n+1);
+	}
+	fprintf(fp, "];\n");
+
+	fclose(fp);
+	return 0;
 }
 
 // https://www.cs.toronto.edu/~kriz/cifar.html

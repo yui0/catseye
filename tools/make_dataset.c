@@ -17,6 +17,8 @@
 #include <string.h>
 #include "ls.h"
 
+uint8_t *pix;
+
 void make_dataset(FILE *fp, char *name, int sx, int sy, int label)
 {
 	uint8_t *pixels;
@@ -28,9 +30,19 @@ void make_dataset(FILE *fp, char *name, int sx, int sy, int label)
 	bpp = 3;
 
 	// resize
-	uint8_t *pix = malloc(sx*sy*bpp);
-	stbir_resize_uint8_srgb(pixels, w, h, 0, pix, sx, sy, 0, bpp, -1, 0);
+	uint8_t *p = pix;
+	uint8_t *s = pix +sx*sy*bpp;
+	stbir_resize_uint8_srgb(pixels, w, h, 0, s, sx, sy, 0, bpp, -1, 0);
 	stbi_image_free(pixels);
+
+	for (int y=0; y<sy; y++) {
+		for (int x=0; x<sx; x++) {
+			*p           = *s++;
+			*(p+sx*sy)   = *s++;
+			*(p+sx*sy*2) = *s++;
+			p++;
+		}
+	}
 
 	fwrite(pix, sx*sy*bpp, 1, fp);
 }
@@ -41,6 +53,7 @@ int main(int argc, char* argv[])
 	char *name = argv[1];
 	int32_t num;
 
+	pix = malloc(12*12*3 *2);
 	LS_LIST *ls = ls_dir(name, 1, &num);
 //	fwrite(&num, sizeof(int32_t), 1, fp);
 	for (int i=0; i<num; i++) {
@@ -69,6 +82,7 @@ int main(int argc, char* argv[])
 		fwrite(&label, sizeof(int16_t), 1, fp);
 	}*/
 	free(ls);
+	free(pix);
 
 	printf("Total %d\n", num);
 	fclose(fp);
