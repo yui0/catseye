@@ -12,15 +12,18 @@
 #include "../catseye.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "../stb_image_write.h"
+#define STB_IMAGE_IMPLEMENTATION
+#include "../stb_image.h"
 
 int main()
 {
 	int k = 12;
 	int size = 12*12*3;	// 入力層
-	int sample = 18925;
+//	int sample = 18925;
+	int sample = 789431;	// 92%(10), 94%(100)
 
 	// https://www.cv-foundation.org/openaccess/content_cvpr_2015/papers/Li_A_Convolutional_Neural_2015_CVPR_paper.pdf
-	CatsEye_layer u[] = {	// 12-net
+	CatsEye_layer u[] = {	// 12-net 99.9%(1000)
 		{   size, CATS_CONV,   CATS_ACT_LEAKY_RELU,  0.01, .ksize=3, .stride=1, /*.padding=1,*/ .ch=16, .ich=3 },
 		{      0, CATS_MAXPOOL,                  0,  0.01, .ksize=2, .stride=2 },
 		{      0, CATS_LINEAR, CATS_ACT_LEAKY_RELU,  0.01 },	// 16 outputs (Fully-connected layer)
@@ -38,7 +41,10 @@ int main()
 
 	// 訓練
 	printf("Starting training using (stochastic) gradient descent\n");
-	_CatsEye_train(&cat, x, t, sample, 100/*repeat*/, 100/*random batch*/);
+//	_CatsEye_train(&cat, x, t, sample, 1000/*repeat*/, 100/*random batch*/);
+//	_CatsEye_train(&cat, x, t, sample, 1000/*repeat*/, sample/10/*random batch*/);
+//	_CatsEye_train(&cat, x, t, sample, 280/*repeat*/, sample/10/*random batch*/);
+	_CatsEye_train(&cat, x, t, sample, 10/*repeat*/, sample/10/*random batch*/);
 	printf("Training complete\n");
 	_CatsEye_saveJson(&cat, "train_12net.json");
 
@@ -68,18 +74,6 @@ int main()
 	}
 	printf("Prediction accuracy on training data = %f%%\n", (float)r/sample*100.0);
 	stbi_write_png("train_12net_wrong.png", k*10, k*10, 3, pixels, 0);
-
-/*	int n[10];
-	memset(n, 0, sizeof(int)*10);
-	memset(pixels, 0, size*100);
-	for (int i=0; i<10*10; i++) {
-//		int p = CatsEye_predict(&cat, x+size*i);
-		int p = _CatsEye_predict(&cat, x+size*i);
-
-//		CatsEye_visualizeUnits(&cat, 0, 0, 0, &pixels[p*k*k*10+(n[p]%10)*k], k*10);
-		n[p]++;
-	}
-	stbi_write_png("cifar10_classify.png", k*10, k*10, 1, pixels, 0);*/
 
 	memset(pixels, 0, size*100);
 	int i = frand()*sample;
@@ -126,6 +120,37 @@ int main()
 
 	free(t);
 	free(x);
+//	CatsEye__destruct(&cat);
+
+	{
+	char *name = "mikarika.jpg";
+	uint8_t *pixels;
+	int w, h, bpp;
+	pixels = stbi_load(name, &w, &h, &bpp, 3);
+	assert(pixels);
+	printf("%s %dx%d %d\n", name, w, h, bpp);
+	real pix[12*12*3];
+	for (int y=0; y<h; y+=4) {
+		for (int x=0; x<w; x+=4) {
+			for (int sy=0; sy<12; sy++) {
+				for (int sx=0; sx<12; sx++) {
+					pix[12*sy+sx]         = pixels[(w*(y+sy)+x+sx)*3  ] /255.0;
+					pix[12*sy+sx+12*12]   = pixels[(w*(y+sy)+x+sx)*3+1] /255.0;
+					pix[12*sy+sx+12*12*2] = pixels[(w*(y+sy)+x+sx)*3+2] /255.0;
+				}
+			}
+			int p = _CatsEye_predict(&cat, pix);
+			if (p) {
+				for (int sy=0; sy<12; sy++) {
+					for (int sx=0; sx<12; sx++) {
+						pixels[(w*(y+sy)+x+sx)*3] = 0;
+					}
+				}
+			}
+		}
+	}
+	stbi_write_png("mikarika_r.jpg", w, h, bpp, pixels, 0);
+	}
 	CatsEye__destruct(&cat);
 
 	return 0;
