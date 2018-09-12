@@ -1047,6 +1047,27 @@ int _CatsEye_predict(CatsEye *this, real *x)
 	return ans;
 }
 
+int CatsEye_saveCats(CatsEye *this, char *filename)
+{
+	FILE *fp = fopen(filename, "wb");
+	if (fp==NULL) return -1;
+
+	fwrite(this->wdata, this->wsize, 1, fp);
+
+	fclose(fp);
+	return 0;
+}
+int CatsEye_loadCats(CatsEye *this, char *filename)
+{
+	FILE *fp = fopen(filename, "rb");
+	if (fp==NULL) return -1;
+
+	fread(this->wdata, this->wsize, 1, fp);
+
+	fclose(fp);
+	return 0;
+}
+
 // save weights to json file
 int _CatsEye_saveJson(CatsEye *this, char *filename)
 {
@@ -1065,16 +1086,18 @@ int _CatsEye_saveJson(CatsEye *this, char *filename)
 	}
 	fprintf(fp, "];\n");
 
+	l = this->layer;
 	for (int n=0; n<this->layers-1; n++) {
-		int i;
 		fprintf(fp, "var w%d = [", n+1);
-//		if (this->u[TYPE+LPLEN*n] != CATS_MAXPOOL) {
+		if (l->type != CATS_MAXPOOL) {
+			int i;
 			for (i=0; i<this->ws[n]; i++) {
 				fprintf(fp, "%lf,", this->w[n][i]);
 			}
 			fprintf(fp, "%lf", this->w[n][i]);
-//		}
+		}
 		fprintf(fp, "];\n");
+		l++;
 	}
 	fprintf(fp, "var w = [w1");
 	for (int n=1; n<this->layers-1; n++) {

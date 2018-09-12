@@ -4,8 +4,8 @@
 //		©2018 Yuichiro Nakada
 //---------------------------------------------------------
 
-// gcc train_12net.c -o train_12net -lm -Ofast -march=native -funroll-loops -fopenmp -lgomp
-// clang train_12net.c -o train_12net -lm -Ofast -march=native -funroll-loops
+// gcc 12net_train.c -o 12net_train -lm -Ofast -march=native -funroll-loops -fopenmp -lgomp
+// clang 12net_train.c -o 12net_train -lm -Ofast -march=native -funroll-loops
 // ./make_dataset ./datasets/
 
 #define CATS_USE_FLOAT
@@ -20,7 +20,7 @@ int main()
 	int k = 12;
 	int size = 12*12*3;	// 入力層
 //	int sample = 18925;
-	int sample = 789431;	// 92%(10), 94%(100)
+	int sample = 789431;	// 93%(10), 94%(100)
 
 	// https://www.cv-foundation.org/openaccess/content_cvpr_2015/papers/Li_A_Convolutional_Neural_2015_CVPR_paper.pdf
 	CatsEye_layer u[] = {	// 12-net 99.9%(1000)
@@ -46,7 +46,8 @@ int main()
 //	_CatsEye_train(&cat, x, t, sample, 280/*repeat*/, sample/10/*random batch*/);
 	_CatsEye_train(&cat, x, t, sample, 10/*repeat*/, sample/10/*random batch*/);
 	printf("Training complete\n");
-	_CatsEye_saveJson(&cat, "train_12net.json");
+	CatsEye_saveCats(&cat, "12net.cats");
+	_CatsEye_saveJson(&cat, "12net.json");
 
 	// 結果の表示
 	unsigned char *pixels = calloc(1, size*100);
@@ -73,13 +74,13 @@ int main()
 //		printf("%d -> %d\n", p, t[i]);
 	}
 	printf("Prediction accuracy on training data = %f%%\n", (float)r/sample*100.0);
-	stbi_write_png("train_12net_wrong.png", k*10, k*10, 3, pixels, 0);
+	stbi_write_png("12net_train_wrong.png", k*10, k*10, 3, pixels, 0);
 
 	memset(pixels, 0, size*100);
 	int i = frand()*sample;
 	CatsEye_visualize(x+size*i, size/3, k, &pixels[100* k*10 +100], k*10);
 	int p = _CatsEye_predict(&cat, x+size*i);
-	printf("predict %d -> %d\n", i, p);
+	printf("predict %d -> %d [%d]\n", i, p, t[i]);
 	for (int n=0; n<cat.layers; n++) {
 		CatsEye_layer *l = &cat.layer[n];
 		if (l->type == CATS_LINEAR) {
@@ -91,7 +92,7 @@ int main()
 			CatsEye_visualize(&l->z[ch*l->ox*l->oy], l->ox*l->oy, l->ox, &pixels[n*(k+2) +ch*(k+2)*k*10], k*10);
 		}
 	}
-	stbi_write_png("train_12net_predict.png", k*10, k*10, 1, pixels, 0);
+	stbi_write_png("12net_train_predict.png", k*10, k*10, 1, pixels, 0);
 
 /*	memset(pixels, 0, size*100);
 	for (int i=0; i<10; i++) {
@@ -124,9 +125,8 @@ int main()
 
 	{
 	char *name = "mikarika.jpg";
-	uint8_t *pixels;
 	int w, h, bpp;
-	pixels = stbi_load(name, &w, &h, &bpp, 3);
+	uint8_t *pixels = stbi_load(name, &w, &h, &bpp, 3);
 	assert(pixels);
 	printf("%s %dx%d %d\n", name, w, h, bpp);
 	real pix[12*12*3];
@@ -149,7 +149,7 @@ int main()
 			}
 		}
 	}
-	stbi_write_png("mikarika_r.jpg", w, h, bpp, pixels, 0);
+	stbi_write_jpg("mikarika_r.jpg", w, h, bpp, pixels, 0);
 	}
 	CatsEye__destruct(&cat);
 
