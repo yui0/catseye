@@ -1,11 +1,11 @@
-# ©2016 YUICHIRO NAKADA
+# ©2016-2018 YUICHIRO NAKADA
 
 PROGRAM = $(patsubst %.c,%,$(wildcard *.c))
 #OBJS = $(patsubst %.c,%.o,$(wildcard *.c))
 
 CC = clang
 CFLAGS = -Ofast -march=native -funroll-loops -mf16c
-LDFLAGS = -lm
+LDFLAGS = -lm -Wl,-s -Wl,--gc-sections
 
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Linux)

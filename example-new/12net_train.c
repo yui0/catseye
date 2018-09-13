@@ -150,6 +150,36 @@ int main()
 		}
 	}
 	stbi_write_jpg("mikarika_r.jpg", w, h, bpp, pixels, 0);
+	free(pixels);
+	}
+	{
+	char *name = "mikarika.jpg";
+	int w, h, bpp;
+	uint8_t *pixels = stbi_load(name, &w, &h, &bpp, 3);
+	assert(pixels);
+	printf("%s %dx%d %d\n", name, w, h, bpp);
+	real pix[12*12*3];
+	for (int y=0; y<h; y+=4) {
+		for (int x=0; x<w; x+=4) {
+			for (int sy=0; sy<12; sy++) {
+				for (int sx=0; sx<12; sx++) {
+					pix[12*sy+sx]         = pixels[(w*(y+sy)+x+sx)*3  ] /255.0;
+					pix[12*sy+sx+12*12]   = pixels[(w*(y+sy)+x+sx)*3+1] /255.0;
+					pix[12*sy+sx+12*12*2] = pixels[(w*(y+sy)+x+sx)*3+2] /255.0;
+				}
+			}
+			int p = _CatsEye_predict(&cat, pix);
+			if (p) {
+				for (int sy=0; sy<12; sy++) {
+					for (int sx=0; sx<12; sx++) {
+						pixels[(w*(y+sy)+x+sx)*3] = 0;
+					}
+				}
+			}
+		}
+	}
+	stbi_write_jpg("mikarika_r_.jpg", w, h, bpp, pixels, 0);
+	free(pixels);
 	}
 	CatsEye__destruct(&cat);
 

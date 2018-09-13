@@ -16,10 +16,7 @@
 
 int main(int argc, char *argv[])
 {
-	int k = 12;
 	int size = 12*12*3;	// 入力層
-//	int sample = 18925;
-	int sample = 789431;	// 93%(10), 94%(100)
 
 	// https://www.cv-foundation.org/openaccess/content_cvpr_2015/papers/Li_A_Convolutional_Neural_2015_CVPR_paper.pdf
 	CatsEye_layer u[] = {	// 12-net 99.9%(1000)
@@ -31,14 +28,14 @@ int main(int argc, char *argv[])
 	};
 	CatsEye cat;
 	_CatsEye__construct(&cat, u);
-	CatsEye_saveCats(&cat, "12net.cats");
+	CatsEye_loadCats(&cat, "12net.cats");
 
 	char *name = argv[1];//"mikarika.jpg";
 	int w, h, bpp;
 	uint8_t *pixels = stbi_load(name, &w, &h, &bpp, 3);
 	assert(pixels);
 	printf("%s %dx%d %d\n", name, w, h, bpp);
-	real pix[12*12*3];
+	real pix[12*12*4];
 	for (int y=0; y<h; y+=4) {
 		for (int x=0; x<w; x+=4) {
 			for (int sy=0; sy<12; sy++) {
@@ -48,6 +45,7 @@ int main(int argc, char *argv[])
 					pix[12*sy+sx+12*12*2] = pixels[(w*(y+sy)+x+sx)*3+2] /255.0;
 				}
 			}
+			//memset(cat.odata, 0, cat.osize*sizeof(real));
 			int p = _CatsEye_predict(&cat, pix);
 			if (p) {
 				for (int sy=0; sy<12; sy++) {
@@ -56,9 +54,28 @@ int main(int argc, char *argv[])
 					}
 				}
 			}
+
+			int k = 12;
+			static unsigned char pic[12*12*3/*size*/*100];
+			memset(pic, 0, size*100);
+			CatsEye_visualize(pix+12*12, size/3, k, &pic[100* k*10 +100], k*10);
+			for (int n=0; n<cat.layers; n++) {
+				CatsEye_layer *l = &cat.layer[n];
+				if (l->type == CATS_LINEAR) continue;
+
+				int mch = l->ch > 10 ? 10 : l->ch;
+				for (int ch=0; ch<mch; ch++) {
+					CatsEye_visualize(&l->z[ch*l->ox*l->oy], l->ox*l->oy, l->ox, &pic[n*(k+2) +ch*(k+2)*k*10], k*10);
+				}
+			}
+			static int num = 0;
+			char buff[256];
+			sprintf(buff, "/tmp/%010d_%d.jpg", num++, p);
+			stbi_write_jpg(buff, k*10, k*10, 1, pic, 0);
 		}
 	}
 	stbi_write_jpg("mikarika_r.jpg", w, h, bpp, pixels, 0);
+	free(pixels);
 
 	CatsEye__destruct(&cat);
 

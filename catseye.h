@@ -637,15 +637,13 @@ void _CatsEye_convolutional_layer_update(CatsEye_layer *l)
 // calculate forward propagation
 void _CatsEye_maxpooling_layer_forward(CatsEye_layer *l)
 {
-	int sx = l->sx;
-	int sy = l->sy;
 	int *max = (int*)l->W; // temp
 	real *o = l->z;
 
 	for (int c=0; c<l->ch; c++) {
-		for (int y=0; y<sy-1; y+=l->stride) {
-			for (int x=0; x<sx-1; x+=l->stride) {
-				int n = c*sx*sy + y*sx+x;
+		for (int y=0; y<l->sy-1; y+=l->stride) {
+			for (int x=0; x<l->sx-1; x+=l->stride) {
+				int n = c*l->sx*l->sy + y*l->sx+x;
 				real a = l->x[n];
 				*max = n;
 				for (int wy=l->ksize; wy>0; wy--) {
@@ -656,7 +654,7 @@ void _CatsEye_maxpooling_layer_forward(CatsEye_layer *l)
 						}
 						n++;
 					}
-					n += sx-l->ksize;
+					n += l->sx-l->ksize;
 				}
 				max++;
 				*o++ = a;
@@ -836,7 +834,8 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			l->ox = (l->sx +2*l->padding -l->ksize) /l->stride +1;
 			l->oy = (l->sy +2*l->padding -l->ksize) /l->stride +1;
 			l->outputs = l->ch * l->ox * l->oy;
-			n[i] = l->ch * l->sx * l->sy;
+//			n[i] = l->ch * l->sx * l->sy;
+			n[i] = l->ch * l->ox * l->oy;
 			m[i] = 1;
 			printf("L%02d: POOL%d-%d (w:%d h:%d [%d])\n", i+1, l->ksize, l->ch, l->ox, l->oy, n[i]);
 			break;
@@ -892,7 +891,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 
 		l->x = this->odata + osize[i];
 		if (i<this->layers-1) l->z = this->odata + osize[i+1];	// output
-//		else l->z = this->odata + osize[i];
+		else l->z = this->odata + osize[i];	// FIXME
 		l->dW = this->ddata + dsize[i];
 		l->W = this->wdata + wsize[i];
 		if (i>0) l->prev_dw = this->ddata + dsize[i-1];
@@ -1052,7 +1051,8 @@ int CatsEye_saveCats(CatsEye *this, char *filename)
 	FILE *fp = fopen(filename, "wb");
 	if (fp==NULL) return -1;
 
-	fwrite(this->wdata, this->wsize, 1, fp);
+	printf("Saving weight... %lu bytes\n", this->wsize*sizeof(real));
+	fwrite(this->wdata, this->wsize*sizeof(real), 1, fp);
 
 	fclose(fp);
 	return 0;
@@ -1062,7 +1062,8 @@ int CatsEye_loadCats(CatsEye *this, char *filename)
 	FILE *fp = fopen(filename, "rb");
 	if (fp==NULL) return -1;
 
-	fread(this->wdata, this->wsize, 1, fp);
+	printf("Loading weight... %lu bytes\n", this->wsize*sizeof(real));
+	fread(this->wdata, this->wsize*sizeof(real), 1, fp);
 
 	fclose(fp);
 	return 0;
@@ -1089,13 +1090,13 @@ int _CatsEye_saveJson(CatsEye *this, char *filename)
 	l = this->layer;
 	for (int n=0; n<this->layers-1; n++) {
 		fprintf(fp, "var w%d = [", n+1);
-		if (l->type != CATS_MAXPOOL) {
+//		if (l->type != CATS_MAXPOOL) {
 			int i;
 			for (i=0; i<this->ws[n]; i++) {
 				fprintf(fp, "%lf,", this->w[n][i]);
 			}
 			fprintf(fp, "%lf", this->w[n][i]);
-		}
+//		}
 		fprintf(fp, "];\n");
 		l++;
 	}
