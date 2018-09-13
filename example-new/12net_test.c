@@ -35,9 +35,9 @@ int main(int argc, char *argv[])
 	uint8_t *pixels = stbi_load(name, &w, &h, &bpp, 3);
 	assert(pixels);
 	printf("%s %dx%d %d\n", name, w, h, bpp);
-	real pix[12*12*4];
-	for (int y=0; y<h; y+=4) {
-		for (int x=0; x<w; x+=4) {
+	real pix[12*12*3];
+	for (int y=0; y<h-12-3; y+=4) {
+		for (int x=0; x<w-12-3; x+=4) {
 			for (int sy=0; sy<12; sy++) {
 				for (int sx=0; sx<12; sx++) {
 					pix[12*sy+sx]         = pixels[(w*(y+sy)+x+sx)*3  ] /255.0;
@@ -59,6 +59,7 @@ int main(int argc, char *argv[])
 			static unsigned char pic[12*12*3/*size*/*100];
 			memset(pic, 0, size*100);
 			CatsEye_visualize(pix+12*12, size/3, k, &pic[100* k*10 +100], k*10);
+			CatsEye_visualize(pix+12*12*2, size/3, k, &pic[80* k*10 +100], k*10);
 			for (int n=0; n<cat.layers; n++) {
 				CatsEye_layer *l = &cat.layer[n];
 				if (l->type == CATS_LINEAR) continue;
