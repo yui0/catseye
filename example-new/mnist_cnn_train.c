@@ -17,19 +17,7 @@ int main()
 	int label = 10;	// 出力層ユニット(0-9)
 	int sample = 60000;
 
-/*	int u[] = {
-		0, 0, 1, size, 0, 0, 0, 1500,			// input 28x28, mini batch size is 1500 by random
-
-		CATS_CONV, CATS_ACT_RELU, 32, 0, 0, 0, 7, 1,	// CONV1 32ch k7
-		CATS_MAXPOOL, 0, 32, 0, 0, 0, 2, 2,		// 99.2%
-
-		CATS_LINEAR, CATS_ACT_SIGMOID, 1, label, 0, 0, 0, 0,
-	};
-	int layers = sizeof(u)/sizeof(int)/LPLEN;
-	CatsEye cat;
-	CatsEye__construct(&cat, 0, 0, layers, u);*/
-
-	CatsEye_layer u[] = {	// 97.8%
+	CatsEye_layer u[] = {	// 99.19% (100)
 		{  size, CATS_CONV,       CATS_ACT_RELU,  0.01, .ksize=7, .stride=1, .ch=32 },
 		{     0, CATS_MAXPOOL,                0,  0.01, .ksize=2, .stride=2 },
 		{     0, CATS_LINEAR,  CATS_ACT_SIGMOID,  0.01 },
@@ -39,7 +27,7 @@ int main()
 	_CatsEye__construct(&cat, u);
 
 	real *x = malloc(sizeof(real)*size*sample);	// 訓練データ
-	int t[sample];					// ラベルデータ
+	int16_t t[sample];					// ラベルデータ
 	unsigned char *data = malloc(sample*size);
 
 	// 訓練データの読み込み
@@ -61,9 +49,8 @@ int main()
 
 	// 訓練
 	printf("Starting training using (stochastic) gradient descent\n");
-//	CatsEye_train(&cat, x, t, sample, 100/*repeat*/, 0.01);
-	_CatsEye_train(&cat, x, t, sample, 100/*repeat*/, 1500/*random batch*/);
-//	_CatsEye_train(&cat, x, t, sample, 10/*repeat*/, 1500/*random batch*/);
+//	_CatsEye_train(&cat, x, t, sample, 100/*repeat*/, 1500/*random batch*/, sample/10);
+	_CatsEye_train(&cat, x, t, sample, 100/*repeat*/, 1500/*random batch*/, 0);
 	printf("Training complete\n");
 //	CatsEye_save(&cat, "mnist.weights");
 //	CatsEye_saveJson(&cat, "mnist_cnn_train.json");
@@ -74,20 +61,27 @@ int main()
 	int c = 0;
 	int r = 0;
 	for (int i=0; i<sample; i++) {
-//		int p = CatsEye_predict(&cat, x+size*i);
 		int p = _CatsEye_predict(&cat, x+size*i);
 		if (p==t[i]) r++;
 		else {
 			if (c<100) {
-				//CatsEye_visualize(cat.o[0], 28*28, 28, &pixels[(c/10)*28*28*10+(c%10)*28], 28*10);
-//				CatsEye_visualizeUnits(&cat, 0, 0, 0, &pixels[(c/10)*28*28*10+(c%10)*28], 28*10);
+				CatsEye_visualize(x+size*i, size, 28, &pixels[(c/10)*size*10+(c%10)*28], 28*10);
+/*				real *xx = &x[size*i];
+				unsigned char *p = &pixels[(c/10)*size*10+(c%10)*k*3];
+				for (int y=0; y<k; y++) {
+					for (int x=0; x<k; x++) {
+						p[(y*k*10+x)*3  ] = xx[y*k+x] * 255.0;
+						p[(y*k*10+x)*3+1] = xx[k*k+y*k+x] * 255.0;
+						p[(y*k*10+x)*3+2] = xx[2*k*k+y*k+x] * 255.0;
+					}
+				}*/
 			}
 			c++;
 		}
 //		printf("%d -> %d\n", p, t[i]);
 	}
 	printf("Prediction accuracy on training data = %f%%\n", (float)r/sample*100.0);
-//	stbi_write_png("mnist_cnn_train_wrong.png", 28*10, 28*10, 1, pixels, 28*10);
+	stbi_write_png("mnist_cnn_train_wrong.png", 28*10, 28*10, 1, pixels, 28*10);
 	memset(pixels, 0, size*100);
 
 /*	for (int i=0; i<10; i++) {

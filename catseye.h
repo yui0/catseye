@@ -741,8 +741,8 @@ typedef struct {
 	CatsEye_layer *layer;
 
 	// input layers
-	real *xdata;
-	int xsize;
+//	real *xdata;
+//	int xsize;
 	// output layers [o = f(z)]
 	real **z, **o, *odata;
 	int osize;
@@ -963,14 +963,51 @@ void _CatsEye_forward(CatsEye *this, real *x)
 	}
 }
 
-void _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, int random)
+// return most probable label to the input x
+int _CatsEye_predict(CatsEye *this, real *x)
+{
+	// forward propagation
+	_CatsEye_forward(this, x);
+
+	// biggest output means most probable label
+	CatsEye_layer *l = &this->layer[this->layers-1];
+//	int a = this->layers-1;
+//	real max = this->o[a][0];
+	real max = l->x[0];
+	int ans = 0;
+/*	for (int i=1; i<this->layer[a].inputs; i++) {
+		if (this->o[a][i] > max) {
+			max = this->o[a][i];
+		}
+	}*/
+	for (int i=1; i<l->inputs; i++) {
+		if (l->x[i] > max) {
+			max = l->x[i];
+			ans = i;
+		}
+	}
+	return ans;
+}
+
+int _CatsEye_accuracy(CatsEye *this, real *x, int16_t *t, int verify)
+{
+	int r = 0;
+	for (int i=0; i<verify; i++) {
+		int16_t p = _CatsEye_predict(this, x+this->layer[0].inputs*i);
+		if (p==t[i]) r++;
+	}
+	return r;
+}
+
+int _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, int random, int verify)
 {
 	int a = this->layers-1;
 	this->layer[a].z = t;	//FIXME
 
-	this->xdata = x;
-	this->xsize = N;
+//	this->xdata = x;
+//	this->xsize = N;
 
+	if (verify) N = N - verify;	// for test
 	int batch = N;			// for random
 	if (random) batch = random;
 
@@ -1004,6 +1041,7 @@ void _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, int rand
 			}*/
 #endif
 		}
+
 		real err = 0;
 		{
 			// calculate the mean squared error
@@ -1013,37 +1051,23 @@ void _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, int rand
 			}
 			err = 0.5 * (err + mse);
 		}
-		printf("epochs %d, mse %f", times, err);
 		gettimeofday(&stop, NULL);
-		printf(" [%.2fs]", (stop.tv_sec - start.tv_sec) + (stop.tv_usec - start.tv_usec)*0.001*0.001);
+		printf("epochs %d, mse %f [%.2fs]", times, err, (stop.tv_sec - start.tv_sec) + (stop.tv_usec - start.tv_usec)*0.001*0.001);
+
+		if (verify) {
+			/*int16_t *a = (int16_t*)t + N;
+			int r = 0;
+			for (int i=0; i<verify; i++) {
+				int p = _CatsEye_predict(this, x+this->layer[0].inputs*(N+i));
+				if (p==a[i]) r++;
+			}*/
+			int r = _CatsEye_accuracy(this, x+this->layer[0].inputs*N, (int16_t*)t+N, verify);
+			printf(" %.1f%%", (float)r/verify*100.0);
+		}
 		printf("\n");
+		if (isnan(err)) return 0;
 	}
-}
-
-// return most probable label to the input x
-int _CatsEye_predict(CatsEye *this, real *x)
-{
-	// forward propagation
-	_CatsEye_forward(this, x);
-
-	// biggest output means most probable label
-	CatsEye_layer *l = &this->layer[this->layers-1];
-//	int a = this->layers-1;
-//	real max = this->o[a][0];
-	real max = l->x[0];
-	int ans = 0;
-/*	for (int i=1; i<this->layer[a].inputs; i++) {
-		if (this->o[a][i] > max) {
-			max = this->o[a][i];
-		}
-	}*/
-	for (int i=1; i<l->inputs; i++) {
-		if (l->x[i] > max) {
-			max = l->x[i];
-			ans = i;
-		}
-	}
-	return ans;
+	return 1;
 }
 
 int CatsEye_saveCats(CatsEye *this, char *filename)
@@ -1794,8 +1818,8 @@ void CatsEye_forward(CatsEye *this, real *x)
  * eta: learning rate (1e-6 to 1) */
 void CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, real eta)
 {
-	this->xdata = x;
-	this->xsize = N;
+//	this->xdata = x;
+//	this->xsize = N;
 
 	int batch = N;			// for random
 	if (RANDOM) batch = RANDOM;

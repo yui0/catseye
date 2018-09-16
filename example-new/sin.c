@@ -35,7 +35,7 @@ int main()
 	// 多層パーセプトロンの訓練
 	printf("Starting training using (stochastic) gradient descent\n");
 //	_CatsEye_train(&cat, x, t, sample, 500/*repeat*/);
-	_CatsEye_train(&cat, x, t, sample, 2000/*repeat*/, sample);
+	_CatsEye_train(&cat, x, t, sample, 2000/*repeat*/, sample, 0);
 	printf("Training complete\n");
 //	CatsEye_save(&cat, "sin.weights");
 

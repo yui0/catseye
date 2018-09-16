@@ -23,12 +23,19 @@ int main()
 	int sample = 789431;	// 93%(10), 94%(100)
 
 	// https://www.cv-foundation.org/openaccess/content_cvpr_2015/papers/Li_A_Convolutional_Neural_2015_CVPR_paper.pdf
-	CatsEye_layer u[] = {	// 12-net 99.9%(1000)
-		{   size, CATS_CONV,   CATS_ACT_LEAKY_RELU,  0.01, .ksize=3, .stride=1, /*.padding=1,*/ .ch=16, .ich=3 },
+/*	CatsEye_layer u[] = {	// 12-net 99.9%(1000)
+		{   size, CATS_CONV,   CATS_ACT_LEAKY_RELU,  0.01, .ksize=3, .stride=1, .ch=16, .ich=3 },
 		{      0, CATS_MAXPOOL,                  0,  0.01, .ksize=2, .stride=2 },
 		{      0, CATS_LINEAR, CATS_ACT_LEAKY_RELU,  0.01 },	// 16 outputs (Fully-connected layer)
 		{     16, CATS_LINEAR,   CATS_ACT_IDENTITY,  0.01 },	// face / non-face
 		{      2, CATS_LOSS,         CATS_LOSS_0_1,  0.01 },
+	};*/
+	CatsEye_layer u[] = {	// 12-net 99.9%(1000)
+		{   size, CATS_CONV,         CATS_ACT_RELU,  0.001, .ksize=3, .stride=1, .ch=16, .ich=3 },
+		{      0, CATS_MAXPOOL,                  0,  0.001, .ksize=2, .stride=2 },
+		{      0, CATS_LINEAR,       CATS_ACT_RELU,  0.001 },	// 16 outputs (Fully-connected layer)
+		{     16, CATS_LINEAR,    CATS_ACT_SIGMOID,  0.001 },	// face / non-face
+		{      2, CATS_LOSS,         CATS_LOSS_0_1,  0.001 },
 	};
 	CatsEye cat;
 	_CatsEye__construct(&cat, u);
@@ -41,21 +48,19 @@ int main()
 
 	// 訓練
 	printf("Starting training using (stochastic) gradient descent\n");
-//	_CatsEye_train(&cat, x, t, sample, 1000/*repeat*/, 100/*random batch*/);
-//	_CatsEye_train(&cat, x, t, sample, 1000/*repeat*/, sample/10/*random batch*/);
-//	_CatsEye_train(&cat, x, t, sample, 280/*repeat*/, sample/10/*random batch*/);
 	for (int i=0; i<100; i++) {
-		_CatsEye_train(&cat, x, t, sample, 10/*repeat*/, sample/10/*random batch*/);
+//		printf("#%d\n", i);
+		int r = _CatsEye_accuracy(&cat, x, (int16_t*)t, 1000);
+		printf("#%d %.1f%%\n", i, (float)r/1000*100.0);
 
-		real mse = 0;
-		for (int i=0; i<cat.layer[cat.layers-1].outputs; i++) {
-			mse += 0.5 * (cat.d[cat.layers-1][i] * cat.d[cat.layers-1][i]);
-		}
-		if (isnan(mse)) {
-			CatsEye_loadCats(&cat, "12net.cats");
+		char buff[256];
+		if (!_CatsEye_train(&cat, x, t, sample, 10/*repeat*/, sample/10/*random batch*/, 0)) {
+			sprintf(buff, "12net_%05d.cats", i-1);
+			CatsEye_loadCats(&cat, buff);
 			break;
 		}
-		CatsEye_saveCats(&cat, "12net.cats");
+		sprintf(buff, "12net_%05d.cats", i);
+		CatsEye_saveCats(&cat, buff);
 	}
 	printf("Training complete\n");
 	_CatsEye_saveJson(&cat, "12net.json");

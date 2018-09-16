@@ -19,12 +19,19 @@ int main(int argc, char *argv[])
 	int size = 12*12*3;	// 入力層
 
 	// https://www.cv-foundation.org/openaccess/content_cvpr_2015/papers/Li_A_Convolutional_Neural_2015_CVPR_paper.pdf
-	CatsEye_layer u[] = {	// 12-net 99.9%(1000)
-		{   size, CATS_CONV,   CATS_ACT_LEAKY_RELU,  0.01, .ksize=3, .stride=1, /*.padding=1,*/ .ch=16, .ich=3 },
+	/*CatsEye_layer u[] = {	// 12-net 99.9%(1000)
+		{   size, CATS_CONV,   CATS_ACT_LEAKY_RELU,  0.01, .ksize=3, .stride=1, .ch=16, .ich=3 },
 		{      0, CATS_MAXPOOL,                  0,  0.01, .ksize=2, .stride=2 },
 		{      0, CATS_LINEAR, CATS_ACT_LEAKY_RELU,  0.01 },	// 16 outputs (Fully-connected layer)
 		{     16, CATS_LINEAR,   CATS_ACT_IDENTITY,  0.01 },	// face / non-face
 		{      2, CATS_LOSS,         CATS_LOSS_0_1,  0.01 },
+	};*/
+	CatsEye_layer u[] = {	// 12-net 99.9%(1000)
+		{   size, CATS_CONV,         CATS_ACT_RELU,  0.001, .ksize=3, .stride=1, .ch=16, .ich=3 },
+		{      0, CATS_MAXPOOL,                  0,  0.001, .ksize=2, .stride=2 },
+		{      0, CATS_LINEAR,       CATS_ACT_RELU,  0.001 },	// 16 outputs (Fully-connected layer)
+		{     16, CATS_LINEAR,    CATS_ACT_SIGMOID,  0.001 },	// face / non-face
+		{      2, CATS_LOSS,         CATS_LOSS_0_1,  0.001 },
 	};
 	CatsEye cat;
 	_CatsEye__construct(&cat, u);
