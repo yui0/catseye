@@ -259,14 +259,14 @@ typedef enum {
 	CATS_ACT_IDENTITY, CATS_ACT_SOFTMAX, CATS_ACT_SIGMOID, CATS_ACT_TANH, CATS_ACT_SCALED_TANH,
 	CATS_ACT_RELU, CATS_ACT_LEAKY_RELU, CATS_ACT_ELU, CATS_ACT_ABS
 } CATS_ACTIVATION;
-typedef real (*CATS_ACT)(real x);
+typedef real (*CATS_ACT_FUNC)(real x);
 
-void CatsEye_act_array(CATS_ACT act, real *z, real *x, int num)
+void CatsEye_act_array(CATS_ACT_FUNC act, real *z, real *x, int num)
 {
 	#pragma omp parallel for
 	for (int n=num; n>0; n--) *z++ = act(*x++);
 }
-void CatsEye_dact_array(CATS_ACT dact, real *z, real *x, int num)
+void CatsEye_dact_array(CATS_ACT_FUNC dact, real *z, real *x, int num)
 {
 	#pragma omp parallel for
 	for (int n=num; n>0; n--) *z++ = dact(*x++);
@@ -697,7 +697,7 @@ void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
 	CatsEye_rnn_layer_update,
 };
 typedef enum {
-	CATS_LINEAR, CATS_CONV, CATS_MAXPOOL, CATS_RECURRENT, CATS_LOSS
+	CATS_LINEAR, CATS_CONV, CATS_MAXPOOL, CATS_RECURRENT, CATS_LOSS, CATS_ACT
 } CATS_LAYER_TYPE;
 
 // calculate the error of output layer
@@ -891,7 +891,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 
 		l->x = this->odata + osize[i];
 		if (i<this->layers-1) l->z = this->odata + osize[i+1];	// output
-		else l->z = this->odata + osize[i];	// FIXME
+		else l->z = this->odata + osize[i] + l->inputs+1;	// FIXME
 		l->dW = this->ddata + dsize[i];
 		l->W = this->wdata + wsize[i];
 		if (i>0) l->prev_dw = this->ddata + dsize[i-1];
@@ -929,12 +929,19 @@ void CatsEye__destruct(CatsEye *this)
 	CatsEye_clFinish();
 #endif
 	// delete arrays
+//	printf("%x %x %x %x %x %x %x %x %x\n",this->z,this->odata,this->o,this->ddata,this->d,this->ws,this->wdata,this->w,this->u);
+	free(this->layer);
 //	for (int i=0; i<this->layers-1; i++) free(this->z[i]);
 	if (this->z) free(this->z);
+printf("+\n");
 	free(this->odata);
+printf("+\n");
 	free(this->o);
+printf("+\n");
 	free(this->ddata);
+printf("+\n");
 	free(this->d);
+printf("+\n");
 /*	free(this->e2);
 	free(this->e3);
 	free(this->m2);
@@ -942,8 +949,11 @@ void CatsEye__destruct(CatsEye *this)
 	free(this->v2);
 	free(this->v3);*/
 	free(this->ws);
+printf("+\n");
 	free(this->wdata);
+printf("+\n");
 	free(this->w);
+printf("+\n");
 	if (this->u) free(this->u);
 }
 
@@ -1335,7 +1345,7 @@ void CatsEye_linear_layer_forward(CatsEye_layer *l, real *x, real *w, real *z/*n
 	int in = u[SIZE-LPLEN]+1;	// +1 -> for bias
 	int out = u[SIZE];
 
-	CATS_ACT act = CatsEye_act[u[ACT]];
+	CATS_ACT_FUNC act = CatsEye_act[u[ACT]];
 //	dotmv(o, w, x, in, out);
 //	CatsEye_act_array(act, o, o, out);
 	for (int i=out; i>0; i--) {
@@ -1351,7 +1361,7 @@ void CatsEye_linear_layer_backward(CatsEye_layer *l, real *o, real *w, real *d, 
 	int out = u[SIZE];
 
 	// calculate the error
-	CATS_ACT dact = CatsEye_dact[u[ACT-LPLEN]];
+	CATS_ACT_FUNC dact = CatsEye_dact[u[ACT-LPLEN]];
 	//real s[in+1];
 //	//outeradd(l->dV, d, s, in+1, out);
 	//CatsEye_dact_array(dact, s, o, in+1);
@@ -1405,7 +1415,7 @@ void CatsEye_convolutional_layer_forward(CatsEye_layer *l, real *s, real *w, rea
 	int sy = u[YSIZE] - m;
 	int ch = u[CHANNEL-LPLEN];
 	int step = u[XSIZE] - ks;
-	CATS_ACT act = CatsEye_act[u[ACT]];
+	CATS_ACT_FUNC act = CatsEye_act[u[ACT]];
 
 #ifdef CATS_FASTCONV
 	// h, w, c[in], c[out]
@@ -1531,7 +1541,7 @@ void CatsEye_convolutional_layer_backward(CatsEye_layer *l, real *prev_out, real
 	}
 #endif
 
-	CATS_ACT dact = CatsEye_dact[u[ACT-LPLEN]];
+	CATS_ACT_FUNC dact = CatsEye_dact[u[ACT-LPLEN]];
 	for (int i=ch*ix*iy; i>0; i--) {
 		*prev_delta++ *= dact(*prev_out++);
 	}
@@ -1664,7 +1674,7 @@ void CatsEye_maxpooling_layer_forward(CatsEye_layer *l, real *s, real *w, real *
 // calculate back propagation
 void CatsEye_maxpooling_layer_backward(CatsEye_layer *l, real *o, real *w, real *d, real *delta, int u[])
 {
-	CATS_ACT dact = CatsEye_dact[u[ACT-LPLEN]];
+	CATS_ACT_FUNC dact = CatsEye_dact[u[ACT-LPLEN]];
 	int *max = (int*)w;
 	memset(d, 0, sizeof(real)*u[SIZE-LPLEN]);
 	for (int i=0; i<u[SIZE]; i++) {

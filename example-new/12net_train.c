@@ -30,11 +30,25 @@ int main()
 		{     16, CATS_LINEAR,   CATS_ACT_IDENTITY,  0.01 },	// face / non-face
 		{      2, CATS_LOSS,         CATS_LOSS_0_1,  0.01 },
 	};*/
-	CatsEye_layer u[] = {	// 12-net 99.9%(1000)
+/*	CatsEye_layer u[] = {	// 12-net 99.9%(1000)
 		{   size, CATS_CONV,         CATS_ACT_RELU,  0.001, .ksize=3, .stride=1, .ch=16, .ich=3 },
 		{      0, CATS_MAXPOOL,                  0,  0.001, .ksize=2, .stride=2 },
 		{      0, CATS_LINEAR,       CATS_ACT_RELU,  0.001 },	// 16 outputs (Fully-connected layer)
 		{     16, CATS_LINEAR,    CATS_ACT_SIGMOID,  0.001 },	// face / non-face
+		{      2, CATS_LOSS,         CATS_LOSS_0_1,  0.001 },
+	};
+	// https://deeplearningmania.quora.com/A-Fast-CNN-Face-Detection*/
+	CatsEye_layer u[] = {	// 12-net
+		// -- input 3x12x12
+		{   size, CATS_CONV,         CATS_ACT_RELU,  0.001, .ksize=3, .stride=1, .ch=16, .ich=3 },
+		// -- outputs 16x10x10
+		{      0, CATS_MAXPOOL,                  0,  0.001, .ksize=3, .stride=2 },
+		// -- outputs 16x4x4
+		{      0, CATS_CONV,         CATS_ACT_RELU,  0.001, .ksize=4, .stride=1, .ch=16 },
+		// -- outputs 16x1x1
+//		{      0, CATS_CONV,     CATS_ACT_IDENTITY,  0.001, .ksize=1, .stride=1, .ch=2 },
+		{     16, CATS_LINEAR,    CATS_ACT_SIGMOID,  0.001 },	// face / non-face
+		// -- outputs 2x1x1
 		{      2, CATS_LOSS,         CATS_LOSS_0_1,  0.001 },
 	};
 	CatsEye cat;
