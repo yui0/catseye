@@ -675,6 +675,25 @@ void _CatsEye_maxpooling_layer_backward(CatsEye_layer *l)
 	}
 }
 
+// rectified linear unit function
+void _CatsEye_act_ReLU(CatsEye_layer *l)
+{
+	real *x = l->x;
+	real *z = l->z;
+	for (int i=l->outputs; i>0; i--) {
+		*z++ = (*x>0 ? *x : 0.0);
+		x++;
+	}
+}
+void _CatsEye_dact_ReLU(CatsEye_layer *l)
+{
+	real *x = l->x;
+	real *d = l->prev_dw;
+	for (int i=0; i<=l->inputs; i++) {	// bias!!
+		*d++ = (*x>0 ? 1.0 : 0.0);
+		x++;
+	}
+}
 void CatsEye_none(CatsEye_layer *l)
 {
 }
@@ -683,21 +702,30 @@ void (*_CatsEye_layer_forward[])(CatsEye_layer *l) = {
 	_CatsEye_convolutional_layer_forward,
 	_CatsEye_maxpooling_layer_forward,
 	CatsEye_rnn_layer_forward,
+
+	// activation
+	_CatsEye_act_ReLU,
 };
 void (*_CatsEye_layer_backward[])(CatsEye_layer *l) = {
 	_CatsEye_linear_layer_backward,
 	_CatsEye_convolutional_layer_backward,
 	_CatsEye_maxpooling_layer_backward,
 	CatsEye_rnn_layer_backward,
+
+	// activation
+	_CatsEye_dact_ReLU,
 };
 void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
 	_CatsEye_linear_layer_update,
 	_CatsEye_convolutional_layer_update,
 	CatsEye_none,
 	CatsEye_rnn_layer_update,
+
+	// activation
+	CatsEye_none,
 };
 typedef enum {
-	CATS_LINEAR, CATS_CONV, CATS_MAXPOOL, CATS_RECURRENT, CATS_LOSS, CATS_ACT
+	CATS_LINEAR, CATS_CONV, CATS_MAXPOOL, CATS_RECURRENT, _CATS_ACT_RELU, CATS_LOSS
 } CATS_LAYER_TYPE;
 
 // calculate the error of output layer
@@ -862,6 +890,12 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			m[i] = l->hiddens;
 			printf("L%02d: RECURRENT %d %d\n", i+1, n[i], m[i]);
 			break;
+		case _CATS_ACT_RELU:
+			n[i] = m[i] = 0;
+			l->ch = l->ich;
+			l->outputs = l->inputs;
+			printf("L%02d: ACT\n", i+1);
+			break;
 		default: // LINEAR
 //			if (i>0 && !l->inputs) l->inputs = this->layer[i-1].outputs;
 			if (i<this->layers-1) l->outputs = (l+1)->inputs;
@@ -933,15 +967,10 @@ void CatsEye__destruct(CatsEye *this)
 	free(this->layer);
 //	for (int i=0; i<this->layers-1; i++) free(this->z[i]);
 	if (this->z) free(this->z);
-printf("+\n");
 	free(this->odata);
-printf("+\n");
 	free(this->o);
-printf("+\n");
 	free(this->ddata);
-printf("+\n");
 	free(this->d);
-printf("+\n");
 /*	free(this->e2);
 	free(this->e3);
 	free(this->m2);
@@ -949,11 +978,8 @@ printf("+\n");
 	free(this->v2);
 	free(this->v3);*/
 	free(this->ws);
-printf("+\n");
 	free(this->wdata);
-printf("+\n");
 	free(this->w);
-printf("+\n");
 	if (this->u) free(this->u);
 }
 
