@@ -63,6 +63,7 @@ int main()
 		// -- outputs 16x1x1
 //		{     16, CATS_LINEAR,   CATS_ACT_SIGMOID,  0.001 },	// face / non-face
 		{      0, CATS_CONV,     0,  0.001, .ksize=1, .stride=1, .ch=2 },
+		{      0, _CATS_ACT_SOFTMAX },
 		// -- outputs 2x1x1
 		{      2, CATS_LOSS,     CATS_LOSS_0_1,  0.001 },
 	};

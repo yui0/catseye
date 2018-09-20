@@ -678,6 +678,25 @@ void _CatsEye_maxpooling_layer_backward(CatsEye_layer *l)
 #define CATS_ACT_sigmoid(x)	(1.0 / (1.0 + exp(-x * s_gain)))
 #define CATS_DACT_sigmoid(x)	((1.0-x)*x * s_gain)
 
+// softmax function (output only)
+void _CatsEye_act_softmax(CatsEye_layer *l)
+{
+	real *x = l->x;
+	real *z = l->z;
+
+	real alpha = x[0];
+	for (int i=1; i<l->outputs; i++) if (alpha<x[i]) alpha = x[i];
+	real denom = 0.0;
+	for (int i=0; i<l->outputs; i++) denom += exp(x[i] - alpha);
+
+	#pragma omp parallel for
+	for (int i=l->outputs; i>0; i--) {
+		real numer = exp(*x++ - alpha);
+		*z++ = (numer / denom);
+	}
+}
+#define CATS_DACT_softmax(x)	(x * (1.0 - x))
+
 // rectified linear unit function
 #define CATS_ACT_ReLU(x)	((x)>0 ? (x) : 0.0)
 #define CATS_DACT_ReLU(x)	((x)>0 ? 1.0 : 0.0)
@@ -707,6 +726,7 @@ void _CatsEye_dact_##type(CatsEye_layer *l)\
 }
 CATS_ACT_ARRAY(sigmoid);
 CATS_DACT_ARRAY(sigmoid);
+CATS_DACT_ARRAY(softmax);
 CATS_ACT_ARRAY(ReLU);
 CATS_DACT_ARRAY(ReLU);
 
@@ -721,9 +741,10 @@ void (*_CatsEye_layer_forward[])(CatsEye_layer *l) = {
 
 	// activation
 	_CatsEye_act_sigmoid,
+	_CatsEye_act_softmax,
 	_CatsEye_act_ReLU,
 
-	CatsEye_none,
+	CatsEye_none,	// loss
 };
 void (*_CatsEye_layer_backward[])(CatsEye_layer *l) = {
 	_CatsEye_linear_layer_backward,
@@ -733,9 +754,10 @@ void (*_CatsEye_layer_backward[])(CatsEye_layer *l) = {
 
 	// activation
 	_CatsEye_dact_sigmoid,
+	_CatsEye_dact_softmax,
 	_CatsEye_dact_ReLU,
 
-	CatsEye_none,
+	CatsEye_none,	// loss
 };
 void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
 	_CatsEye_linear_layer_update,
@@ -744,14 +766,15 @@ void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
 	CatsEye_rnn_layer_update,
 
 	// activation
-	CatsEye_none,
-	CatsEye_none,
+	CatsEye_none,	// sigmoid
+	CatsEye_none,	// softmax
+	CatsEye_none,	// ReLU
 
-	CatsEye_none,
+	CatsEye_none,	// loss
 };
 typedef enum {
 	CATS_LINEAR, CATS_CONV, CATS_MAXPOOL, CATS_RECURRENT,
-	_CATS_ACT_SIGMOID, _CATS_ACT_RELU, CATS_LOSS
+	_CATS_ACT_SIGMOID, _CATS_ACT_SOFTMAX, _CATS_ACT_RELU, CATS_LOSS
 } CATS_LAYER_TYPE;
 
 // calculate the error of output layer
