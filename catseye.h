@@ -553,12 +553,12 @@ void _CatsEye_convolutional_layer_forward(CatsEye_layer *l)
 		}
 //		o = z + l->pz;
 	}
+
 	o = l->z;
 	for (int c=l->ch*l->ox*l->oy; c>0; c--) {	// out
 		*o = l->act(*o);
 		o++;
 	}
-//	CatsEye_act_array(l->act, l->z, l->z, l->ch*ox*oy);
 }
 // calculate back propagation
 void _CatsEye_convolutional_layer_backward(CatsEye_layer *l)
@@ -675,51 +675,41 @@ void _CatsEye_maxpooling_layer_backward(CatsEye_layer *l)
 	}
 }
 
-#define CATS_ACT_SIGMOID(x)	(1.0 / (1.0 + exp(-x * s_gain)))
-#define CATS_DACT_SIGMOID(x)	((1.0-x)*x * s_gain)
+#define CATS_ACT_sigmoid(x)	(1.0 / (1.0 + exp(-x * s_gain)))
+#define CATS_DACT_sigmoid(x)	((1.0-x)*x * s_gain)
+
+// rectified linear unit function
 #define CATS_ACT_ReLU(x)	((x)>0 ? (x) : 0.0)
 #define CATS_DACT_ReLU(x)	((x)>0 ? 1.0 : 0.0)
-void _CatsEye_act_sigmoid(CatsEye_layer *l)
-{
-	real *x = l->x;
-	real *z = l->z;
-	for (int i=l->outputs; i>0; i--) {
-		*z++ = CATS_ACT_SIGMOID(*x);
-		x++;
-	}
+
+#define CATS_ACT_ARRAY(type)	\
+void _CatsEye_act_##type(CatsEye_layer *l)\
+{\
+	real *x = l->x;\
+	real *z = l->z;\
+	_Pragma("omp parallel for")\
+	for (int i=l->outputs; i>0; i--) {\
+		*z++ = CATS_ACT_##type(*x);\
+		x++;\
+	}\
 }
-void _CatsEye_dact_sigmoid(CatsEye_layer *l)
-{
-	real *x = l->x;
-	real *d = l->prev_dw;
-	real *dW = l->dW;
-	for (int i=0; i<=l->inputs; i++) {	// bias!!
-		*d++ = (*dW++) * CATS_DACT_SIGMOID(*x);
-		x++;
-	}
+#define CATS_DACT_ARRAY(type)	\
+void _CatsEye_dact_##type(CatsEye_layer *l)\
+{\
+	real *x = l->x;\
+	real *d = l->prev_dw;\
+	real *dW = l->dW;\
+	_Pragma("omp parallel for")\
+	for (int i=0; i<=l->inputs/*bias!!*/; i++) {\
+		*d++ = (*dW++) * CATS_DACT_##type(*x);\
+		x++;\
+	}\
 }
-// rectified linear unit function
-void _CatsEye_act_ReLU(CatsEye_layer *l)
-{
-	real *x = l->x;
-	real *z = l->z;
-	#pragma omp parallel for
-	for (int i=l->outputs; i>0; i--) {
-		*z++ = CATS_ACT_ReLU(*x);
-		x++;
-	}
-}
-void _CatsEye_dact_ReLU(CatsEye_layer *l)
-{
-	real *x = l->x;
-	real *d = l->prev_dw;
-	real *dW = l->dW;
-	#pragma omp parallel for
-	for (int i=0; i<=l->inputs; i++) {	// bias!!
-		*d++ = (*dW++) * CATS_DACT_ReLU(*x);
-		x++;
-	}
-}
+CATS_ACT_ARRAY(sigmoid);
+CATS_DACT_ARRAY(sigmoid);
+CATS_ACT_ARRAY(ReLU);
+CATS_DACT_ARRAY(ReLU);
+
 void CatsEye_none(CatsEye_layer *l)
 {
 }
@@ -730,7 +720,10 @@ void (*_CatsEye_layer_forward[])(CatsEye_layer *l) = {
 	CatsEye_rnn_layer_forward,
 
 	// activation
+	_CatsEye_act_sigmoid,
 	_CatsEye_act_ReLU,
+
+	CatsEye_none,
 };
 void (*_CatsEye_layer_backward[])(CatsEye_layer *l) = {
 	_CatsEye_linear_layer_backward,
@@ -739,7 +732,10 @@ void (*_CatsEye_layer_backward[])(CatsEye_layer *l) = {
 	CatsEye_rnn_layer_backward,
 
 	// activation
+	_CatsEye_dact_sigmoid,
 	_CatsEye_dact_ReLU,
+
+	CatsEye_none,
 };
 void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
 	_CatsEye_linear_layer_update,
@@ -749,9 +745,13 @@ void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
 
 	// activation
 	CatsEye_none,
+	CatsEye_none,
+
+	CatsEye_none,
 };
 typedef enum {
-	CATS_LINEAR, CATS_CONV, CATS_MAXPOOL, CATS_RECURRENT, _CATS_ACT_RELU, CATS_LOSS
+	CATS_LINEAR, CATS_CONV, CATS_MAXPOOL, CATS_RECURRENT,
+	_CATS_ACT_SIGMOID, _CATS_ACT_RELU, CATS_LOSS
 } CATS_LAYER_TYPE;
 
 // calculate the error of output layer
@@ -1033,15 +1033,8 @@ int _CatsEye_predict(CatsEye *this, real *x)
 
 	// biggest output means most probable label
 	CatsEye_layer *l = &this->layer[this->layers-1];
-//	int a = this->layers-1;
-//	real max = this->o[a][0];
 	real max = l->x[0];
 	int ans = 0;
-/*	for (int i=1; i<this->layer[a].inputs; i++) {
-		if (this->o[a][i] > max) {
-			max = this->o[a][i];
-		}
-	}*/
 	for (int i=1; i<l->inputs; i++) {
 		if (l->x[i] > max) {
 			max = l->x[i];
