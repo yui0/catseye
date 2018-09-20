@@ -675,13 +675,37 @@ void _CatsEye_maxpooling_layer_backward(CatsEye_layer *l)
 	}
 }
 
+#define CATS_ACT_SIGMOID(x)	(1.0 / (1.0 + exp(-x * s_gain)))
+#define CATS_DACT_SIGMOID(x)	((1.0-x)*x * s_gain)
+#define CATS_ACT_ReLU(x)	((x)>0 ? (x) : 0.0)
+#define CATS_DACT_ReLU(x)	((x)>0 ? 1.0 : 0.0)
+void _CatsEye_act_sigmoid(CatsEye_layer *l)
+{
+	real *x = l->x;
+	real *z = l->z;
+	for (int i=l->outputs; i>0; i--) {
+		*z++ = CATS_ACT_SIGMOID(*x);
+		x++;
+	}
+}
+void _CatsEye_dact_sigmoid(CatsEye_layer *l)
+{
+	real *x = l->x;
+	real *d = l->prev_dw;
+	real *dW = l->dW;
+	for (int i=0; i<=l->inputs; i++) {	// bias!!
+		*d++ = (*dW++) * CATS_DACT_SIGMOID(*x);
+		x++;
+	}
+}
 // rectified linear unit function
 void _CatsEye_act_ReLU(CatsEye_layer *l)
 {
 	real *x = l->x;
 	real *z = l->z;
+	#pragma omp parallel for
 	for (int i=l->outputs; i>0; i--) {
-		*z++ = (*x>0 ? *x : 0.0);
+		*z++ = CATS_ACT_ReLU(*x);
 		x++;
 	}
 }
@@ -689,8 +713,10 @@ void _CatsEye_dact_ReLU(CatsEye_layer *l)
 {
 	real *x = l->x;
 	real *d = l->prev_dw;
+	real *dW = l->dW;
+	#pragma omp parallel for
 	for (int i=0; i<=l->inputs; i++) {	// bias!!
-		*d++ = (*x>0 ? 1.0 : 0.0);
+		*d++ = (*dW++) * CATS_DACT_ReLU(*x);
 		x++;
 	}
 }
