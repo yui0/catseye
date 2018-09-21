@@ -4,7 +4,7 @@
 //		©2018 Yuichiro Nakada
 //---------------------------------------------------------
 
-// gcc 12net_train.c -o 12net_train -lm -Ofast -march=native -funroll-loops -fopenmp -lgomp
+// gcc 12net_train.c -o 12net_train -lm -Ofast -march=native -funroll-loops -finline-functions -mf16c -fopenmp -lgomp
 // clang 12net_train.c -o 12net_train -lm -Ofast -march=native -funroll-loops
 // ./make_dataset ./datasets/
 
@@ -55,7 +55,7 @@ int main()
 		// -- input 3x12x12
 		{   size, CATS_CONV,     0,  0.001, .ksize=3, .stride=1, .ch=16, .ich=3 },
 		// -- outputs 16x10x10
-		{      0, CATS_MAXPOOL,  0,  0.001, .ksize=3, .stride=2 },
+		{      0, CATS_MAXPOOL,  0,  .ksize=3, .stride=2 },
 		{      0, _CATS_ACT_RELU },
 		// -- outputs 16x4x4
 		{      0, CATS_CONV,     0,  0.001, .ksize=4, .stride=1, .ch=16 },
@@ -63,9 +63,9 @@ int main()
 		// -- outputs 16x1x1
 //		{     16, CATS_LINEAR,   CATS_ACT_SIGMOID,  0.001 },	// face / non-face
 		{      0, CATS_CONV,     0,  0.001, .ksize=1, .stride=1, .ch=2 },
-		{      0, _CATS_ACT_SOFTMAX },
+//		{      0, _CATS_ACT_SOFTMAX },
 		// -- outputs 2x1x1
-		{      2, CATS_LOSS,     CATS_LOSS_0_1,  0.001 },
+		{      2, CATS_LOSS,     CATS_LOSS_0_1 },
 	};
 	CatsEye cat;
 	_CatsEye__construct(&cat, u);
@@ -79,7 +79,6 @@ int main()
 	// 訓練
 	printf("Starting training using (stochastic) gradient descent\n");
 	for (int i=0; i<100; i++) {
-//		printf("#%d\n", i);
 		int r = _CatsEye_accuracy(&cat, x, (int16_t*)t, 1000);
 		printf("#%d %.1f%%\n", i, (float)r/1000*100.0);
 

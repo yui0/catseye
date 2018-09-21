@@ -263,12 +263,12 @@ typedef real (*CATS_ACT_FUNC)(real x);
 
 void CatsEye_act_array(CATS_ACT_FUNC act, real *z, real *x, int num)
 {
-	#pragma omp parallel for
+//	#pragma omp parallel for
 	for (int n=num; n>0; n--) *z++ = act(*x++);
 }
 void CatsEye_dact_array(CATS_ACT_FUNC dact, real *z, real *x, int num)
 {
-	#pragma omp parallel for
+//	#pragma omp parallel for
 	for (int n=num; n>0; n--) *z++ = dact(*x++);
 }
 
@@ -296,7 +296,7 @@ real dotvv(real *vec1, real *vec2, int n)
 {
 	real s = 0;
 	int i;
-	#pragma omp simd reduction(+:s)
+//	#pragma omp parallel for simd reduction(+:s)
 	for (i=n; i>=8; i-=8) {
 		s += (*vec1++) * (*vec2++);
 		s += (*vec1++) * (*vec2++);
@@ -315,7 +315,7 @@ real dotvv(real *vec1, real *vec2, int n)
 // mat * vec
 void dotmv(real *s, real *mat, real *vec, int n, int m)
 {
-	#pragma omp parallel for simd
+//	#pragma omp parallel for simd
 	for (int i=m; i>0; i--) {
 		*s++ = dotvv(mat, vec, n);
 		mat += n;
@@ -325,7 +325,7 @@ void dotmv(real *s, real *mat, real *vec, int n, int m)
 // vec += mat * vec
 void dotamv(real *s, real *mat, real *vec, int n, int m)
 {
-	#pragma omp parallel for simd
+//	#pragma omp parallel for simd
 	for (int i=m; i>0; i--) {
 		*s++ += dotvv(mat, vec, n);
 		mat += n;
@@ -334,7 +334,7 @@ void dotamv(real *s, real *mat, real *vec, int n, int m)
 }
 void muldot(real *s, real *mat, real *vec, int n, int m)
 {
-	#pragma omp parallel for simd
+//	#pragma omp parallel for simd
 	for (int i=m; i>0; i--) {
 		*s++ *= dotvv(mat, vec, n);
 		mat += n;
@@ -344,30 +344,31 @@ void muldot(real *s, real *mat, real *vec, int n, int m)
 real dotTv(real *mat1, real *vec1, int r, int c)
 {
 	real s = 0;
-	#pragma omp simd reduction(+:s)
+//	#pragma omp parallel for simd reduction(+:s)
 	for (int i=r; i>0; i--) {
 		s += *mat1 * (*vec1++);
 		mat1 += c;
 	}
 	return s;
 }
-void muladd(real *vec1, real *vec2, real a, int n)
+void _fma(float *a, float *b, float z, int n)
 {
-	#pragma omp for simd
-	for (int i=n; i>0; i--) {
-		*vec1++ += a * (*vec2++);
+	for (int i=0; i<n; i++) {
+		*a += z * (*b);
+		a++;
+		b++;
 	}
 }
 void outeradd(real *s, real *vec1, real *vec2, int n, int m)
 {
-	#pragma omp for simd
+//	#pragma omp parallel for simd
 	for (int i=m; i>0; i--) {
-		muladd(s, vec2, *vec1++, n);
+		_fma(s, vec2, *vec1++, n);
 	}
 }
-void muladdx(real *vec1, real *vec2, real a, int n)
+void _fmax(real *vec1, real *vec2, real a, int n)
 {
-	#pragma omp for simd
+//	#pragma omp parallel for simd
 	for (int i=n; i>0; i--) {
 		*vec1 += a * (*vec2++) + (*vec1) * 1e-8;
 		vec1++;
@@ -444,7 +445,7 @@ void _CatsEye_linear_layer_update(CatsEye_layer *l)
 	real *w = l->W;
 	for (int i=0; i<=l->inputs; i++) {	// bias!!
 		real a = -l->eta * (*o++);
-		muladd(w, l->dW, a, l->outputs);
+		_fma(w, l->dW, a, l->outputs);
 		w += l->outputs;
 	}
 }
@@ -483,7 +484,7 @@ void CatsEye_rnn_layer_backward(CatsEye_layer *l)
 	real *eh = l->eh + (l->inputs-1)*l->hiddens;
 
 	for (int t=l->inputs-1; t>=0; t--) {
-		//muladd(dV, s, *d, l->hiddens);		// dV[] += d * s[]
+		//_fma(dV, s, *d, l->hiddens);		// dV[] += d * s[]
 		outeradd(l->dWo, d, s, l->hiddens, l->outputs);
 		CatsEye_dact_array(l->dact, eh, u, l->hiddens);
 		//dotmv(eh, d, l->V, l->outputs, l->hiddens);
@@ -514,9 +515,9 @@ void CatsEye_rnn_layer_backward(CatsEye_layer *l)
 }
 void CatsEye_rnn_layer_update(CatsEye_layer *l)
 {
-	muladd(l->Wi, l->dWi, -l->eta, l->hiddens * l->inputs);
-	muladd(l->Wo, l->dWo, -l->eta, l->outputs * l->hiddens);
-	muladd(l->Wr, l->dWr, -l->eta, l->outputs * l->hiddens);
+	_fma(l->Wi, l->dWi, -l->eta, l->hiddens * l->inputs);
+	_fma(l->Wo, l->dWo, -l->eta, l->outputs * l->hiddens);
+	_fma(l->Wr, l->dWr, -l->eta, l->outputs * l->hiddens);
 }
 
 // calculate forward propagation
@@ -529,6 +530,8 @@ void _CatsEye_convolutional_layer_forward(CatsEye_layer *l)
 	real *w = l->W;
 	real *o = l->z;	// need!
 	memset(o, 0, sizeof(real)*l->ch*l->ox*l->oy);
+//	int c;
+//	#pragma omp parallel for
 	for (int c=l->ch; c>0; c--) {	// out
 		real *r = s = l->x;
 //		o = l->z + (l->ch-c)*l->ox*l->oy;
@@ -540,7 +543,7 @@ void _CatsEye_convolutional_layer_forward(CatsEye_layer *l)
 					real *p = s++;	// in
 					z = o;		// out
 					for (int y=l->py; y>0; y--) {
-						muladd(z, p, *w, l->px);	// *z++ += (*p++) * (*w); p += m;
+						_fma(z, p, *w, l->px);	// *z++ += (*p++) * (*w); p += m;
 						p += l->sx;
 						z += l->ox;
 					}
@@ -580,7 +583,7 @@ void _CatsEye_convolutional_layer_backward(CatsEye_layer *l)
 					real *p = prev_delta++;	// in
 					d = delta;		// out
 					for (int y=l->oy; y>0; y--) {
-						muladd(p, d, *w, l->ox);	// *p++ += (*d++) * (*w);
+						_fma(p, d, *w, l->ox);	// *p++ += (*d++) * (*w);
 						p += l->sx;
 						d += l->ox;
 					}
@@ -689,13 +692,13 @@ void _CatsEye_act_softmax(CatsEye_layer *l)
 	real denom = 0.0;
 	for (int i=0; i<l->outputs; i++) denom += exp(x[i] - alpha);
 
-	#pragma omp parallel for
+//	#pragma omp parallel for simd
 	for (int i=l->outputs; i>0; i--) {
 		real numer = exp(*x++ - alpha);
 		*z++ = (numer / denom);
 	}
 }
-#define CATS_DACT_softmax(x)	(x * (1.0 - x))
+#define CATS_DACT_softmax(x)	((x) * (1.0 - (x)))
 
 // rectified linear unit function
 #define CATS_ACT_ReLU(x)	((x)>0 ? (x) : 0.0)
@@ -706,7 +709,7 @@ void _CatsEye_act_##type(CatsEye_layer *l)\
 {\
 	real *x = l->x;\
 	real *z = l->z;\
-	_Pragma("omp parallel for")\
+	/*_Pragma("omp parallel for simd")*/\
 	for (int i=l->outputs; i>0; i--) {\
 		*z++ = CATS_ACT_##type(*x);\
 		x++;\
@@ -718,7 +721,7 @@ void _CatsEye_dact_##type(CatsEye_layer *l)\
 	real *x = l->x;\
 	real *d = l->prev_dw;\
 	real *dW = l->dW;\
-	_Pragma("omp parallel for")\
+	/*_Pragma("omp parallel for simd")*/\
 	for (int i=0; i<=l->inputs/*bias!!*/; i++) {\
 		*d++ = (*dW++) * CATS_DACT_##type(*x);\
 		x++;\
@@ -1448,7 +1451,7 @@ void CatsEye_linear_layer_update(CatsEye_layer *l, real eta, real *o, real *w, r
 	// update the weights
 	for (int i=0; i<in; i++) {
 		real a = -eta * (*o++);
-		muladd(w, d, a, out);
+		_fma(w, d, a, out);
 		w += out;
 		/*real a = eta * (*o++);
 		for (int j=0; j<out; j++) {
@@ -1466,9 +1469,9 @@ void CatsEye_SVM_layer_update(CatsEye_layer *l, real eta, real *o, real *w, real
 		// SVM (http://d.hatena.ne.jp/echizen_tm/20110627/1309188711)
 		// ∂loss(w, x, t) / ∂w = ∂(λ - twx + α * w^2 / 2) / ∂w = - tx + αw
 		real a = -eta * (*o++);
-		muladdx(w, d, a, out);	// *w -= a* (*dd++) + (*w)*1e-8; w++;
+		_fmax(w, d, a, out);	// *w -= a* (*dd++) + (*w)*1e-8; w++;
 		w += out;
-//		muladd(w++, d, a, out);	// *w -= a* (*dd++) + (*w)*1e-8; w++;
+//		_fma(w++, d, a, out);	// *w -= a* (*dd++) + (*w)*1e-8; w++;
 	}
 }
 
@@ -1522,7 +1525,7 @@ void CatsEye_convolutional_layer_forward(CatsEye_layer *l, real *s, real *w, rea
 					p = s++;	// in
 					z = o;		// out
 					for (int y=sy; y>0; y--) {
-						muladd(z, p, *w, sx);	// *z++ += (*p++) * (*w); p += m;
+						_fma(z, p, *w, sx);	// *z++ += (*p++) * (*w); p += m;
 						p += u[XSIZE];
 						z += sx;
 					}
@@ -1593,7 +1596,7 @@ void CatsEye_convolutional_layer_backward(CatsEye_layer *l, real *prev_out, real
 					p = prev_delta++;	// in
 					d = delta;		// out
 					for (int y=sy; y>0; y--) {
-						muladd(p, d, *w, sx);	// *p++ += (*d++) * (*w);
+						_fma(p, d, *w, sx);	// *p++ += (*d++) * (*w);
 						p += u[XSIZE];
 						d += sx;
 					}
