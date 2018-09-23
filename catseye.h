@@ -414,13 +414,40 @@ typedef struct layer {
 
 	real (*act)(real x);
 	real (*dact)(real x);
-//	void (*act)(real *z, real *x, int n);
-//	void (*dact)(real *z, real *x, int n);
 	void (*forward)(struct layer*);
 	void (*backward)(struct layer*);
 	void (*update)(struct layer*);
 	void (*loss)(struct layer *l, void *t, int n);
+	void *p;
 } CatsEye_layer;
+
+typedef struct {
+	// number of each layer
+	int layers, *u;
+	CatsEye_layer *layer;
+
+	// label
+	int sel;
+	int16_t *clasify;
+	real *label;
+
+	// input layers
+//	real *xdata;
+//	int xsize;
+	// output layers [o = f(z)]
+	real **z, **o, *odata;
+	int osize;
+	// error value
+	real **d, *ddata;
+	int dsize;
+	// weights
+	real **w, *wdata;
+	int *ws, wsize;
+
+	// deprecated!
+	int in;
+	real *o3;
+} CatsEye;
 
 // FNN
 void _CatsEye_linear_layer_forward(CatsEye_layer *l)
@@ -731,19 +758,34 @@ CATS_ACT_ARRAY(ReLU);
 CATS_DACT_ARRAY(ReLU);
 
 // calculate the error of output layer
-/*void __CatsEye_loss_0_1(CatsEye_layer *l)
+void __CatsEye_loss_0_1(CatsEye_layer *l)
 {
+	CatsEye *p = (CatsEye *)l->p;
+	int a = p->clasify[p->sel];
+
 	real *d = l->prev_dw;
 	real *o = l->x;
-
-	int a = ((int16_t*)t)[n];
 	for (int i=0; i<l->inputs; i++) {
 		// 0-1 loss function
 		*d++ = a==i ? o[i]-1 : o[i];	// 1-of-K
 	}
 	// http://d.hatena.ne.jp/echizen_tm/20110606/1307378609
 	// E = max(0, -twx), ∂E / ∂w = max(0, -tx)
-}*/
+}
+// loss function for mse with identity and cross entropy with sigmoid
+void __CatsEye_loss_mse(CatsEye_layer *l)
+{
+	CatsEye *p = (CatsEye *)l->p;
+	real *a = &p->label[p->sel * l->inputs];
+
+	real *d = l->prev_dw;
+	real *o = l->x;
+	for (int i=0; i<l->inputs; i++) {
+		// http://qiita.com/Ugo-Nama/items/04814a13c9ea84978a4c
+		// https://github.com/nyanp/tiny-cnn/wiki/%E5%AE%9F%E8%A3%85%E3%83%8E%E3%83%BC%E3%83%88
+		*d++ = *o++ - *a++;
+	}
+}
 
 void CatsEye_none(CatsEye_layer *l)
 {
@@ -772,7 +814,8 @@ void (*_CatsEye_layer_backward[])(CatsEye_layer *l) = {
 	_CatsEye_dact_softmax,
 	_CatsEye_dact_ReLU,
 
-	CatsEye_none,	// loss
+	__CatsEye_loss_0_1,
+	__CatsEye_loss_mse,
 };
 void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
 	_CatsEye_linear_layer_update,
@@ -827,34 +870,6 @@ typedef enum {
 	CATS_LOSS_0_1, CATS_LOSS_MSE, //CATS_LOSS_MSESPARSE
 } CATS_LOSS_TYPE;
 
-typedef struct {
-	// number of each layer
-	int layers, *u;
-	CatsEye_layer *layer;
-
-	// label
-	int sel;
-	int16_t *clasify;
-	real *label;
-
-	// input layers
-//	real *xdata;
-//	int xsize;
-	// output layers [o = f(z)]
-	real **z, **o, *odata;
-	int osize;
-	// error value
-	real **d, *ddata;
-	int dsize;
-	// weights
-	real **w, *wdata;
-	int *ws, wsize;
-
-	// deprecated!
-	int in;
-	real *o3;
-} CatsEye;
-
 #define _CatsEye__construct(t, p)	__CatsEye__construct(t, p, sizeof(p)/sizeof(CatsEye_layer))
 void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 {
@@ -877,6 +892,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 	int n[this->layers], m[this->layers];
 	for (int i=0; i<this->layers; i++) {
 		CatsEye_layer *l = &this->layer[i];
+		l->p = (void*)this;
 
 		if (i<this->layers-1) {
 			l->forward = _CatsEye_layer_forward[l->type];
@@ -886,7 +902,8 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		} else { // last layer
 			if (!l->outputs) l->outputs = 1;
 			l->forward = CatsEye_none;
-			l->backward = CatsEye_none;
+//			l->backward = CatsEye_none;
+			l->backward = _CatsEye_layer_backward[l->type];
 			l->update = CatsEye_none;
 			l->loss = _CatsEye_loss[l->activation];
 		}
@@ -1118,9 +1135,10 @@ int _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, int rando
 			_CatsEye_forward(this, x+sample*this->layer[0].inputs);
 
 			// calculate the error of output layer
-			this->layer[a].loss(&this->layer[a], t, sample);
+//			this->layer[a].loss(&this->layer[a], t, sample);
 			// calculate the error of hidden layer
-			for (int i=this->layers-2; i>=0; i--) { // i=0 -> RNN
+//			for (int i=this->layers-2; i>=0; i--) { // i=0 -> RNN
+			for (int i=this->layers-1; i>=0; i--) { // i=0 -> RNN
 				this->layer[i].backward(&this->layer[i]);
 			}
 
