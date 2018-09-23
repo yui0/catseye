@@ -49,9 +49,31 @@ void make_dataset(FILE *fp, char *name, int sx, int sy, int label)
 
 int main(int argc, char* argv[])
 {
-	FILE *fp = fopen("datasets.bin", "wb");
-	char *name = argv[1];
-	int32_t num;
+	char *p;
+	char *dir = ".";
+	char *target = "datasets.bin";
+	static int32_t l[1000], lmax[1000];
+
+	for(int i=0; i<argc; i++) {
+		p = argv[i];
+		if (*p=='-') { // option
+			p++;
+			switch (*p) {
+			case 'o':
+				target = ++p;
+				break;
+			case 'l':
+				lmax[0] = atoi(++p);
+				break;
+			}
+		} else {
+			dir = p;
+		}
+	}
+
+	FILE *fp = fopen(target, "wb");
+	char *name = dir;
+	int num;
 
 	pix = malloc(12*12*3 *2);
 	LS_LIST *ls = ls_dir(name, 1, &num);
@@ -67,23 +89,16 @@ int main(int argc, char* argv[])
 		int16_t label = atoi(p+1);*/
 		char *p = strstr(ls[i].d_name, "/label_");
 		int16_t label = atoi(p+7);
+		if (lmax[label] && lmax[label] <= l[label]) continue;
+		l[label]++;
 		fwrite(&label, sizeof(int16_t), 1, fp);
 
 		make_dataset(fp, ls[i].d_name, 12, 12, label);
 	}
-	/*for (int i=0; i<num; i++) {
-		char buff[256];
-		strcpy(buff, ls[i].d_name);
-		char *p = strrchr(buff, '/');
-		*p = 0;
-		p = strrchr(buff, '/');
-//		printf("%s\n", p+1);
-		int16_t label = atoi(p+1);
-		fwrite(&label, sizeof(int16_t), 1, fp);
-	}*/
 	free(ls);
 	free(pix);
 
 	printf("Total %d\n", num);
+	for (int i=0; i<1000; i++) if (l[i]) printf("  label#%d %d\n", i, l[i]);
 	fclose(fp);
 }

@@ -351,7 +351,7 @@ real dotTv(real *mat1, real *vec1, int r, int c)
 	}
 	return s;
 }
-void _fma(float *a, float *b, float z, int n)
+void _fma(real *a, real *b, real z, int n)
 {
 	for (int i=0; i<n; i++) {
 		*a += z * (*b);
@@ -688,11 +688,10 @@ void _CatsEye_act_softmax(CatsEye_layer *l)
 	real *z = l->z;
 
 	real alpha = x[0];
-	for (int i=1; i<l->outputs; i++) if (alpha<x[i]) alpha = x[i];
+	for (int i=1; i<l->outputs; i++) alpha = alpha<x[i] ? alpha : x[i];
 	real denom = 0.0;
 	for (int i=0; i<l->outputs; i++) denom += exp(x[i] - alpha);
 
-//	#pragma omp parallel for simd
 	for (int i=l->outputs; i>0; i--) {
 		real numer = exp(*x++ - alpha);
 		*z++ = (numer / denom);
@@ -709,7 +708,6 @@ void _CatsEye_act_##type(CatsEye_layer *l)\
 {\
 	real *x = l->x;\
 	real *z = l->z;\
-	/*_Pragma("omp parallel for simd")*/\
 	for (int i=l->outputs; i>0; i--) {\
 		*z++ = CATS_ACT_##type(*x);\
 		x++;\
@@ -721,7 +719,6 @@ void _CatsEye_dact_##type(CatsEye_layer *l)\
 	real *x = l->x;\
 	real *d = l->prev_dw;\
 	real *dW = l->dW;\
-	/*_Pragma("omp parallel for simd")*/\
 	for (int i=0; i<=l->inputs/*bias!!*/; i++) {\
 		*d++ = (*dW++) * CATS_DACT_##type(*x);\
 		x++;\
@@ -732,6 +729,21 @@ CATS_DACT_ARRAY(sigmoid);
 CATS_DACT_ARRAY(softmax);
 CATS_ACT_ARRAY(ReLU);
 CATS_DACT_ARRAY(ReLU);
+
+// calculate the error of output layer
+/*void __CatsEye_loss_0_1(CatsEye_layer *l)
+{
+	real *d = l->prev_dw;
+	real *o = l->x;
+
+	int a = ((int16_t*)t)[n];
+	for (int i=0; i<l->inputs; i++) {
+		// 0-1 loss function
+		*d++ = a==i ? o[i]-1 : o[i];	// 1-of-K
+	}
+	// http://d.hatena.ne.jp/echizen_tm/20110606/1307378609
+	// E = max(0, -twx), ∂E / ∂w = max(0, -tx)
+}*/
 
 void CatsEye_none(CatsEye_layer *l)
 {
@@ -820,6 +832,11 @@ typedef struct {
 	int layers, *u;
 	CatsEye_layer *layer;
 
+	// label
+	int sel;
+	int16_t *clasify;
+	real *label;
+
 	// input layers
 //	real *xdata;
 //	int xsize;
@@ -832,10 +849,6 @@ typedef struct {
 	// weights
 	real **w, *wdata;
 	int *ws, wsize;
-
-	// gradient value
-//	real *e2, *e3, *m2, *v2, *m3, *v3;
-//	real *dl1, *dl2;
 
 	// deprecated!
 	int in;
@@ -1084,6 +1097,8 @@ int _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, int rando
 {
 	int a = this->layers-1;
 	this->layer[a].z = t;	//FIXME
+	this->clasify = (int16_t*)t;
+	this->label = (real*)t;
 
 //	this->xdata = x;
 //	this->xsize = N;
@@ -1097,6 +1112,7 @@ int _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, int rando
 	for (int times=0; times<repeat; times++) {
 		for (int n=0; n<batch; n++) {
 			int sample = random ? (frand()*N) : n;
+			this->sel = sample;
 
 			// forward propagation
 			_CatsEye_forward(this, x+sample*this->layer[0].inputs);
