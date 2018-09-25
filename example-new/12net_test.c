@@ -38,7 +38,7 @@ int main(int argc, char *argv[])
 		// -- input 3x12x12
 		{   size, CATS_CONV,     0,  0.001, .ksize=3, .stride=1, .ch=16, .ich=3 },
 		// -- outputs 16x10x10
-		{      0, CATS_MAXPOOL,  0,  0.001, .ksize=3, .stride=2 },
+		{      0, CATS_MAXPOOL,  0, .ksize=3, .stride=2 },
 		{      0, _CATS_ACT_RELU },
 		// -- outputs 16x4x4
 		{      0, CATS_CONV,     0,  0.001, .ksize=4, .stride=1, .ch=16 },
@@ -48,7 +48,7 @@ int main(int argc, char *argv[])
 		{      0, CATS_CONV,     0,  0.001, .ksize=1, .stride=1, .ch=2 },
 //		{      0, _CATS_ACT_SOFTMAX },
 		// -- outputs 2x1x1
-		{      2, CATS_LOSS,     CATS_LOSS_0_1,  0.001 },
+		{      2, CATS_LOSS_0_1 },
 	};
 	CatsEye cat;
 	_CatsEye__construct(&cat, u);

@@ -65,7 +65,7 @@ int main()
 		{      0, CATS_CONV,     0,  0.001, .ksize=1, .stride=1, .ch=2 },
 //		{      0, _CATS_ACT_SOFTMAX },
 		// -- outputs 2x1x1
-		{      2, CATS_LOSS,     CATS_LOSS_0_1 },
+		{      2, CATS_LOSS_0_1 },
 	};
 	CatsEye cat;
 	_CatsEye__construct(&cat, u);

@@ -28,7 +28,7 @@ int main()
 		{      0, CATS_LINEAR, CATS_ACT_LEAKY_RELU,  0.01 },
 		{    256, CATS_LINEAR,   CATS_ACT_IDENTITY,  0.01 },
 		//{    256, CATS_LINEAR,    CATS_ACT_SIGMOID,  0.01 },//!!!
-		{  label, CATS_LOSS,         CATS_LOSS_0_1,  0.01 },
+		{  label, CATS_LOSS_0_1 },
 	};
 	/*CatsEye_layer u[] = {	// 43.9%(100)
 		{   size, CATS_CONV,         CATS_ACT_RELU,  0.01, .ksize=3, .stride=1, .ch=10, .ich=3 },

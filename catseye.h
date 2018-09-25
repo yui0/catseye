@@ -391,6 +391,8 @@ typedef struct layer {
 	int ich, ch;		// CNN
 	int sx, sy, ox, oy;	// CNN (AUTO: i/o size)
 
+	int r;			// Pixel Shuffler
+
 	int hiddens;		// RNN
 	int truncatedTime;	// RNN
 
@@ -417,8 +419,7 @@ typedef struct layer {
 	void (*forward)(struct layer*);
 	void (*backward)(struct layer*);
 	void (*update)(struct layer*);
-	void (*loss)(struct layer *l, void *t, int n);
-	void *p;
+	void *p;		// for loss function
 } CatsEye_layer;
 
 typedef struct {
@@ -450,7 +451,7 @@ typedef struct {
 } CatsEye;
 
 // FNN
-void _CatsEye_linear_layer_forward(CatsEye_layer *l)
+void _CatsEye_linear_forward(CatsEye_layer *l)
 {
 	real *o = l->z;
 	real *w = l->W;
@@ -458,7 +459,7 @@ void _CatsEye_linear_layer_forward(CatsEye_layer *l)
 		*o++ = l->act(dotTv(w++, l->x, l->inputs+1, l->outputs));	// bias!!
 	}
 }
-void _CatsEye_linear_layer_backward(CatsEye_layer *l)
+void _CatsEye_linear_backward(CatsEye_layer *l)
 {
 	real *o = l->x;
 	real *d = l->prev_dw;
@@ -466,7 +467,7 @@ void _CatsEye_linear_layer_backward(CatsEye_layer *l)
 		*d++ = dotvv(&l->W[i*l->outputs], l->dW, l->outputs) * l->dact(*o++);
 	}
 }
-void _CatsEye_linear_layer_update(CatsEye_layer *l)
+void _CatsEye_linear_update(CatsEye_layer *l)
 {
 	real *o = l->x;
 	real *w = l->W;
@@ -477,7 +478,7 @@ void _CatsEye_linear_layer_update(CatsEye_layer *l)
 	}
 }
 // RNN
-void CatsEye_rnn_layer_forward(CatsEye_layer *l)
+void CatsEye_rnn_forward(CatsEye_layer *l)
 {
 	real *u = l->u;
 	real *s = l->s;
@@ -503,7 +504,7 @@ void CatsEye_rnn_layer_forward(CatsEye_layer *l)
 		CatsEye_act_array(l->act2, y, v, l->outputs);
 	}
 }
-void CatsEye_rnn_layer_backward(CatsEye_layer *l)
+void CatsEye_rnn_backward(CatsEye_layer *l)
 {
 	real *d = l->dW + (l->inputs-1)*l->outputs;
 	real *s = l->s + (l->inputs-1)*l->hiddens;
@@ -540,7 +541,7 @@ void CatsEye_rnn_layer_backward(CatsEye_layer *l)
 		eh -= l->hiddens;
 	}
 }
-void CatsEye_rnn_layer_update(CatsEye_layer *l)
+void CatsEye_rnn_update(CatsEye_layer *l)
 {
 	_fma(l->Wi, l->dWi, -l->eta, l->hiddens * l->inputs);
 	_fma(l->Wo, l->dWo, -l->eta, l->outputs * l->hiddens);
@@ -548,7 +549,7 @@ void CatsEye_rnn_layer_update(CatsEye_layer *l)
 }
 
 // calculate forward propagation
-void _CatsEye_convolutional_layer_forward(CatsEye_layer *l)
+void _CatsEye_convolutional_forward(CatsEye_layer *l)
 {
 	int step = l->sx - l->ksize;
 
@@ -559,6 +560,7 @@ void _CatsEye_convolutional_layer_forward(CatsEye_layer *l)
 	memset(o, 0, sizeof(real)*l->ch*l->ox*l->oy);
 //	int c;
 //	#pragma omp parallel for
+//	#pragma acc kernels copyin(l->x[0:l->inputs],l->W[0:l->ksize*l->ksize*l->ch*l->ich]), copyout(l->z[0:l->outputs)
 	for (int c=l->ch; c>0; c--) {	// out
 		real *r = s = l->x;
 //		o = l->z + (l->ch-c)*l->ox*l->oy;
@@ -591,7 +593,7 @@ void _CatsEye_convolutional_layer_forward(CatsEye_layer *l)
 	}
 }
 // calculate back propagation
-void _CatsEye_convolutional_layer_backward(CatsEye_layer *l)
+void _CatsEye_convolutional_backward(CatsEye_layer *l)
 {
 	int step = l->sx - l->ksize;
 
@@ -631,7 +633,7 @@ void _CatsEye_convolutional_layer_backward(CatsEye_layer *l)
 	}
 }
 // update the weights
-void _CatsEye_convolutional_layer_update(CatsEye_layer *l)
+void _CatsEye_convolutional_update(CatsEye_layer *l)
 {
 	int step = l->sx - l->ksize;
 
@@ -665,7 +667,7 @@ void _CatsEye_convolutional_layer_update(CatsEye_layer *l)
 }
 
 // calculate forward propagation
-void _CatsEye_maxpooling_layer_forward(CatsEye_layer *l)
+void _CatsEye_maxpooling_forward(CatsEye_layer *l)
 {
 	int *max = (int*)l->W; // temp
 	real *o = l->z;
@@ -693,7 +695,7 @@ void _CatsEye_maxpooling_layer_forward(CatsEye_layer *l)
 	}
 }
 // calculate back propagation
-void _CatsEye_maxpooling_layer_backward(CatsEye_layer *l)
+void _CatsEye_maxpooling_backward(CatsEye_layer *l)
 {
 	int *max = (int*)l->W; // temp
 	real *delta = l->dW;
@@ -703,6 +705,26 @@ void _CatsEye_maxpooling_layer_backward(CatsEye_layer *l)
 		d[*max] = (*delta++) * l->dact(l->x[*max]);
 		max++;
 	}
+}
+
+void CatsEye_PixelShuffler_forward(CatsEye_layer *l)
+{
+	for (int c=0; c<l->ch; c++) { // out
+		real *xx = l->x + c*l->ich*l->sx*l->sy;
+		real *o = l->z + c*l->ox*l->oy;
+
+		for (int cc=0; cc<l->ich; cc++) { // in
+			real *x = xx + cc*l->sx*l->sy;
+			for (int y=0; y<l->oy; y+=l->r) {
+				for (real *z=o+y*l->ox; z<o+l->ox; z+=l->r) {
+					*z = *x++;
+				}
+			}
+		}
+	}
+}
+void _CatsEye_PixelShuffler_backward(CatsEye_layer *l)
+{
 }
 
 #define CATS_ACT_sigmoid(x)	(1.0 / (1.0 + exp(-x * s_gain)))
@@ -735,6 +757,7 @@ void _CatsEye_act_##type(CatsEye_layer *l)\
 {\
 	real *x = l->x;\
 	real *z = l->z;\
+	/*_Pragma("acc kernels copyin(x[0:inputs]), copyout(z[0:outputs)")*/\
 	for (int i=l->outputs; i>0; i--) {\
 		*z++ = CATS_ACT_##type(*x);\
 		x++;\
@@ -758,7 +781,7 @@ CATS_ACT_ARRAY(ReLU);
 CATS_DACT_ARRAY(ReLU);
 
 // calculate the error of output layer
-void __CatsEye_loss_0_1(CatsEye_layer *l)
+void _CatsEye_loss_0_1(CatsEye_layer *l)
 {
 	CatsEye *p = (CatsEye *)l->p;
 	int a = p->clasify[p->sel];
@@ -773,7 +796,7 @@ void __CatsEye_loss_0_1(CatsEye_layer *l)
 	// E = max(0, -twx), ∂E / ∂w = max(0, -tx)
 }
 // loss function for mse with identity and cross entropy with sigmoid
-void __CatsEye_loss_mse(CatsEye_layer *l)
+void _CatsEye_loss_mse(CatsEye_layer *l)
 {
 	CatsEye *p = (CatsEye *)l->p;
 	real *a = &p->label[p->sel * l->inputs];
@@ -791,84 +814,52 @@ void CatsEye_none(CatsEye_layer *l)
 {
 }
 void (*_CatsEye_layer_forward[])(CatsEye_layer *l) = {
-	_CatsEye_linear_layer_forward,
-	_CatsEye_convolutional_layer_forward,
-	_CatsEye_maxpooling_layer_forward,
-	CatsEye_rnn_layer_forward,
+	_CatsEye_linear_forward,
+	_CatsEye_convolutional_forward,
+	_CatsEye_maxpooling_forward,
+	CatsEye_rnn_forward,
 
 	// activation
 	_CatsEye_act_sigmoid,
 	_CatsEye_act_softmax,
 	_CatsEye_act_ReLU,
 
-	CatsEye_none,	// loss
+	CatsEye_none,	// 0-1 loss
+	CatsEye_none,	// mse loss
 };
 void (*_CatsEye_layer_backward[])(CatsEye_layer *l) = {
-	_CatsEye_linear_layer_backward,
-	_CatsEye_convolutional_layer_backward,
-	_CatsEye_maxpooling_layer_backward,
-	CatsEye_rnn_layer_backward,
+	_CatsEye_linear_backward,
+	_CatsEye_convolutional_backward,
+	_CatsEye_maxpooling_backward,
+	CatsEye_rnn_backward,
 
 	// activation
 	_CatsEye_dact_sigmoid,
 	_CatsEye_dact_softmax,
 	_CatsEye_dact_ReLU,
 
-	__CatsEye_loss_0_1,
-	__CatsEye_loss_mse,
+	_CatsEye_loss_0_1,
+	_CatsEye_loss_mse,
 };
 void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
-	_CatsEye_linear_layer_update,
-	_CatsEye_convolutional_layer_update,
+	_CatsEye_linear_update,
+	_CatsEye_convolutional_update,
 	CatsEye_none,
-	CatsEye_rnn_layer_update,
+	CatsEye_rnn_update,
 
 	// activation
 	CatsEye_none,	// sigmoid
 	CatsEye_none,	// softmax
 	CatsEye_none,	// ReLU
 
-	CatsEye_none,	// loss
+	CatsEye_none,	// 0-1 loss
+	CatsEye_none,	// mse loss
 };
 typedef enum {
 	CATS_LINEAR, CATS_CONV, CATS_MAXPOOL, CATS_RECURRENT,
-	_CATS_ACT_SIGMOID, _CATS_ACT_SOFTMAX, _CATS_ACT_RELU, CATS_LOSS
+	_CATS_ACT_SIGMOID, _CATS_ACT_SOFTMAX, _CATS_ACT_RELU,
+	CATS_LOSS_0_1, CATS_LOSS_MSE
 } CATS_LAYER_TYPE;
-
-// calculate the error of output layer
-void _CatsEye_loss_0_1(CatsEye_layer *l, void *t, int n)
-{
-	real *d = l->prev_dw;
-	real *o = l->x;
-
-	int a = ((int16_t*)t)[n];
-	for (int i=0; i<l->inputs; i++) {
-		// 0-1 loss function
-		*d++ = a==i ? o[i]-1 : o[i];	// 1-of-K
-	}
-	// http://d.hatena.ne.jp/echizen_tm/20110606/1307378609
-	// E = max(0, -twx), ∂E / ∂w = max(0, -tx)
-}
-// loss function for mse with identity and cross entropy with sigmoid
-void _CatsEye_loss_mse(CatsEye_layer *l, void *t, int n)
-{
-	real *d = l->prev_dw;
-	real *o = l->x;
-
-	real *a = &((real*)t)[n * l->inputs];
-	for (int i=0; i<l->inputs; i++) {
-		// http://qiita.com/Ugo-Nama/items/04814a13c9ea84978a4c
-		// https://github.com/nyanp/tiny-cnn/wiki/%E5%AE%9F%E8%A3%85%E3%83%8E%E3%83%BC%E3%83%88
-		*d++ = *o++ - *a++;
-	}
-}
-void (*_CatsEye_loss[])(CatsEye_layer *l, void *t, int n) = {
-	_CatsEye_loss_0_1,
-	_CatsEye_loss_mse,
-};
-typedef enum {
-	CATS_LOSS_0_1, CATS_LOSS_MSE, //CATS_LOSS_MSESPARSE
-} CATS_LOSS_TYPE;
 
 #define _CatsEye__construct(t, p)	__CatsEye__construct(t, p, sizeof(p)/sizeof(CatsEye_layer))
 void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
@@ -894,19 +885,14 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		CatsEye_layer *l = &this->layer[i];
 		l->p = (void*)this;
 
-		if (i<this->layers-1) {
-			l->forward = _CatsEye_layer_forward[l->type];
-			l->backward = _CatsEye_layer_backward[l->type];
-			if (!i && l->type!=CATS_RECURRENT) l->backward = CatsEye_none;
-			l->update = _CatsEye_layer_update[l->type];
-		} else { // last layer
+		l->forward = _CatsEye_layer_forward[l->type];
+		l->backward = _CatsEye_layer_backward[l->type];
+		if (!i && l->type!=CATS_RECURRENT) l->backward = CatsEye_none;
+		l->update = _CatsEye_layer_update[l->type];
+		if (i>=this->layers-1) { // last layer
 			if (!l->outputs) l->outputs = 1;
-			l->forward = CatsEye_none;
-//			l->backward = CatsEye_none;
-			l->backward = _CatsEye_layer_backward[l->type];
-			l->update = CatsEye_none;
-			l->loss = _CatsEye_loss[l->activation];
 		}
+
 		// activation
 		l->act = CatsEye_act[l->activation];
 		if (i>0) l->dact = CatsEye_dact[(l-1)->activation];
@@ -972,6 +958,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			m[i] = l->hiddens;
 			printf("L%02d: RECURRENT %d %d\n", i+1, n[i], m[i]);
 			break;
+		case _CATS_ACT_SIGMOID:
 		case _CATS_ACT_RELU:
 			n[i] = m[i] = 0;
 			l->ch = l->ich;
@@ -1117,9 +1104,6 @@ int _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, int rando
 	this->clasify = (int16_t*)t;
 	this->label = (real*)t;
 
-//	this->xdata = x;
-//	this->xsize = N;
-
 	if (verify) N = N - verify;	// for test
 	int batch = N;			// for random
 	if (random) batch = random;
@@ -1134,10 +1118,7 @@ int _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, int rando
 			// forward propagation
 			_CatsEye_forward(this, x+sample*this->layer[0].inputs);
 
-			// calculate the error of output layer
-//			this->layer[a].loss(&this->layer[a], t, sample);
-			// calculate the error of hidden layer
-//			for (int i=this->layers-2; i>=0; i--) { // i=0 -> RNN
+			// calculate the error of output and hidden layer
 			for (int i=this->layers-1; i>=0; i--) { // i=0 -> RNN
 				this->layer[i].backward(&this->layer[i]);
 			}
@@ -1170,12 +1151,6 @@ int _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, int rando
 		printf("epochs %d, mse %f [%.2fs]", times, err, (stop.tv_sec - start.tv_sec) + (stop.tv_usec - start.tv_usec)*0.001*0.001);
 
 		if (verify) {
-			/*int16_t *a = (int16_t*)t + N;
-			int r = 0;
-			for (int i=0; i<verify; i++) {
-				int p = _CatsEye_predict(this, x+this->layer[0].inputs*(N+i));
-				if (p==a[i]) r++;
-			}*/
 			int r = _CatsEye_accuracy(this, x+this->layer[0].inputs*N, (int16_t*)t+N, verify);
 			printf(" %.1f%%", (float)r/verify*100.0);
 		}
