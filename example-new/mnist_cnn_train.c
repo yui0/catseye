@@ -27,7 +27,7 @@ int main()
 	_CatsEye__construct(&cat, u);
 
 	real *x = malloc(sizeof(real)*size*sample);	// 訓練データ
-	int16_t t[sample];					// ラベルデータ
+	int16_t t[sample];				// ラベルデータ
 	unsigned char *data = malloc(sample*size);
 
 	// 訓練データの読み込み

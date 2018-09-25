@@ -723,8 +723,21 @@ void CatsEye_PixelShuffler_forward(CatsEye_layer *l)
 		}
 	}
 }
-void _CatsEye_PixelShuffler_backward(CatsEye_layer *l)
+void CatsEye_PixelShuffler_backward(CatsEye_layer *l)
 {
+	for (int c=0; c<l->ch; c++) { // out
+		real *d = l->prev_dw + c*l->ich*l->sx*l->sy;
+		real *delta = l->dW + c*l->ox*l->oy;
+
+		for (int cc=0; cc<l->ich; cc++) { // in
+			real *x = d + cc*l->sx*l->sy;
+			for (int y=0; y<l->oy; y+=l->r) {
+				for (real *z=delta+y*l->ox; z<delta+l->ox; z+=l->r) {
+					*x++ = *z;
+				}
+			}
+		}
+	}
 }
 
 #define CATS_ACT_sigmoid(x)	(1.0 / (1.0 + exp(-x * s_gain)))
@@ -817,6 +830,7 @@ void (*_CatsEye_layer_forward[])(CatsEye_layer *l) = {
 	_CatsEye_linear_forward,
 	_CatsEye_convolutional_forward,
 	_CatsEye_maxpooling_forward,
+	CatsEye_PixelShuffler_forward,
 	CatsEye_rnn_forward,
 
 	// activation
@@ -831,6 +845,7 @@ void (*_CatsEye_layer_backward[])(CatsEye_layer *l) = {
 	_CatsEye_linear_backward,
 	_CatsEye_convolutional_backward,
 	_CatsEye_maxpooling_backward,
+	CatsEye_PixelShuffler_backward,
 	CatsEye_rnn_backward,
 
 	// activation
@@ -845,6 +860,7 @@ void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
 	_CatsEye_linear_update,
 	_CatsEye_convolutional_update,
 	CatsEye_none,
+	CatsEye_none,
 	CatsEye_rnn_update,
 
 	// activation
@@ -856,7 +872,7 @@ void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
 	CatsEye_none,	// mse loss
 };
 typedef enum {
-	CATS_LINEAR, CATS_CONV, CATS_MAXPOOL, CATS_RECURRENT,
+	CATS_LINEAR, CATS_CONV, CATS_MAXPOOL, CATS_PIXELSHUFFLER, CATS_RECURRENT,
 	_CATS_ACT_SIGMOID, _CATS_ACT_SOFTMAX, _CATS_ACT_RELU,
 	CATS_LOSS_0_1, CATS_LOSS_MSE
 } CATS_LAYER_TYPE;
@@ -935,6 +951,15 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			m[i] = 1;
 			printf("L%02d: POOL%d-%d (w:%d h:%d [%d])\n", i+1, l->ksize, l->ch, l->ox, l->oy, n[i]);
 			break;
+		case CATS_PIXELSHUFFLER:
+			l->ich = l->ch * l->r*l->r;
+			l->ox = l->sx * l->r;
+			l->oy = l->sy * l->r;
+			l->outputs = l->ch * l->ox * l->oy;
+			n[i] = m[i] = 0;
+			printf("L%02d: PIXELSHUFFLER%d-%d (w:%d h:%d)\n", i+1, l->r, l->ch, l->ox, l->oy);
+			break;
+
 		case CATS_RECURRENT:
 			l->Wi = calloc(l->inputs * l->hiddens, sizeof(real));
 //			l->Wi = l->W;
@@ -958,6 +983,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			m[i] = l->hiddens;
 			printf("L%02d: RECURRENT %d %d\n", i+1, n[i], m[i]);
 			break;
+
 		case _CATS_ACT_SIGMOID:
 		case _CATS_ACT_RELU:
 			n[i] = m[i] = 0;
@@ -965,12 +991,16 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			l->outputs = l->inputs;
 			printf("L%02d: ACT\n", i+1);
 			break;
+
+		case CATS_LOSS_0_1:
+			printf("L%02d: LOSS 0-1\n", i+1);
+		case CATS_LOSS_MSE:
+			if (l->type==CATS_LOSS_MSE) printf("L%02d: LOSS MSE\n", i+1);
 		default: // LINEAR
-//			if (i>0 && !l->inputs) l->inputs = this->layer[i-1].outputs;
 			if (i<this->layers-1) l->outputs = (l+1)->inputs;
 			n[i] = l->inputs;
 			m[i] = l->outputs;
-			printf("L%02d: LINEAR %d %d\n", i+1, n[i], m[i]);
+			if (l->type==CATS_LINEAR) printf("L%02d: LINEAR %d %d\n", i+1, n[i], m[i]);
 		}
 		wsize[i] = this->wsize;
 		this->ws[i] = (n[i]+1)*m[i];
