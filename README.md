@@ -30,6 +30,7 @@ Neural network library written in C and Javascript
   - Layer types
     - convolutional
     - max pooling
+    - pixel shuffler [Upscaling or Deconvolution]
     - linear
     - CCCP, Cascaded Cross Channel Parametric Pooling
 - Loader formats:
