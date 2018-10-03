@@ -709,40 +709,27 @@ void _CatsEye_maxpooling_backward(CatsEye_layer *l)
 
 void CatsEye_PixelShuffler_forward(CatsEye_layer *l)
 {
-//	memset(l->z, 0, sizeof(real)*l->outputs);
 	for (int c=0; c<l->ch; c++) { // out
 		real *xx = l->x + c*l->ich*l->sx*l->sy;
 		real *o = l->z + c*l->ox*l->oy;
 
 		for (int cc=0; cc<l->ich; cc++) { // in
 			real *x = xx + cc*l->sx*l->sy;
-			int px = 0;//cc%l->r;
-			int py = 1;//cc/l->r;
+			int px = cc%l->r;
+			int py = cc/l->r;
+//			int px = 0;//cc%l->r;
+//			int py = 1;//cc/l->r;
 			for (int n=0; n<l->sy; n++) {
 				for (int m=0; m<l->sx; m++) {
-//					o[m*l->r+cc%l->r +(n+cc/l->r)*l->sx] = *x++;
 					o[m*l->r+px +(n*l->r+py)*l->ox] = *x++;
 //					o[m*l->r+px +(n*l->r+py)*l->ox] = 0.5;
 				}
 			}
-
-/*			for (int y=0; y<l->oy; y+=l->r) {
-//				for (real *z=o+(y+cc/l->r)*l->ox+cc%l->r; z<o+y*l->ox+l->ox; z+=l->r) {
-				for (real *z=o+y*l->ox; z<o+y*l->ox+l->ox; z+=l->r) {
-					*z = *x++;
-				}
-				real *z = o + (y + cc/l->r)*l->ox + cc%l->r;
-				for (int px=0; px<l->ox; px+=l->r) {
-					*z = *x++;
-					z += l->r;
-				}
-			}*/
 		}
 	}
 }
 void CatsEye_PixelShuffler_backward(CatsEye_layer *l)
 {
-//	memset(l->prev_dw, 0, sizeof(real)*l->inputs);
 	for (int c=0; c<l->ch; c++) { // out
 		real *d = l->prev_dw + c*l->ich*l->sx*l->sy;
 		real *delta = l->dW + c*l->ox*l->oy;
@@ -753,17 +740,9 @@ void CatsEye_PixelShuffler_backward(CatsEye_layer *l)
 			int py = cc/l->r;
 			for (int n=0; n<l->sy; n++) {
 				for (int m=0; m<l->sx; m++) {
-//					*x++ = delta[m*l->r+cc%l->r +(n+cc/l->r)*l->sx];
 					*x++ = delta[m*l->r+px +(n*l->r+py)*l->ox];
 				}
 			}
-
-/*			for (int y=0; y<l->oy; y+=l->r) {
-//				for (real *z=delta+(y+cc/l->r)*l->ox+cc%l->r; z<delta+y*l->ox+l->ox; z+=l->r) {
-				for (real *z=delta+y*l->ox; z<delta+y*l->ox+l->ox; z+=l->r) {
-					*x++ = *z;
-				}
-			}*/
 		}
 	}
 }

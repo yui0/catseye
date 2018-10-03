@@ -58,18 +58,15 @@ int main()
 
 		{  size, CATS_LOSS_MSE },
 	};*/
-	CatsEye_layer u[] = {	// 99.19% (100)
-//		{  size, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=64, .padding=1 },
+	CatsEye_layer u[] = {
 		{  size, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=4, .padding=1 },
-		// 28*28 64ch
+		// 28*28 4ch
 		{     0, _CATS_ACT_RELU },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
-		// 14*14 64ch
-//		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=4, .padding=1 },
-
 		// 14*14 4ch
+
 		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=1 },
-		{     0, _CATS_ACT_SIGMOID },
+//		{     0, _CATS_ACT_SIGMOID },
 		// 28*28 1ch
 		{  size, CATS_LOSS_MSE },
 	};
