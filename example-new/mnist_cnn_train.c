@@ -18,8 +18,9 @@ int main()
 	int sample = 60000;
 
 	CatsEye_layer u[] = {	// 99.19% (100)
-		{  size, CATS_CONV,       CATS_ACT_RELU,  0.01, .ksize=7, .stride=1, .ch=32 },
-		{     0, CATS_MAXPOOL,                0,  0.01, .ksize=2, .stride=2 },
+		{  size, CATS_CONV, 0, 0.01, .ksize=7, .stride=1, .ch=32 },
+		{     0, _CATS_ACT_RELU },
+		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
 		{     0, CATS_LINEAR,  CATS_ACT_SIGMOID,  0.01 },
 		{ label, CATS_LOSS_0_1 },
 	};

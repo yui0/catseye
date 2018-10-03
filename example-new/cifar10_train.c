@@ -19,7 +19,19 @@ int main()
 	int label = 10;	// 出力層
 	int sample = 10000;
 
-	CatsEye_layer u[] = {	// 46.4%(100), 95.8%(1000), 99.7%(2000)
+	CatsEye_layer u[] = {	// 48.9%(100), 95.8%(1000), 99.7%(2000)
+		{  size, CATS_CONV,   0, 0.01, .ksize=3, .stride=1, .ch=10, .ich=3, /*.padding=1*/ },
+		{     0, _CATS_ACT_LEAKY_RELU },
+		{     0, CATS_CONV,   0, 0.01, .ksize=3, .stride=1, .ch=10, /*.padding=1*/ },
+		{     0, _CATS_ACT_LEAKY_RELU },
+		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
+		{     0, CATS_LINEAR, CATS_ACT_LEAKY_RELU,  0.01 },
+//		{     0, CATS_LINEAR, 0, 0.01 },
+//		{     0, _CATS_ACT_LEAKY_RELU },
+		{   256, CATS_LINEAR, 0, 0.01 },
+		{ label, CATS_LOSS_0_1 },
+	};
+/*	CatsEye_layer u[] = {	// 46.4%(100), 95.8%(1000), 99.7%(2000)
 		{   size, CATS_CONV,   CATS_ACT_LEAKY_RELU,  0.01, .ksize=3, .stride=1, .ch=10, .ich=3 },
 		{      0, CATS_CONV,   CATS_ACT_LEAKY_RELU,  0.01, .ksize=3, .stride=1, .ch=10 },
 //		{   size, CATS_CONV,   CATS_ACT_LEAKY_RELU,  0.01, .ksize=3, .stride=1, .ch=10, .padding=1, .ich=3 },
@@ -29,7 +41,7 @@ int main()
 		{    256, CATS_LINEAR,   CATS_ACT_IDENTITY,  0.01 },
 		//{    256, CATS_LINEAR,    CATS_ACT_SIGMOID,  0.01 },//!!!
 		{  label, CATS_LOSS_0_1 },
-	};
+	};*/
 	/*CatsEye_layer u[] = {	// 43.9%(100)
 		{   size, CATS_CONV,         CATS_ACT_RELU,  0.01, .ksize=3, .stride=1, .ch=10, .ich=3 },
 		{      0, CATS_CONV,         CATS_ACT_RELU,  0.01, .ksize=3, .stride=1, .ch=10 },

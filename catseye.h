@@ -586,11 +586,11 @@ void _CatsEye_convolutional_forward(CatsEye_layer *l)
 //		o = z + l->pz;
 	}
 
-	o = l->z;
+/*	o = l->z;
 	for (int c=l->ch*l->ox*l->oy; c>0; c--) {	// out
 		*o = l->act(*o);
 		o++;
-	}
+	}*/
 }
 // calculate back propagation
 void _CatsEye_convolutional_backward(CatsEye_layer *l)
@@ -627,10 +627,10 @@ void _CatsEye_convolutional_backward(CatsEye_layer *l)
 //		prev_delta = l->prev_dw;
 	}
 
-	real *prev_out = l->x;
+/*	real *prev_out = l->x;
 	for (int i=l->ich*l->sx*l->sy; i>0; i--) {
 		*prev_delta++ *= l->dact(*prev_out++);
-	}
+	}*/
 }
 // update the weights
 void _CatsEye_convolutional_update(CatsEye_layer *l)
@@ -672,9 +672,9 @@ void _CatsEye_maxpooling_forward(CatsEye_layer *l)
 	int *max = (int*)l->W; // temp
 	real *o = l->z;
 
-	for (int c=0; c<l->ch; c++) {
-		for (int y=0; y<l->sy-1; y+=l->stride) {
-			for (int x=0; x<l->sx-1; x+=l->stride) {
+	for (int c=0; c<l->ch; c++) { // in/out
+		for (int y=0; y<l->sy/*-1*/; y+=l->stride) {
+			for (int x=0; x<l->sx/*-1*/; x+=l->stride) {
 				int n = c*l->sx*l->sy + y*l->sx+x;
 				real a = l->x[n];
 				*max = n;
@@ -771,6 +771,10 @@ void _CatsEye_act_softmax(CatsEye_layer *l)
 // rectified linear unit function
 #define CATS_ACT_ReLU(x)	((x)>0 ? (x) : 0.0)
 #define CATS_DACT_ReLU(x)	((x)>0 ? 1.0 : 0.0)
+// leaky rectified linear unit function
+//#define leaky_alpha	0.01	// 0 - 1
+#define CATS_ACT_LeakyReLU(x)	((x)>0 ? (x) : x*leaky_alpha)
+#define CATS_DACT_LeakyReLU(x)	((x)>0 ? 1.0 : leaky_alpha)
 
 #define CATS_ACT_ARRAY(type)	\
 void _CatsEye_act_##type(CatsEye_layer *l)\
@@ -799,6 +803,8 @@ CATS_DACT_ARRAY(sigmoid);
 CATS_DACT_ARRAY(softmax);
 CATS_ACT_ARRAY(ReLU);
 CATS_DACT_ARRAY(ReLU);
+CATS_ACT_ARRAY(LeakyReLU);
+CATS_DACT_ARRAY(LeakyReLU);
 
 // calculate the error of output layer
 void _CatsEye_loss_0_1(CatsEye_layer *l)
@@ -844,6 +850,7 @@ void (*_CatsEye_layer_forward[])(CatsEye_layer *l) = {
 	_CatsEye_act_sigmoid,
 	_CatsEye_act_softmax,
 	_CatsEye_act_ReLU,
+	_CatsEye_act_LeakyReLU,
 
 	CatsEye_none,	// 0-1 loss
 	CatsEye_none,	// mse loss
@@ -859,6 +866,7 @@ void (*_CatsEye_layer_backward[])(CatsEye_layer *l) = {
 	_CatsEye_dact_sigmoid,
 	_CatsEye_dact_softmax,
 	_CatsEye_dact_ReLU,
+	_CatsEye_dact_LeakyReLU,
 
 	_CatsEye_loss_0_1,
 	_CatsEye_loss_mse,
@@ -874,13 +882,14 @@ void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
 	CatsEye_none,	// sigmoid
 	CatsEye_none,	// softmax
 	CatsEye_none,	// ReLU
+	CatsEye_none,	// LeakyReLU
 
 	CatsEye_none,	// 0-1 loss
 	CatsEye_none,	// mse loss
 };
 typedef enum {
 	CATS_LINEAR, CATS_CONV, CATS_MAXPOOL, CATS_PIXELSHUFFLER, CATS_RECURRENT,
-	_CATS_ACT_SIGMOID, _CATS_ACT_SOFTMAX, _CATS_ACT_RELU,
+	_CATS_ACT_SIGMOID, _CATS_ACT_SOFTMAX, _CATS_ACT_RELU, _CATS_ACT_LEAKY_RELU,
 	CATS_LOSS_0_1, CATS_LOSS_MSE
 } CATS_LAYER_TYPE;
 
@@ -992,6 +1001,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 
 		case _CATS_ACT_SIGMOID:
 		case _CATS_ACT_RELU:
+		case _CATS_ACT_LEAKY_RELU:
 			n[i] = m[i] = 0;
 			l->ch = l->ich;
 			l->outputs = l->inputs;
@@ -1003,7 +1013,10 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		case CATS_LOSS_MSE:
 			if (l->type==CATS_LOSS_MSE) printf("L%02d: LOSS MSE\n", i+1);
 		default: // LINEAR
-			if (i<this->layers-1) l->outputs = (l+1)->inputs;
+			if (i<this->layers-1) {
+				if ((l+1)->inputs>0) l->outputs = (l+1)->inputs;
+				else l->outputs = l->inputs;
+			}
 			n[i] = l->inputs;
 			m[i] = l->outputs;
 			if (l->type==CATS_LINEAR) printf("L%02d: LINEAR %d %d\n", i+1, n[i], m[i]);
