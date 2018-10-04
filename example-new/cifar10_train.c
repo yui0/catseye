@@ -25,9 +25,8 @@ int main()
 		{     0, CATS_CONV,   0, 0.01, .ksize=3, .stride=1, .ch=10, /*.padding=1*/ },
 		{     0, _CATS_ACT_LEAKY_RELU },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
-		{     0, CATS_LINEAR, CATS_ACT_LEAKY_RELU,  0.01 },
-//		{     0, CATS_LINEAR, 0, 0.01 },
-//		{     0, _CATS_ACT_LEAKY_RELU },
+		{     0, CATS_LINEAR, 0, 0.01 },
+		{   256, _CATS_ACT_LEAKY_RELU },
 		{   256, CATS_LINEAR, 0, 0.01 },
 		{ label, CATS_LOSS_0_1 },
 	};
