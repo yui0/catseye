@@ -564,22 +564,27 @@ void _CatsEye_convolutional_forward(CatsEye_layer *l)
 //	#pragma acc kernels copyin(l->x[0:l->inputs],l->W[0:l->ksize*l->ksize*l->ch*l->ich]), copyout(l->z[0:l->outputs)
 	for (int c=0; c<l->ch; c++) {	// out
 		real *r = s = l->x;
-//		o = l->z + c*l->ox*l->oy;
-		o = l->z + l->pz + c*l->ox*l->oy;
+		o = l->z + c*l->ox*l->oy;
+///		o = l->z + l->pz + c*l->ox*l->oy;
 		for (int cc=l->ich; cc>0; cc--) {	// in
 //			s = l->x + (l->ich-cc)*l->sx*l->sy;
 			for (int wy=l->ksize; wy>0; wy--) {
-				for (int wx=l->ksize; wx>0; wx--) {
-					real *p = s++;	// in
+///				for (int wx=l->ksize; wx>0; wx--) {
+				for (int wx=l->ksize-1; wx>=0; wx--) {
+///					real *p = s++;	// in
+					real *p = s;	// in
 					z = o;		// out
-					for (int y=l->py; y>0; y--) {
-						_fma(z, p, *w, l->px);	// *z++ += (*p++) * (*w); p += m;
+					for (int y=l->oy; y>0; y--) {
+///					for (int y=l->py; y>0; y--) {
+///						_fma(z, p, *w, l->px);	// *z++ += (*p++) * (*w); p += m;
+						_fma(z+wx, p, *w, l->ox);	// *z++ += (*p++) * (*w); p += m;
 						p += l->sx;
 						z += l->ox;
 					}
 					w++;
 				}
-				s += step;
+///				s += step;
+				s += l->sx;
 			}
 			r += l->sx * l->sy;
 			s = r;
