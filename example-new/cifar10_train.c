@@ -20,9 +20,12 @@ int main()
 	int sample = 10000;
 
 	CatsEye_layer u[] = {	// 48.9%(100), 95.8%(1000), 99.7%(2000)
-		{  size, CATS_CONV,   0, 0.01, .ksize=3, .stride=1, .ch=10, .ich=3, .padding=1 },
+///		{  size, CATS_CONV,   0, 0.01, .ksize=3, .stride=1, .ch=10, .ich=3, /*.padding=1*/ },
+		{  size, CATS_PADDING, .sx=32, .sy=32, .ich=3, .padding=1 },
+		{     0, CATS_CONV,   0, 0.01, .ksize=3, .stride=1, .ch=10, .ich=3 },
 		{     0, _CATS_ACT_LEAKY_RELU },
-		{     0, CATS_CONV,   0, 0.01, .ksize=3, .stride=1, .ch=10, .padding=1 },
+		{     0, CATS_PADDING, .padding=1 },
+		{     0, CATS_CONV,   0, 0.01, .ksize=3, .stride=1, .ch=10, /*.padding=1*/ },
 		{     0, _CATS_ACT_LEAKY_RELU },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
 		{     0, CATS_LINEAR, 0, 0.01 },

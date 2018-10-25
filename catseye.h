@@ -559,6 +559,38 @@ void _CatsEye_convolutional_forward(CatsEye_layer *l)
 	real *s, *z, *o;
 	real *w = l->W;
 	memset(l->z, 0, sizeof(real)*l->ch*l->ox*l->oy);
+	for (int c=0; c<l->ch; c++) {	// out
+		real *r = s = l->x;
+		o = l->z + c*l->ox*l->oy;
+		for (int cc=l->ich; cc>0; cc--) {	// in
+//			s = l->x + (l->ich-cc)*l->sx*l->sy;
+			for (int wy=l->ksize; wy>0; wy--) {
+				for (int wx=0; wx<l->ksize; wx++) {
+					real *p = s++;	// in
+					z = o;		// out
+					for (int y=l->py; y>0; y--) {
+						_fma(z, p, *w, l->px);	// *z++ += (*p++) * (*w); p += m;
+						p += l->sx;
+						z += l->ox;
+					}
+					w++;
+				}
+				s += step;
+///				s += l->sx;
+			}
+			r += l->sx * l->sy;
+			s = r;
+		}
+	}
+}
+/*void _CatsEye_convolutional_forward(CatsEye_layer *l)
+{
+	int step = l->sx - l->ksize;
+
+	// c[out], c[in], ksize, h, w
+	real *s, *z, *o;
+	real *w = l->W;
+	memset(l->z, 0, sizeof(real)*l->ch*l->ox*l->oy);
 //	int c;
 //	#pragma omp parallel for
 //	#pragma acc kernels copyin(l->x[0:l->inputs],l->W[0:l->ksize*l->ksize*l->ch*l->ich]), copyout(l->z[0:l->outputs)
@@ -591,13 +623,7 @@ void _CatsEye_convolutional_forward(CatsEye_layer *l)
 		}
 //		o = z + l->pz;
 	}
-
-/*	o = l->z;
-	for (int c=l->ch*l->ox*l->oy; c>0; c--) {	// out
-		*o = l->act(*o);
-		o++;
-	}*/
-}
+}*/
 /*void _CatsEye_convolutional_forward_with_padding(CatsEye_layer *l)
 {
 	// c[out], c[in], ksize, h, w
@@ -658,11 +684,6 @@ void _CatsEye_convolutional_backward(CatsEye_layer *l)
 		delta = d;
 //		prev_delta = l->prev_dw;
 	}
-
-/*	real *prev_out = l->x;
-	for (int i=l->ich*l->sx*l->sy; i>0; i--) {
-		*prev_delta++ *= l->dact(*prev_out++);
-	}*/
 }
 // update the weights
 void _CatsEye_convolutional_update(CatsEye_layer *l)
@@ -779,6 +800,32 @@ void CatsEye_PixelShuffler_backward(CatsEye_layer *l)
 	}
 }
 
+void CatsEye_padding_forward(CatsEye_layer *l)
+{
+	memset(l->z, 0, sizeof(real)*l->outputs); // FIXME
+	for (int c=0; c<l->ch; c++) { // in/out
+		real *x = l->x +c*l->sx*l->sy;
+		real *o = l->z +c*l->ox*l->oy +l->ox*l->padding +l->padding;
+		for (int n=0; n<l->sy; n++) {
+			memcpy(o, x, sizeof(real)*l->sx);
+			x += l->sx;
+			o += l->ox;
+		}
+	}
+}
+void CatsEye_padding_backward(CatsEye_layer *l)
+{
+	for (int c=0; c<l->ch; c++) { // in/out
+		real *d = l->prev_dw +c*l->sx*l->sy;
+		real *delta = l->dW +c*l->ox*l->oy +l->ox*l->padding +l->padding;
+		for (int n=0; n<l->sy; n++) {
+			memcpy(d, delta, sizeof(real)*l->sx);
+			delta += l->sx;
+			d += l->ox;
+		}
+	}
+}
+
 #define CATS_ACT_sigmoid(x)	(1.0 / (1.0 + exp(-x * s_gain)))
 #define CATS_DACT_sigmoid(x)	((1.0-x)*x * s_gain)
 
@@ -879,6 +926,8 @@ void (*_CatsEye_layer_forward[])(CatsEye_layer *l) = {
 	CatsEye_PixelShuffler_forward,
 	CatsEye_rnn_forward,
 
+	CatsEye_padding_forward,
+
 	// activation
 	_CatsEye_act_sigmoid,
 	_CatsEye_act_softmax,
@@ -894,6 +943,8 @@ void (*_CatsEye_layer_backward[])(CatsEye_layer *l) = {
 	_CatsEye_maxpooling_backward,
 	CatsEye_PixelShuffler_backward,
 	CatsEye_rnn_backward,
+
+	CatsEye_padding_backward,
 
 	// activation
 	_CatsEye_dact_sigmoid,
@@ -911,6 +962,8 @@ void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
 	CatsEye_none,	// Pixel Shuffler
 	CatsEye_rnn_update,
 
+	CatsEye_none,	// padding
+
 	// activation
 	CatsEye_none,	// sigmoid
 	CatsEye_none,	// softmax
@@ -922,6 +975,7 @@ void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
 };
 typedef enum {
 	CATS_LINEAR, CATS_CONV, CATS_MAXPOOL, CATS_PIXELSHUFFLER, CATS_RECURRENT,
+	CATS_PADDING,
 	_CATS_ACT_SIGMOID, _CATS_ACT_SOFTMAX, _CATS_ACT_RELU, _CATS_ACT_LEAKY_RELU,
 	CATS_LOSS_0_1, CATS_LOSS_MSE
 } CATS_LAYER_TYPE;
@@ -1030,6 +1084,15 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			n[i] = l->inputs;
 			m[i] = l->hiddens;
 			printf("L%02d: RECURRENT %d %d\n", i+1, n[i], m[i]);
+			break;
+
+		case CATS_PADDING:
+			n[i] = m[i] = 0;
+			l->ch = l->ich;
+			l->ox = l->sx + l->padding*2;
+			l->oy = l->sy + l->padding*2;
+			l->outputs = l->ch * l->ox * l->oy;
+			printf("L%02d: PADIING %d\n", i+1, l->padding);
 			break;
 
 		case _CATS_ACT_SIGMOID:
