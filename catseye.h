@@ -802,7 +802,7 @@ void CatsEye_PixelShuffler_backward(CatsEye_layer *l)
 
 void CatsEye_padding_forward(CatsEye_layer *l)
 {
-	memset(l->z, 0, sizeof(real)*l->outputs); // FIXME
+//	memset(l->z, 0, sizeof(real)*l->outputs); // FIXME
 	for (int c=0; c<l->ch; c++) { // in/out
 		real *x = l->x +c*l->sx*l->sy;
 		real *o = l->z +c*l->ox*l->oy +l->ox*l->padding +l->padding;
@@ -820,8 +820,8 @@ void CatsEye_padding_backward(CatsEye_layer *l)
 		real *delta = l->dW +c*l->ox*l->oy +l->ox*l->padding +l->padding;
 		for (int n=0; n<l->sy; n++) {
 			memcpy(d, delta, sizeof(real)*l->sx);
-			delta += l->sx;
-			d += l->ox;
+			d += l->sx;
+			delta += l->ox;
 		}
 	}
 }
