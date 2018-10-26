@@ -762,12 +762,14 @@ void _CatsEye_maxpooling_backward(CatsEye_layer *l)
 
 void CatsEye_PixelShuffler_forward(CatsEye_layer *l)
 {
+	int ch = l->ich / l->ch;
 	for (int c=0; c<l->ch; c++) { // out
-		real *xx = l->x + c*l->ich*l->sx*l->sy;
+		real *xx = l->x + c*ch*l->sx*l->sy;
 		real *o = l->z + c*l->ox*l->oy;
 
 		for (int cc=0; cc<l->ich; cc++) { // in
 			real *x = xx + cc*l->sx*l->sy;
+//			real *x = l->x + cc*l->sx*l->sy;
 			int px = cc%l->r;
 			int py = cc/l->r;
 //			int px = 0;//cc%l->r;
@@ -783,12 +785,14 @@ void CatsEye_PixelShuffler_forward(CatsEye_layer *l)
 }
 void CatsEye_PixelShuffler_backward(CatsEye_layer *l)
 {
+	int ch = l->ich / l->ch;
 	for (int c=0; c<l->ch; c++) { // out
-		real *d = l->prev_dw + c*l->ich*l->sx*l->sy;
+		real *d = l->prev_dw + c*ch*l->sx*l->sy;
 		real *delta = l->dW + c*l->ox*l->oy;
 
 		for (int cc=0; cc<l->ich; cc++) { // in
 			real *x = d + cc*l->sx*l->sy;
+//			real *x = l->prev_dw + cc*l->sx*l->sy;
 			int px = cc%l->r;
 			int py = cc/l->r;
 			for (int n=0; n<l->sy; n++) {
@@ -1042,7 +1046,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			l->outputs = l->ch * l->ox * l->oy;
 			n[i] = l->ksize * l->ksize;	// kernel size
 			m[i] = l->ch * l->ich;		// channel
-			printf("L%02d: CONV%d-%d i/o:%d/%d[%dx%d/%dx%d] (%d[ksize^2]x%d[ch])\n", i+1, l->ksize, l->ch, l->inputs, l->outputs, l->sx, l->sy, l->ox, l->oy, n[i], m[i]);
+			printf("L%02d: CONV%d-%dch i/o:%d/%d[%dx%d/%dx%d] (%d[ksize^2]x%d[ch])\n", i+1, l->ksize, l->ch, l->inputs, l->outputs, l->sx, l->sy, l->ox, l->oy, n[i], m[i]);
 			break;
 		case CATS_MAXPOOL:
 			l->ch = l->ich;
@@ -1051,7 +1055,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			l->outputs = l->ch * l->ox * l->oy;
 			n[i] = l->ox * l->oy;
 			m[i] = l->ch;
-			printf("L%02d: POOL%d-%d (w:%d h:%d [%d])\n", i+1, l->ksize, l->ch, l->ox, l->oy, n[i]);
+			printf("L%02d: POOL%d-%dch (w:%d h:%d [%d])\n", i+1, l->ksize, l->ch, l->ox, l->oy, n[i]);
 			break;
 		case CATS_PIXELSHUFFLER:
 			l->ich = l->ch * l->r*l->r;

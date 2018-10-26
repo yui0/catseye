@@ -58,10 +58,13 @@ int main()
 
 		{  size, CATS_LOSS_MSE },
 	};*/
-	CatsEye_layer u[] = {
-		{  size, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=4, .padding=1 },
+/*	CatsEye_layer u[] = {
+//		{  size, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=4, .padding=1 },
+		{  size, CATS_PADDING, .padding=1 },
+		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=4 },
 		// 28*28 4ch
-		{     0, _CATS_ACT_RELU },
+//		{     0, _CATS_ACT_RELU }, // minus??
+		{     0, _CATS_ACT_LEAKY_RELU },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
 		// 14*14 4ch
 
@@ -69,24 +72,23 @@ int main()
 //		{     0, _CATS_ACT_SIGMOID },
 		// 28*28 1ch
 		{  size, CATS_LOSS_MSE },
-	};
-	/*CatsEye_layer u[] = {
-		{  size, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=16, .padding=1 },
+	};*/
+	CatsEye_layer u[] = {
+		{  size, CATS_PADDING, .padding=1 },
+		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=16, /*.padding=1*/ },
 		// 28*28 16ch
-		{     0, _CATS_ACT_RELU },
+		{     0, _CATS_ACT_LEAKY_RELU },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
 		// 14*14 16ch
-		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=16, .padding=1 },
-		{     0, _CATS_ACT_RELU },
+		{     0, CATS_PADDING, .padding=1 },
+		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=16, /*.padding=1*/ },
+		{     0, _CATS_ACT_LEAKY_RELU },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
 		// 7*7 16ch
-		//{     0, CATS_PIXELSHUFFLER, .r=2, .ch=4 },
-		//{     0, CATS_PIXELSHUFFLER, .r=2, .ch=1 },
 		{     0, CATS_PIXELSHUFFLER, .r=4, .ch=1 },
-//		{     0, _CATS_ACT_SIGMOID },
 		// 28*28 1ch
 		{  size, CATS_LOSS_MSE },
-	};*/
+	};
 	CatsEye cat;
 	_CatsEye__construct(&cat, u);
 
@@ -117,14 +119,19 @@ int main()
 	for (int i=0; i<50; i++) {
 		double mse = 0;
 		_CatsEye_forward(&cat, x+size*i);
+//		CatsEye_visualize(cat.layer[cat.layers-4].x, size, 28, &pixels[(i/10)*size*10+(i%10)*28], 28*10);
+//		CatsEye_visualize(cat.layer[cat.layers-3].x, size, 28, &pixels[(i/10)*size*10+(i%10)*28], 28*10);
+//		CatsEye_visualize(cat.layer[cat.layers-2].x, size, 28, &pixels[(i/10)*size*10+(i%10)*28], 28*10);
+		CatsEye_visualize(cat.layer[cat.layers-1].x, size, 28, &pixels[(i/10)*size*10+(i%10)*28], 28*10);
+
 		unsigned char *p = &pixels[(i/10)*size*10 + (i%10)*28];
 		for (int j=0; j<size; j++) {
 //			CatsEye_layer *l = &cat.layer[cat.layers-5];	// input
 //			CatsEye_layer *l = &cat.layer[cat.layers-4];	// Conv
-			CatsEye_layer *l = &cat.layer[cat.layers-3];	// ReLU
+//			CatsEye_layer *l = &cat.layer[cat.layers-3];	// ReLU
 //			CatsEye_layer *l = &cat.layer[cat.layers-2];	// Pool
-//			CatsEye_layer *l = &cat.layer[cat.layers-1];
-			p[(j/28)*28*10+(j%28)] = l->x[j] * 255.0;
+			CatsEye_layer *l = &cat.layer[cat.layers-1];
+///			p[(j/28)*28*10+(j%28)] = l->x[j] * 255.0;
 			mse += (x[size*i+j]-l->x[j])*(x[size*i+j]-l->x[j]);
 //			p[(j/28)*28*10+(j%28)] = cat.o[2][j] * 255.0;
 //			mse += (x[size*i+j]-cat.o[2][j])*(x[size*i+j]-cat.o[2][j]);
