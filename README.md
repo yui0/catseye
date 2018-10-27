@@ -70,6 +70,10 @@ for more information, see example/
   ![sin](example/sin.png)
   ![quadratic function](example/quadratic.png)
 
+- CNN Autoencoder ([example-new/mnist_autoencoder.c](example-new/mnist_autoencoder.c))
+
+  ![autoencoder](example-new/mnist_autoencoder_100.png)
+
 - Autoencoder ([example/mnist_autoencoder.c](example/mnist_autoencoder.c))
   - Unit 64 [tied weight]
 

@@ -19,7 +19,8 @@ int main()
 
 	CatsEye_layer u[] = {	// 99.19% (100)
 		{  size, CATS_CONV, 0, 0.01, .ksize=7, .stride=1, .ch=32 },
-		{     0, _CATS_ACT_RELU },
+//		{     0, _CATS_ACT_RELU }, // minus??
+		{     0, _CATS_ACT_LEAKY_RELU },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
 //		{     0, CATS_LINEAR, CATS_ACT_SIGMOID, 0.01 },
 		{     0, CATS_LINEAR, 0, 0.01 },

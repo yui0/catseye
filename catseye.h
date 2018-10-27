@@ -624,34 +624,6 @@ void _CatsEye_convolutional_forward(CatsEye_layer *l)
 //		o = z + l->pz;
 	}
 }*/
-/*void _CatsEye_convolutional_forward_with_padding(CatsEye_layer *l)
-{
-	// c[out], c[in], ksize, h, w
-	real *s, *z, *o;
-	real *w = l->W;
-	memset(l->z, 0, sizeof(real)*l->ch*l->ox*l->oy);
-	for (int c=0; c<l->ch; c++) {	// out
-		real *r = s = l->x;
-		o = l->z + c*l->ox*l->oy;
-		for (int cc=l->ich; cc>0; cc--) {	// in
-			for (int wy=l->ksize-1; wy>=0; wy--) {
-				for (int wx=l->ksize-1; wx>=0; wx--) {
-					real *p = s;		// in
-					z = o +wx +wy*l->ox;	// out
-					for (int y=l->py; y>0; y--) {
-						_fma(z, p, *w, l->px);	// *z++ += (*p++) * (*w); p += m;
-						p += l->sx;
-						z += l->ox;
-					}
-					w++;
-				}
-				s += l->sx;
-			}
-			r += l->sx * l->sy;
-			s = r;
-		}
-	}
-}*/
 // calculate back propagation
 void _CatsEye_convolutional_backward(CatsEye_layer *l)
 {
