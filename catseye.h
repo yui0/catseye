@@ -118,7 +118,13 @@ uint64_t xor128()
 	s1 ^= s1 << 23;
 	return ( seed[1] = ( s1 ^ s0 ^ ( s1 >> 17 ) ^ ( s0 >> 26 ) ) ) + s0;
 }
-#define frand()		( xor128() / ((double)XOR128_MAX + 1.0f) )
+#define frand()		( xor128() * (1.0 / (XOR128_MAX + 1.0f)) )
+// http://www.sat.t.u-tokyo.ac.jp/~omi/random_variables_generation.html
+real rand_normal(real mu, real sigma)
+{
+	real z = sqrt(-2.0*log(frand())) * sin(2.0*M_PI*frand());
+	return mu + sigma*z;
+}
 int binomial(/*int n, */real p)
 {
 //	if (p<0 || p>1) return 0;
@@ -727,7 +733,8 @@ void _CatsEye_maxpooling_backward(CatsEye_layer *l)
 	real *d = l->prev_dw;
 	memset(d, 0, sizeof(real)*l->inputs);
 	for (int i=0; i<l->outputs; i++) {
-		d[*max] = (*delta++) * l->dact(l->x[*max]);
+//		d[*max] = (*delta++) * l->dact(l->x[*max]);
+		d[*max] = *delta++;
 		max++;
 	}
 }
@@ -1135,6 +1142,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			this->w[i][j] = 2.0*range*frand()-range;
 		}
 //		memcpy(&this->wdata[this->wsize], this->wdata, this->wsize*sizeof(real));	// for debug
+//		rand_normal(0, sqrt(2.0/l->inputs));
 	}
 
 	for (int i=0; i<this->layers; i++) {
@@ -1175,9 +1183,9 @@ void CatsEye__destruct(CatsEye *this)
 
 void _CatsEye_forward(CatsEye *this, real *x)
 {
-//	this->layer[0].x = x;	//FIXME
+//	this->layer[0].x = x; // FIXME
 	memcpy(this->o[0], x, this->layer[0].inputs*sizeof(real));
-#ifdef CATS_DENOISING_AUTOENCODER
+#ifdef CATS_DENOISING_AUTOENCODER // FIXME
 	// Denoising Autoencoder (http://kiyukuta.github.io/2013/08/20/hello_autoencoder.html)
 	for (int i=0; i<this->layer[0].inputs; i++) {
 		this->o[0][i] *= binomial(/*0.7(30%)*/0.5);

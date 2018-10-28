@@ -6,16 +6,8 @@
 
 // gcc mnist_autoencoder.c -o mnist_autoencoder -lm -Ofast -fopenmp -lgomp
 // clang mnist_autoencoder.c -o mnist_autoencoder -lm -Ofast
-//#define CATS_AUTOENCODER
-//#define CATS_DENOISING_AUTOENCODER
-//#define CATS_SIGMOID_CROSSENTROPY
-//#define CATS_LOSS_MSE
-//#define CATS_OPT_ADAGRAD
-//#define CATS_OPT_ADAM
-//#define CATS_OPT_RMSPROP
-//#define CATS_OPT_RMSPROPGRAVES
-//#define CATS_OPT_MOMENTUM
 
+//#define CATS_DENOISING_AUTOENCODER
 #define CATS_USE_FLOAT
 #include "../catseye.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -27,34 +19,72 @@ int main()
 	int sample = 60000;
 
 	// Convolutional AutoEncoder
+#if 0
+	CatsEye_layer u[] = {
+		{  size, CATS_PADDING, .padding=1 },
+		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=16 },
+		{     0, _CATS_ACT_LEAKY_RELU },
+		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },	// 16,14,14
+
+		{     0, CATS_PADDING, .padding=1 },
+		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=8 },
+		{     0, _CATS_ACT_LEAKY_RELU },
+		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },	// 8,7,7
+
+/*		{     0, CATS_PADDING, .padding=1 },
+		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=8 },
+		{     0, _CATS_ACT_LEAKY_RELU },
+//		{     0, CATS_PADDING, .padding=1 },		// avoid 3,3
+		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },	// 8,4,4
+
+
+		{     0, CATS_PADDING, .padding=1 },
+		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=8 },
+		{     0, _CATS_ACT_LEAKY_RELU },
+		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=2 },*/
+
+		{     0, CATS_PADDING, .padding=1 },
+		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=8 },
+		{     0, _CATS_ACT_LEAKY_RELU },
+		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=2 },
+
+		{     0, CATS_PADDING, .padding=1 },
+		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=16 },
+		{     0, _CATS_ACT_LEAKY_RELU },
+		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=4 },
+
+		{     0, CATS_PADDING, .padding=1 },
+		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=1 },
+		{     0, _CATS_ACT_SIGMOID },
+
+		{  size, CATS_LOSS_MSE },
+	};
+#endif
 	/*CatsEye_layer u[] = {
-		{  size, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=64, .padding=1 },
-		{     0, _CATS_ACT_RELU },
-		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
-		// 14*14 64ch
-		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=32, .padding=1 },
-		{     0, _CATS_ACT_RELU },
-		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
-		// 7*7 32ch
-		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=16, .padding=1 },
-		{     0, _CATS_ACT_RELU },
-//		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
-		// 3*3 16ch
+		{  size, CATS_PADDING, .padding=1 },
+		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=32 },
+		{     0, _CATS_ACT_LEAKY_RELU },
+		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },	// 32,14,14
 
-//		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=16, .padding=1 },
-//		{     0, _CATS_ACT_RELU },
-//		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=4 },
+		{     0, CATS_PADDING, .padding=1 },
+		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=32 },
+		{     0, _CATS_ACT_LEAKY_RELU },
+		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },	// 32,7,7
 
-		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=32, .padding=1 },
-		{     0, _CATS_ACT_RELU },
+
+		{     0, CATS_PADDING, .padding=1 },
+		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=32 },
+		{     0, _CATS_ACT_LEAKY_RELU },
 		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=8 },
 
-		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=64, .padding=1 },
-		{     0, _CATS_ACT_RELU },
-		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=16 },
+		{     0, CATS_PADDING, .padding=1 },
+		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=32 },
+		{     0, _CATS_ACT_LEAKY_RELU },
+		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=8 },
 
-		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=1, .padding=1 },
-//		{     0, _CATS_ACT_SIGMOID },
+		{     0, CATS_PADDING, .padding=1 },
+		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=1 },
+		{     0, _CATS_ACT_SIGMOID },
 
 		{  size, CATS_LOSS_MSE },
 	};*/
@@ -73,22 +103,22 @@ int main()
 		// 28*28 1ch
 		{  size, CATS_LOSS_MSE },
 	};*/
+#if 1
 	CatsEye_layer u[] = {
 		{  size, CATS_PADDING, .padding=1 },
 		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=16, /*.padding=1*/ },
-		// 28*28 16ch
 		{     0, _CATS_ACT_LEAKY_RELU },
-		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
-		// 14*14 16ch
+		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },	// 16,14,14
+
 		{     0, CATS_PADDING, .padding=1 },
 		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=16, /*.padding=1*/ },
 		{     0, _CATS_ACT_LEAKY_RELU },
-		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
-		// 7*7 16ch
+		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },	// 16,7,7
+
 		{     0, CATS_PIXELSHUFFLER, .r=4, .ch=1 },
-		// 28*28 1ch
 		{  size, CATS_LOSS_MSE },
 	};
+#endif
 	CatsEye cat;
 	_CatsEye__construct(&cat, u);
 
@@ -108,8 +138,8 @@ int main()
 
 	// 訓練
 	printf("Starting training using (stochastic) gradient descent\n");
-//	_CatsEye_train(&cat, x, x, sample, 100/*repeat*/, 1500/*random batch*/, sample/10);
 	_CatsEye_train(&cat, x, x, sample, 100/*repeat*/, 1500/*random batch*/, 0);
+//	_CatsEye_train(&cat, x, x, sample, 300/*repeat*/, 1500/*random batch*/, 0);
 	printf("Training complete\n");
 //	CatsEye_save(&cat, "mnist_autoencoder.weights");
 //	CatsEye_saveJson(&cat, "mnist_autoencoder.json");
@@ -136,7 +166,9 @@ int main()
 //			p[(j/28)*28*10+(j%28)] = cat.o[2][j] * 255.0;
 //			mse += (x[size*i+j]-cat.o[2][j])*(x[size*i+j]-cat.o[2][j]);
 
-			p[5*size*10+(j/28)*28*10+(j%28)] = x[size*i+j] * 255.0;
+//			p[5*size*10+(j/28)*28*10+(j%28)] = x[size*i+j] * 255.0;
+			//p[5*size*10+(j/28)*28*10+(j%28)] = cat.layer[0].x[j] * 255.0;
+			p[5*size*10+(j/28)*28*10+(j%28)] = cat.o[0][j] * 255.0;
 		}
 		printf("mse %lf\n", mse/size);
 	}
