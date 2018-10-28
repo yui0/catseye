@@ -88,6 +88,21 @@ int main()
 
 		{  size, CATS_LOSS_MSE },
 	};*/
+	CatsEye_layer u[] = {
+		{  size, CATS_PADDING, .padding=1 },
+		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=32 },
+		{     0, _CATS_ACT_LEAKY_RELU },
+		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },	// 32,14,14
+
+		{     0, CATS_PADDING, .padding=1 },
+		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=16 },
+		{     0, _CATS_ACT_LEAKY_RELU },
+		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },	// 16,7,7
+
+
+		{     0, CATS_PIXELSHUFFLER, .r=4, .ch=1 },
+		{  size, CATS_LOSS_MSE },
+	};
 /*	CatsEye_layer u[] = {
 //		{  size, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=4, .padding=1 },
 		{  size, CATS_PADDING, .padding=1 },
@@ -103,7 +118,7 @@ int main()
 		// 28*28 1ch
 		{  size, CATS_LOSS_MSE },
 	};*/
-#if 1
+#if 0
 	CatsEye_layer u[] = {
 		{  size, CATS_PADDING, .padding=1 },
 		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=16, /*.padding=1*/ },

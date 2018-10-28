@@ -809,6 +809,32 @@ void CatsEye_padding_backward(CatsEye_layer *l)
 	}
 }
 
+// http://cielan.hateblo.jp/entry/2017/09/25/232217
+void CatsEye_BatchNormalization_forward(CatsEye_layer *l)
+{
+	real *x = l->x;
+	real avg = 0;
+	for (int i=0; i<l->inputs; i++) avg += *x++;
+	avg /= l->inputs;
+
+	x = l->x;
+	real sigma = 0;
+	real *z = l->z;
+	for (int i=0; i<l->inputs; i++) {
+		*z = *x++ -avg;
+		sigma += (*z) * (*z);
+		z++;
+	}
+	sigma /= l->inputs;
+	sigma = sqrt(sigma + 0.00000001);
+
+	x = l->x;
+	z = l->z;
+	for (int i=0; i<l->inputs/*out*/; i++) {
+		*z++ /= sigma;
+	}
+}
+
 #define CATS_ACT_sigmoid(x)	(1.0 / (1.0 + exp(-x * s_gain)))
 #define CATS_DACT_sigmoid(x)	((1.0-x)*x * s_gain)
 
@@ -819,11 +845,11 @@ void _CatsEye_act_softmax(CatsEye_layer *l)
 	real *z = l->z;
 
 	real alpha = x[0];
-	for (int i=1; i<l->outputs; i++) alpha = alpha<x[i] ? alpha : x[i];
+	for (int i=1; i<l->inputs; i++) alpha = alpha<x[i] ? alpha : x[i];
 	real denom = 0.0;
-	for (int i=0; i<l->outputs; i++) denom += exp(x[i] - alpha);
+	for (int i=0; i<l->inputs; i++) denom += exp(x[i] - alpha);
 
-	for (int i=l->outputs; i>0; i--) {
+	for (int i=l->inputs/*out*/; i>0; i--) {
 		real numer = exp(*x++ - alpha);
 		*z++ = (numer / denom);
 	}
@@ -1256,15 +1282,6 @@ int _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, int rando
 			for (int i=this->layers-2; i>=0; i--) {
 				this->layer[i].update(&this->layer[i]);
 			}
-#ifdef CATS_AUTOENCODER
-			// tied weight
-			/*real *dst = this->w[1];
-			for (int i=0; i<SIZE(1); i++) {
-				for (int j=0; j<SIZE(0); j++) {
-					this->w[1][j + SIZE(1)*i] = this->w[0][SIZE(1)*j + i];
-				}
-			}*/
-#endif
 		}
 
 		real err = 0;
@@ -1351,6 +1368,34 @@ int _CatsEye_saveJson(CatsEye *this, char *filename)
 
 	fclose(fp);
 	return 0;
+}
+
+// visualize
+void CatsEye_visualize(real *o, int n, int size, unsigned char *p, int width)
+{
+	real max = o[0];
+	real min = o[0];
+	for (int i=1; i<n; i++) {
+		if (max < o[i]) max = o[i];
+		if (min > o[i]) min = o[i];
+	}
+	for (int i=0; i<n; i++) {
+		p[(i/size)*width + i%size] = ((o[i] - min) / (max - min)) * 255.0;
+	}
+}
+void _CatsEye_visualize(real *o, int n, int sx, unsigned char *p, int width, int ch)
+{
+	real max = o[0];
+	real min = o[0];
+	for (int i=1; i<n*ch; i++) {
+		if (max < o[i]) max = o[i];
+		if (min > o[i]) min = o[i];
+	}
+	for (int c=0; c<ch; c++) {
+		for (int i=0; i<n; i++) {
+			p[((i/sx)*width + i%sx)*ch +c] = ((o[i+c*n] - min) / (max - min)) * 255.0;
+		}
+	}
 }
 
 // https://www.cs.toronto.edu/~kriz/cifar.html
@@ -2218,20 +2263,6 @@ void CatsEye_visualizeWeights(CatsEye *this, int n, int size, unsigned char *p, 
 	}
 	for (int i=0; i<SIZE(0); i++) {
 		p[(i/size)*width + i%size] = ((w[i * SIZE(1)] - min) / (max - min)) * 255.0;
-	}
-}
-
-// visualize
-void CatsEye_visualize(real *o, int n, int size, unsigned char *p, int width)
-{
-	real max = o[0];
-	real min = o[0];
-	for (int i=1; i<n; i++) {
-		if (max < o[i]) max = o[i];
-		if (min > o[i]) min = o[i];
-	}
-	for (int i=0; i<n; i++) {
-		p[(i/size)*width + i%size] = ((o[i] - min) / (max - min)) * 255.0;
 	}
 }
 

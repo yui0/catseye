@@ -119,7 +119,9 @@ int main()
 		else {
 			if (c<100) {
 //				CatsEye_visualize(x+size*i, size, k*3, &pixels[(c/10)*size*10+(c%10)*k*3], k*3*10);
-				real *xx = &x[size*i];
+
+				_CatsEye_visualize(x+size*i, 32*32, 32, &pixels[(c/10)*size*10+(c%10)*k*3], k*10, 3);
+				/*real *xx = &x[size*i];
 				unsigned char *p = &pixels[(c/10)*size*10+(c%10)*k*3];
 				for (int y=0; y<k; y++) {
 					for (int x=0; x<k; x++) {
@@ -127,7 +129,7 @@ int main()
 						p[(y*k*10+x)*3+1] = xx[k*k+y*k+x] * 255.0;
 						p[(y*k*10+x)*3+2] = xx[2*k*k+y*k+x] * 255.0;
 					}
-				}
+				}*/
 
 				//CatsEye_visualize(cat.o[0], k*k, k, &pixels[(c/10)*k*k*10+(c%10)*k], k*10);
 //				CatsEye_visualizeUnits(&cat, 0, 0, 0, &pixels[(c/10)*k*k*10+(c%10)*k], k*10);
