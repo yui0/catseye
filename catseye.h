@@ -22,76 +22,6 @@
 #warning "using double!!"
 #endif
 
-#define CATS_SIGMOID
-//#define CATS_SIGMOID_CROSSENTROPY
-#ifdef CATS_SIGMOID_CROSSENTROPY
-// cross entropy df: (y - t) / (y * (1 - y))
-// sigmoid function with cross entropy loss
-#define CATS_SIGMOID
-#define s_gain			1
-#define ACT2(x)			ACT1(x)
-#define DACT2(x)		DACT1(x)
-// SoftmaxWithLoss
-#else
-// identify function with mse loss
-#define s_gain			1
-#define ACT2(x)			(x)
-#define DACT2(x)		1
-#endif
-
-#ifdef CATS_OPT_ADAGRAD
-// AdaGrad (http://qiita.com/ak11/items/7f63a1198c345a138150)
-#define eps 1e-8		// 1e-4 - 1e-8
-#define OPT_CALC1(x)		this->e##x[i] += this->d[x-2][i]*this->d[x-2][i]
-//#define OPT_CALC1(x)		this->e##x[i] += this->d[x-2][i]*this->d[x-2][i] *0.7
-//#define OPT_CALC1(x)		this->e##x[i] = this->e##x[i]*(0.99+times/times*0.01) + this->d[x-2][i]*this->d[x-2][i]
-//#define OPT_CALC2(n, x, y)	this->w[x-1][i*n+j] -= eta*this->o[x-1][i] *this->d[y-2][j] /sqrt(this->e##y[j])
-#define OPT_CALC2(n, x, y)	this->w[x-1][i*n+j] -= eta*this->o[x-1][i] *this->d[y-2][j] /sqrt(this->e##y[j]+eps)
-
-#elif defined CATS_OPT_ADAM
-// Adam
-#define eps 1e-8
-#define beta1 0.9
-#define beta2 0.999
-#define OPT_CALC1(x)		this->m##x[i] = beta1*this->m##x[i] + (1.0-beta1) * this->d[x-2][i]; \
-				this->v##x[i] = beta2*this->v##x[i] + (1.0-beta2) * this->d[x-2][i]*this->d[x-2][i]
-#define OPT_CALC2(n, x, y)	this->w[x-1][i*n+j] -= eta*this->o[x-1][i] *this->m##y[j] /sqrt(this->v##y[j]+eps)
-
-#elif defined CATS_OPT_RMSPROP
-// RMSprop (http://cs231n.github.io/neural-networks-3/#anneal)
-#define eps 1e-8		// 1e-4 - 1e-8
-#define decay_rate 0.999	// [0.9, 0.99, 0.999]
-#define OPT_CALC1(x)		this->e##x[i] = decay_rate * this->e##x[i] + (1.0-decay_rate)*this->d[x-2][i]*this->d[x-2][i]
-#define OPT_CALC2(n, x, y)	this->w[x-1][i*n+j] -= eta*this->o[x-1][i] *this->d[y-2][j] /sqrt(this->e##y[j]+eps)
-
-#elif defined CATS_OPT_RMSPROPGRAVES
-// RMSpropGraves (https://github.com/pfnet/chainer/blob/master/chainer/optimizers/rmsprop_graves.py)
-#define eps 1e-4
-#define beta1 0.95
-#define beta2 0.95
-#define momentum 0.9
-#define OPT_CALC1(x)		this->m##x[i] = beta1*this->m##x[i] + (1.0-beta1) * this->d[x-2][i]; \
-				this->v##x[i] = beta2*this->v##x[i] + (1.0-beta2) * this->d[x-2][i]*this->d[x-2][i]
-#define OPT_CALC2(n, x, y)	this->dl##x[j] = this->dl##x[j] * momentum - eta*this->o[x-1][i]*this->d[y-2][j] /sqrt(this->v##y[j] - this->m##y[j]*this->m##y[j]+eps); \
-				this->w[x-1][i*n+j] += this->dl##x[j]
-
-#elif defined CATS_OPT_MOMENTUM
-// Momentum update (http://cs231n.github.io/neural-networks-3/#anneal)
-#define momentum 0.9		// [0.5, 0.9, 0.95, 0.99]
-#define OPT_CALC1(x)
-#define OPT_CALC2(n, x, y)	this->dl##x[i] = momentum * this->dl##x[i] - eta*this->o[x-1][i] *this->d[y-2][j]; \
-				this->w[x-1][i*n+j] += this->dl##x[i]
-
-#else
-// SGD (Vanilla update)
-#define CATS_OPT_SGD
-#define OPT_CALC1(x)
-//#define OPT_CALC2(n, x, y)	this->w[x-1][i*n+j] -= eta*this->o[x-1][i] *this->d[y-2][j]
-// SVM (http://d.hatena.ne.jp/echizen_tm/20110627/1309188711)
-// ∂loss(w, x, t) / ∂w = ∂(λ - twx + α * w^2 / 2) / ∂w = - tx + αw
-#define OPT_CALC2(n, x, y)	this->w[x-1][i*n+j] -= eta*this->o[x-1][i] *this->d[y-2][j] +this->w[x-1][i*n+j]*1e-8
-#endif
-
 // http://xorshift.di.unimi.it/xorshift128plus.c
 // https://github.com/AndreasMadsen/xorshift/blob/master/reference.c
 // http://ogawa-sankinkoutai.seesaa.net/category/5784373-1.html
@@ -136,163 +66,11 @@ int binomial(/*int n, */real p)
 	return c;
 }
 
-// identity function (output only)
-real CatsEye_act_identity(real x)
+/*void one_hot(uint8_t *a, int size, int data)
 {
-	return (x);
-}
-real CatsEye_dact_identity(real x)
-{
-	return (1.0);
-}
-// softmax function (output only)
-real CatsEye_act_softmax(real x/* *x, int n, int len*/)
-{
-/*	real alpha = x[0];
-	for (int i=1; i<len; i++) if (alpha<x[i]) alpha = x[i];
-	real numer = exp(x[n] - alpha);
-	real denom = 0.0;
-	for (int i=0; i<len; i++) denom += exp(x[i] - alpha);
-	return (numer / denom);*/
-	return (x);
-}
-real CatsEye_dact_softmax(real x)
-{
-	return (x * (1.0 - x));
-}
-// sigmoid function
-real CatsEye_act_sigmoid(real x)
-{
-	return (1.0 / (1.0 + exp(-x * s_gain)));
-}
-real CatsEye_dact_sigmoid(real x)
-{
-	return ((1.0-x)*x * s_gain);	// ((1.0-sigmod(x))*sigmod(x))
-}
-// tanh function
-// https://github.com/nyanp/tiny-cnn/blob/master/tiny_cnn/activations/activation_function.h
-real CatsEye_act_tanh(real x)
-{
-	return (tanh(x));
-
-/*	real ep = exp(x);
-	real em = exp(-x);
-	return (ep-em) / (ep+em);*/
-
-	// error at paint.c
-	// fast approximation of tanh (improve 2-3% speed in LeNet-5)
-/*	real x1 = x;
-	real x2 = x1 * x1;
-	x1 *= 1.0 + x2 * (0.1653 + x2 * 0.0097);
-	return x1 / sqrt(1.0 + x2);*/
-}
-real CatsEye_dact_tanh(real x)
-{
-	return (1.0-x*x);		// (1.0-tanh(x)*tanh(x))
-}
-// scaled tanh function
-real CatsEye_act_scaled_tanh(real x)
-{
-	return (1.7159 * tanh(2.0/3.0 * x));
-}
-real CatsEye_dact_scaled_tanh(real x)
-{
-	return ((2.0/3.0)/1.7159 * (1.7159-x)*(1.7159+x));
-}
-// rectified linear unit function
-real CatsEye_act_ReLU(real x)
-{
-	return (x>0 ? x : 0.0);
-}
-real CatsEye_dact_ReLU(real x)
-{
-	return (x>0 ? 1.0 : 0.0);
-}
-// leaky rectified linear unit function
-#define leaky_alpha	0.01	// 0 - 1
-real CatsEye_act_LeakyReLU(real x)
-{
-	return (x>0 ? x : x*leaky_alpha);
-}
-real CatsEye_dact_LeakyReLU(real x)
-{
-	return (x>0 ? 1.0 : leaky_alpha);
-}
-// exponential rectified linear unit function
-// http://docs.chainer.org/en/stable/_modules/chainer/functions/activation/elu.html
-real CatsEye_act_ELU(real x)
-{
-	return (x>0 ? x : exp(x)-1.0);
-}
-real CatsEye_dact_ELU(real x)
-{
-	return (x>0 ? 1.0 : 1.0+x);
-}
-// abs function
-real CatsEye_act_abs(real x)
-{
-	return (x / (1.0 + fabs(x)));
-}
-real CatsEye_dact_abs(real x)
-{
-	return (1.0 / (1.0 + fabs(x))*(1.0 + fabs(x)));
-}
-
-// activation function and derivative of activation function
-real (*CatsEye_act[])(real x) = {
-	CatsEye_act_identity,
-	CatsEye_act_softmax,
-	CatsEye_act_sigmoid,
-	CatsEye_act_tanh,
-	CatsEye_act_scaled_tanh,
-	CatsEye_act_ReLU,
-	CatsEye_act_LeakyReLU,
-	CatsEye_act_ELU,
-	CatsEye_act_abs
-};
-real (*CatsEye_dact[])(real x) = {
-	CatsEye_dact_identity,
-	CatsEye_dact_softmax,
-	CatsEye_dact_sigmoid,
-	CatsEye_dact_tanh,
-	CatsEye_dact_scaled_tanh,
-	CatsEye_dact_ReLU,
-	CatsEye_dact_LeakyReLU,
-	CatsEye_dact_ELU,
-	CatsEye_dact_abs
-};
-typedef enum {
-	CATS_ACT_IDENTITY, CATS_ACT_SOFTMAX, CATS_ACT_SIGMOID, CATS_ACT_TANH, CATS_ACT_SCALED_TANH,
-	CATS_ACT_RELU, CATS_ACT_LEAKY_RELU, CATS_ACT_ELU, CATS_ACT_ABS
-} CATS_ACTIVATION;
-typedef real (*CATS_ACT_FUNC)(real x);
-
-void CatsEye_act_array(CATS_ACT_FUNC act, real *z, real *x, int num)
-{
-//	#pragma omp parallel for
-	for (int n=num; n>0; n--) *z++ = act(*x++);
-}
-void CatsEye_dact_array(CATS_ACT_FUNC dact, real *z, real *x, int num)
-{
-//	#pragma omp parallel for
-	for (int n=num; n>0; n--) *z++ = dact(*x++);
-}
-
-enum CATS_LP {
-	TYPE,		// MLP, CONV, MAXPOOL
-	ACT,		// activation function type
-	CHANNEL,
-	SIZE,		// input size (ch * x * y)
-	XSIZE,		// width
-	YSIZE,		// height
-	KSIZE,		// kernel size
-	STRIDE,
-	LPLEN		// length of layer params
-};
-#define TYPE(i)		this->u[LPLEN*(i)+TYPE]
-#define SIZE(i)		this->u[LPLEN*(i)+SIZE]
-//#define CH(i)		this->u[LPLEN*(i)+CH]
-#define RANDOM		this->u[STRIDE]
+	memset(a, 0, size);
+	a[data] = 1;
+}*/
 
 #ifdef CATS_SSE
 #include "catseye_simd.h"	// deprecated!
@@ -495,9 +273,9 @@ void CatsEye_rnn_forward(CatsEye_layer *l)
 
 	// t=0
 	dotmv(u, l->Wi, l->x, l->inputs, l->hiddens);	// l->inputs+1
-	CatsEye_act_array(l->act, s, u, l->hiddens);
+//	CatsEye_act_array(l->act, s, u, l->hiddens);
 	dotmv(v, l->Wo, s, l->hiddens, l->outputs);
-	CatsEye_act_array(l->act2, y, v, l->outputs);
+//	CatsEye_act_array(l->act2, y, v, l->outputs);
 
 	for (int t=1; t<l->inputs; t++) {
 		u += l->hiddens;
@@ -507,9 +285,9 @@ void CatsEye_rnn_forward(CatsEye_layer *l)
 		dotmv(u, l->Wi, l->x, l->inputs, l->hiddens);	// l->inputs+1
 		dotamv(u, l->Wr, s, l->inputs, l->hiddens);	// s[t-1]	// l->inputs+1
 		s += l->hiddens;
-		CatsEye_act_array(l->act, s, u, l->hiddens);
+//		CatsEye_act_array(l->act, s, u, l->hiddens);
 		dotmv(v, l->Wo, s, l->hiddens, l->outputs);
-		CatsEye_act_array(l->act2, y, v, l->outputs);
+//		CatsEye_act_array(l->act2, y, v, l->outputs);
 	}
 }
 void CatsEye_rnn_backward(CatsEye_layer *l)
@@ -522,7 +300,7 @@ void CatsEye_rnn_backward(CatsEye_layer *l)
 	for (int t=l->inputs-1; t>=0; t--) {
 		//_fma(dV, s, *d, l->hiddens);		// dV[] += d * s[]
 		outeradd(l->dWo, d, s, l->hiddens, l->outputs);
-		CatsEye_dact_array(l->dact, eh, u, l->hiddens);
+//		CatsEye_dact_array(l->dact, eh, u, l->hiddens);
 		//dotmv(eh, d, l->V, l->outputs, l->hiddens);
 		muldot(eh, d, l->Wo, l->outputs, l->hiddens);
 
@@ -537,7 +315,7 @@ void CatsEye_rnn_backward(CatsEye_layer *l)
 
 			if (t-z-1 >= 0) {
 				outeradd(l->dWr, _eh, _s, l->outputs, l->hiddens);		// s[t-z-1]
-				CatsEye_dact_array(l->dact, _eh-l->hiddens, _u, l->hiddens);	// u[t-z-1]
+//				CatsEye_dact_array(l->dact, _eh-l->hiddens, _u, l->hiddens);	// u[t-z-1]
 				muldot(_eh-l->hiddens, _eh, l->Wr, l->outputs, l->hiddens);
 			}
 			_s -= l->hiddens;
@@ -862,7 +640,7 @@ void _CatsEye_act_softmax(CatsEye_layer *l)
 #define CATS_ACT_ReLU(x)	((x)>0 ? (x) : 0.0)
 #define CATS_DACT_ReLU(x)	((x)>0 ? 1.0 : 0.0)
 // leaky rectified linear unit function
-//#define leaky_alpha	0.01	// 0 - 1
+#define leaky_alpha	0.01	// 0 - 1
 #define CATS_ACT_LeakyReLU(x)	((x)>0 ? (x) : x*leaky_alpha)
 #define CATS_DACT_LeakyReLU(x)	((x)>0 ? 1.0 : leaky_alpha)
 
@@ -1058,9 +836,9 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		}
 
 		// activation
-		l->act = CatsEye_act[l->activation];
-		if (i>0) l->dact = CatsEye_dact[(l-1)->activation];
-		else l->dact = CatsEye_dact[l->activation];
+//		l->act = CatsEye_act[l->activation];
+//		if (i>0) l->dact = CatsEye_dact[(l-1)->activation];
+//		else l->dact = CatsEye_dact[l->activation];
 
 		osize[i] = 0;
 		if (i>0) {
@@ -1123,8 +901,8 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 //			l->y = l->z;
 			//l->act2 = CatsEye_act[CATS_ACT_IDENTITY];		//FIXME
 			//l->dact2 = CatsEye_dact[CATS_ACT_IDENTITY];	//FIXME
-			l->act2 = CatsEye_act[CATS_ACT_SIGMOID];
-			l->dact2 = CatsEye_dact[CATS_ACT_SIGMOID];
+//			l->act2 = CatsEye_act[CATS_ACT_SIGMOID];
+//			l->dact2 = CatsEye_dact[CATS_ACT_SIGMOID];
 //			n[i] = l->hiddens;
 			n[i] = l->inputs;
 			m[i] = l->hiddens;
@@ -1461,6 +1239,235 @@ real *_CatsEye_loadCifar(char *name, int size, int lsize, int sample, int16_t **
 
 
 
+
+
+#define CATS_SIGMOID
+//#define CATS_SIGMOID_CROSSENTROPY
+#ifdef CATS_SIGMOID_CROSSENTROPY
+// cross entropy df: (y - t) / (y * (1 - y))
+// sigmoid function with cross entropy loss
+#define CATS_SIGMOID
+#define s_gain			1
+#define ACT2(x)			ACT1(x)
+#define DACT2(x)		DACT1(x)
+// SoftmaxWithLoss
+#else
+// identify function with mse loss
+#define s_gain			1
+#define ACT2(x)			(x)
+#define DACT2(x)		1
+#endif
+
+#ifdef CATS_OPT_ADAGRAD
+// AdaGrad (http://qiita.com/ak11/items/7f63a1198c345a138150)
+#define eps 1e-8		// 1e-4 - 1e-8
+#define OPT_CALC1(x)		this->e##x[i] += this->d[x-2][i]*this->d[x-2][i]
+//#define OPT_CALC1(x)		this->e##x[i] += this->d[x-2][i]*this->d[x-2][i] *0.7
+//#define OPT_CALC1(x)		this->e##x[i] = this->e##x[i]*(0.99+times/times*0.01) + this->d[x-2][i]*this->d[x-2][i]
+//#define OPT_CALC2(n, x, y)	this->w[x-1][i*n+j] -= eta*this->o[x-1][i] *this->d[y-2][j] /sqrt(this->e##y[j])
+#define OPT_CALC2(n, x, y)	this->w[x-1][i*n+j] -= eta*this->o[x-1][i] *this->d[y-2][j] /sqrt(this->e##y[j]+eps)
+
+#elif defined CATS_OPT_ADAM
+// Adam
+#define eps 1e-8
+#define beta1 0.9
+#define beta2 0.999
+#define OPT_CALC1(x)		this->m##x[i] = beta1*this->m##x[i] + (1.0-beta1) * this->d[x-2][i]; \
+				this->v##x[i] = beta2*this->v##x[i] + (1.0-beta2) * this->d[x-2][i]*this->d[x-2][i]
+#define OPT_CALC2(n, x, y)	this->w[x-1][i*n+j] -= eta*this->o[x-1][i] *this->m##y[j] /sqrt(this->v##y[j]+eps)
+
+#elif defined CATS_OPT_RMSPROP
+// RMSprop (http://cs231n.github.io/neural-networks-3/#anneal)
+#define eps 1e-8		// 1e-4 - 1e-8
+#define decay_rate 0.999	// [0.9, 0.99, 0.999]
+#define OPT_CALC1(x)		this->e##x[i] = decay_rate * this->e##x[i] + (1.0-decay_rate)*this->d[x-2][i]*this->d[x-2][i]
+#define OPT_CALC2(n, x, y)	this->w[x-1][i*n+j] -= eta*this->o[x-1][i] *this->d[y-2][j] /sqrt(this->e##y[j]+eps)
+
+#elif defined CATS_OPT_RMSPROPGRAVES
+// RMSpropGraves (https://github.com/pfnet/chainer/blob/master/chainer/optimizers/rmsprop_graves.py)
+#define eps 1e-4
+#define beta1 0.95
+#define beta2 0.95
+#define momentum 0.9
+#define OPT_CALC1(x)		this->m##x[i] = beta1*this->m##x[i] + (1.0-beta1) * this->d[x-2][i]; \
+				this->v##x[i] = beta2*this->v##x[i] + (1.0-beta2) * this->d[x-2][i]*this->d[x-2][i]
+#define OPT_CALC2(n, x, y)	this->dl##x[j] = this->dl##x[j] * momentum - eta*this->o[x-1][i]*this->d[y-2][j] /sqrt(this->v##y[j] - this->m##y[j]*this->m##y[j]+eps); \
+				this->w[x-1][i*n+j] += this->dl##x[j]
+
+#elif defined CATS_OPT_MOMENTUM
+// Momentum update (http://cs231n.github.io/neural-networks-3/#anneal)
+#define momentum 0.9		// [0.5, 0.9, 0.95, 0.99]
+#define OPT_CALC1(x)
+#define OPT_CALC2(n, x, y)	this->dl##x[i] = momentum * this->dl##x[i] - eta*this->o[x-1][i] *this->d[y-2][j]; \
+				this->w[x-1][i*n+j] += this->dl##x[i]
+
+#else
+// SGD (Vanilla update)
+#define CATS_OPT_SGD
+#define OPT_CALC1(x)
+//#define OPT_CALC2(n, x, y)	this->w[x-1][i*n+j] -= eta*this->o[x-1][i] *this->d[y-2][j]
+// SVM (http://d.hatena.ne.jp/echizen_tm/20110627/1309188711)
+// ∂loss(w, x, t) / ∂w = ∂(λ - twx + α * w^2 / 2) / ∂w = - tx + αw
+#define OPT_CALC2(n, x, y)	this->w[x-1][i*n+j] -= eta*this->o[x-1][i] *this->d[y-2][j] +this->w[x-1][i*n+j]*1e-8
+#endif
+
+// identity function (output only)
+real CatsEye_act_identity(real x)
+{
+	return (x);
+}
+real CatsEye_dact_identity(real x)
+{
+	return (1.0);
+}
+// softmax function (output only)
+real CatsEye_act_softmax(real x/* *x, int n, int len*/)
+{
+/*	real alpha = x[0];
+	for (int i=1; i<len; i++) if (alpha<x[i]) alpha = x[i];
+	real numer = exp(x[n] - alpha);
+	real denom = 0.0;
+	for (int i=0; i<len; i++) denom += exp(x[i] - alpha);
+	return (numer / denom);*/
+	return (x);
+}
+real CatsEye_dact_softmax(real x)
+{
+	return (x * (1.0 - x));
+}
+// sigmoid function
+real CatsEye_act_sigmoid(real x)
+{
+	return (1.0 / (1.0 + exp(-x * s_gain)));
+}
+real CatsEye_dact_sigmoid(real x)
+{
+	return ((1.0-x)*x * s_gain);	// ((1.0-sigmod(x))*sigmod(x))
+}
+// tanh function
+// https://github.com/nyanp/tiny-cnn/blob/master/tiny_cnn/activations/activation_function.h
+real CatsEye_act_tanh(real x)
+{
+	return (tanh(x));
+
+/*	real ep = exp(x);
+	real em = exp(-x);
+	return (ep-em) / (ep+em);*/
+
+	// error at paint.c
+	// fast approximation of tanh (improve 2-3% speed in LeNet-5)
+/*	real x1 = x;
+	real x2 = x1 * x1;
+	x1 *= 1.0 + x2 * (0.1653 + x2 * 0.0097);
+	return x1 / sqrt(1.0 + x2);*/
+}
+real CatsEye_dact_tanh(real x)
+{
+	return (1.0-x*x);		// (1.0-tanh(x)*tanh(x))
+}
+// scaled tanh function
+real CatsEye_act_scaled_tanh(real x)
+{
+	return (1.7159 * tanh(2.0/3.0 * x));
+}
+real CatsEye_dact_scaled_tanh(real x)
+{
+	return ((2.0/3.0)/1.7159 * (1.7159-x)*(1.7159+x));
+}
+// rectified linear unit function
+real CatsEye_act_ReLU(real x)
+{
+	return (x>0 ? x : 0.0);
+}
+real CatsEye_dact_ReLU(real x)
+{
+	return (x>0 ? 1.0 : 0.0);
+}
+// leaky rectified linear unit function
+//#define leaky_alpha	0.01	// 0 - 1
+real CatsEye_act_LeakyReLU(real x)
+{
+	return (x>0 ? x : x*leaky_alpha);
+}
+real CatsEye_dact_LeakyReLU(real x)
+{
+	return (x>0 ? 1.0 : leaky_alpha);
+}
+// exponential rectified linear unit function
+// http://docs.chainer.org/en/stable/_modules/chainer/functions/activation/elu.html
+real CatsEye_act_ELU(real x)
+{
+	return (x>0 ? x : exp(x)-1.0);
+}
+real CatsEye_dact_ELU(real x)
+{
+	return (x>0 ? 1.0 : 1.0+x);
+}
+// abs function
+real CatsEye_act_abs(real x)
+{
+	return (x / (1.0 + fabs(x)));
+}
+real CatsEye_dact_abs(real x)
+{
+	return (1.0 / (1.0 + fabs(x))*(1.0 + fabs(x)));
+}
+
+// activation function and derivative of activation function
+real (*CatsEye_act[])(real x) = {
+	CatsEye_act_identity,
+	CatsEye_act_softmax,
+	CatsEye_act_sigmoid,
+	CatsEye_act_tanh,
+	CatsEye_act_scaled_tanh,
+	CatsEye_act_ReLU,
+	CatsEye_act_LeakyReLU,
+	CatsEye_act_ELU,
+	CatsEye_act_abs
+};
+real (*CatsEye_dact[])(real x) = {
+	CatsEye_dact_identity,
+	CatsEye_dact_softmax,
+	CatsEye_dact_sigmoid,
+	CatsEye_dact_tanh,
+	CatsEye_dact_scaled_tanh,
+	CatsEye_dact_ReLU,
+	CatsEye_dact_LeakyReLU,
+	CatsEye_dact_ELU,
+	CatsEye_dact_abs
+};
+typedef enum {
+	CATS_ACT_IDENTITY, CATS_ACT_SOFTMAX, CATS_ACT_SIGMOID, CATS_ACT_TANH, CATS_ACT_SCALED_TANH,
+	CATS_ACT_RELU, CATS_ACT_LEAKY_RELU, CATS_ACT_ELU, CATS_ACT_ABS
+} CATS_ACTIVATION;
+typedef real (*CATS_ACT_FUNC)(real x);
+
+void CatsEye_act_array(CATS_ACT_FUNC act, real *z, real *x, int num)
+{
+//	#pragma omp parallel for
+	for (int n=num; n>0; n--) *z++ = act(*x++);
+}
+void CatsEye_dact_array(CATS_ACT_FUNC dact, real *z, real *x, int num)
+{
+//	#pragma omp parallel for
+	for (int n=num; n>0; n--) *z++ = dact(*x++);
+}
+
+enum CATS_LP {
+	TYPE,		// MLP, CONV, MAXPOOL
+	ACT,		// activation function type
+	CHANNEL,
+	SIZE,		// input size (ch * x * y)
+	XSIZE,		// width
+	YSIZE,		// height
+	KSIZE,		// kernel size
+	STRIDE,
+	LPLEN		// length of layer params
+};
+#define TYPE(i)		this->u[LPLEN*(i)+TYPE]
+#define SIZE(i)		this->u[LPLEN*(i)+SIZE]
+//#define CH(i)		this->u[LPLEN*(i)+CH]
+#define RANDOM		this->u[STRIDE]
 
 #define CATS_MBATCH	8
 //#define CATS_OPENCL
