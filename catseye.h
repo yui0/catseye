@@ -835,8 +835,9 @@ void CatsEye_BatchNormalization_forward(CatsEye_layer *l)
 	}
 }
 
-#define CATS_ACT_sigmoid(x)	(1.0 / (1.0 + exp(-x * s_gain)))
-#define CATS_DACT_sigmoid(x)	((1.0-x)*x * s_gain)
+#define sigmoid_gain		1//0.1
+#define CATS_ACT_sigmoid(x)	(1.0 / (1.0 + exp(-x * sigmoid_gain)))
+#define CATS_DACT_sigmoid(x)	((1.0-x)*x * sigmoid_gain)
 
 // softmax function (output only)
 void _CatsEye_act_softmax(CatsEye_layer *l)
@@ -870,7 +871,6 @@ void _CatsEye_act_##type(CatsEye_layer *l)\
 {\
 	real *x = l->x;\
 	real *z = l->z;\
-	/*_Pragma("acc kernels copyin(x[0:inputs]), copyout(z[0:outputs)")*/\
 	for (int i=l->outputs; i>0; i--) {\
 		*z++ = CATS_ACT_##type(*x);\
 		x++;\
@@ -879,12 +879,12 @@ void _CatsEye_act_##type(CatsEye_layer *l)\
 #define CATS_DACT_ARRAY(type)	\
 void _CatsEye_dact_##type(CatsEye_layer *l)\
 {\
-	real *x = l->x;\
+	real *z = l->z;\
 	real *d = l->prev_dw;\
 	real *dW = l->dW;\
 	for (int i=0; i<=l->inputs/*bias!!*/; i++) {\
-		*d++ = (*dW++) * CATS_DACT_##type(*x);\
-		x++;\
+		*d++ = (*dW++) * CATS_DACT_##type(*z);\
+		z++;\
 	}\
 }
 CATS_ACT_ARRAY(sigmoid);
@@ -970,6 +970,7 @@ void (*_CatsEye_layer_forward[])(CatsEye_layer *l) = {
 	_CatsEye_act_ReLU,
 	_CatsEye_act_LeakyReLU,
 
+	// loss
 	CatsEye_none,	// 0-1 loss
 	CatsEye_none,	// mse loss
 	CatsEye_none,	// cross-entropy loss
@@ -990,6 +991,7 @@ void (*_CatsEye_layer_backward[])(CatsEye_layer *l) = {
 	_CatsEye_dact_ReLU,
 	_CatsEye_dact_LeakyReLU,
 
+	// loss
 	CatsEye_loss_delivative_0_1,
 	CatsEye_loss_delivative_mse,
 	CatsEye_loss_delivative_cross_entropy,
@@ -1010,6 +1012,7 @@ void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
 	CatsEye_none,	// ReLU
 	CatsEye_none,	// LeakyReLU
 
+	// loss
 	CatsEye_none,	// 0-1 loss
 	CatsEye_none,	// mse loss
 	CatsEye_none,	// cross-entropy loss
