@@ -746,7 +746,7 @@ void CatsEye_PixelShuffler_forward(CatsEye_layer *l)
 		real *xx = l->x + c*ch*l->sx*l->sy;
 		real *o = l->z + c*l->ox*l->oy;
 
-		for (int cc=0; cc<l->ich; cc++) { // in
+		for (int cc=0; cc<ch; cc++) { // in
 			real *x = xx + cc*l->sx*l->sy;
 //			real *x = l->x + cc*l->sx*l->sy;
 			int px = cc%l->r;
@@ -769,7 +769,7 @@ void CatsEye_PixelShuffler_backward(CatsEye_layer *l)
 		real *d = l->prev_dw + c*ch*l->sx*l->sy;
 		real *delta = l->dW + c*l->ox*l->oy;
 
-		for (int cc=0; cc<l->ich; cc++) { // in
+		for (int cc=0; cc<ch; cc++) { // in
 			real *x = d + cc*l->sx*l->sy;
 //			real *x = l->prev_dw + cc*l->sx*l->sy;
 			int px = cc%l->r;
