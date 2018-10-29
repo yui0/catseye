@@ -845,6 +845,7 @@ void _CatsEye_act_softmax(CatsEye_layer *l)
 	real *z = l->z;
 
 	real alpha = x[0];
+//	for (int i=1; i<l->inputs; i++) alpha = alpha>x[i] ? alpha : x[i]; ????
 	for (int i=1; i<l->inputs; i++) alpha = alpha<x[i] ? alpha : x[i];
 	real denom = 0.0;
 	for (int i=0; i<l->inputs; i++) denom += exp(x[i] - alpha);
@@ -895,7 +896,7 @@ CATS_ACT_ARRAY(LeakyReLU);
 CATS_DACT_ARRAY(LeakyReLU);
 
 // calculate the error of output layer
-void _CatsEye_loss_0_1(CatsEye_layer *l)
+void CatsEye_loss_delivative_0_1(CatsEye_layer *l)
 {
 	CatsEye *p = (CatsEye *)l->p;
 	int a = p->clasify[p->sel];
@@ -910,7 +911,7 @@ void _CatsEye_loss_0_1(CatsEye_layer *l)
 	// E = max(0, -twx), ∂E / ∂w = max(0, -tx)
 }
 // loss function for mse with identity and cross entropy with sigmoid
-void _CatsEye_loss_mse(CatsEye_layer *l)
+void CatsEye_loss_delivative_mse(CatsEye_layer *l)
 {
 	CatsEye *p = (CatsEye *)l->p;
 	real *a = &p->label[p->sel * l->inputs];
@@ -920,7 +921,33 @@ void _CatsEye_loss_mse(CatsEye_layer *l)
 	for (int i=0; i<l->inputs; i++) {
 		// http://qiita.com/Ugo-Nama/items/04814a13c9ea84978a4c
 		// https://github.com/nyanp/tiny-cnn/wiki/%E5%AE%9F%E8%A3%85%E3%83%8E%E3%83%BC%E3%83%88
-		*d++ = *o++ - *a++;
+		*d++ = *o++ - *a++;	// y - t [ (y - t) * (y - t) / 2 ]
+	}
+}
+// cross-entropy loss function for (multiple independent) binary classifications
+void CatsEye_loss_delivative_cross_entropy(CatsEye_layer *l)
+{
+	CatsEye *p = (CatsEye *)l->p;
+	real *t = &p->label[p->sel * l->inputs];
+
+	real *d = l->prev_dw;
+	real *y = l->x;
+	for (int i=0; i<l->inputs; i++) {
+		*d++ = (*y - *t++) / (*y * (1 - *y));	// -t * log(y) - (1.0 - t) * log(1.0 - y);
+		y++;
+	}
+}
+// cross-entropy loss function for multi-class classification
+void CatsEye_loss_delivative_cross_entropy_multiclass(CatsEye_layer *l)
+{
+	CatsEye *p = (CatsEye *)l->p;
+	real *t = &p->label[p->sel * l->inputs];
+
+	real *d = l->prev_dw;
+	real *y = l->x;
+	for (int i=0; i<l->inputs; i++) {
+		// https://www.yukisako.xyz/entry/napier-number
+		*d++ = -(*t++) / *y++;	// -t * log(y);
 	}
 }
 
@@ -945,6 +972,8 @@ void (*_CatsEye_layer_forward[])(CatsEye_layer *l) = {
 
 	CatsEye_none,	// 0-1 loss
 	CatsEye_none,	// mse loss
+	CatsEye_none,	// cross-entropy loss
+	CatsEye_none,	// cross-entropy multiclass loss
 };
 void (*_CatsEye_layer_backward[])(CatsEye_layer *l) = {
 	_CatsEye_linear_backward,
@@ -961,8 +990,10 @@ void (*_CatsEye_layer_backward[])(CatsEye_layer *l) = {
 	_CatsEye_dact_ReLU,
 	_CatsEye_dact_LeakyReLU,
 
-	_CatsEye_loss_0_1,
-	_CatsEye_loss_mse,
+	CatsEye_loss_delivative_0_1,
+	CatsEye_loss_delivative_mse,
+	CatsEye_loss_delivative_cross_entropy,
+	CatsEye_loss_delivative_cross_entropy_multiclass,
 };
 void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
 	_CatsEye_linear_update,
@@ -981,12 +1012,14 @@ void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
 
 	CatsEye_none,	// 0-1 loss
 	CatsEye_none,	// mse loss
+	CatsEye_none,	// cross-entropy loss
+	CatsEye_none,	// cross-entropy multiclass loss
 };
 typedef enum {
 	CATS_LINEAR, CATS_CONV, CATS_MAXPOOL, CATS_PIXELSHUFFLER, CATS_RECURRENT,
 	CATS_PADDING,
 	_CATS_ACT_SIGMOID, _CATS_ACT_SOFTMAX, _CATS_ACT_RELU, _CATS_ACT_LEAKY_RELU,
-	CATS_LOSS_0_1, CATS_LOSS_MSE
+	CATS_LOSS_0_1, CATS_LOSS_MSE, CATS_LOSS_CROSS_ENTROPY, CATS_LOSS_CROSS_ENTROPY_MULTICLASS
 } CATS_LAYER_TYPE;
 
 #define _CatsEye__construct(t, p)	__CatsEye__construct(t, p, sizeof(p)/sizeof(CatsEye_layer))

@@ -19,7 +19,27 @@ int main()
 	int label = 10;	// 出力層
 	int sample = 10000;
 
-	CatsEye_layer u[] = {	// 50.4%(100), 95.8%(1000), 99.7%(2000)
+	/*CatsEye_layer u[] = {	// 38.4%(10)
+		{  size, CATS_PADDING, .sx=32, .sy=32, .ich=3, .padding=1 },
+		{     0, CATS_CONV,   0, 0.01, .ksize=3, .stride=1, .ch=20, .ich=3 },
+		{     0, _CATS_ACT_LEAKY_RELU },
+		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
+
+		{     0, CATS_PADDING, .padding=1 },
+		{     0, CATS_CONV,   0, 0.01, .ksize=3, .stride=1, .ch=20, },
+		{     0, _CATS_ACT_LEAKY_RELU },
+		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
+
+		{     0, CATS_PADDING, .padding=1 },
+		{     0, CATS_CONV,   0, 0.01, .ksize=3, .stride=1, .ch=20, },
+		{     0, _CATS_ACT_LEAKY_RELU },
+		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
+
+		{     0, CATS_LINEAR, 0, 0.01 },
+		{ label, CATS_LOSS_0_1 },
+	};*/
+#if 1
+	CatsEye_layer u[] = {	// 50.4%(10), 95.8%(1000), 99.7%(2000)
 //		{  size, CATS_CONV,   0, 0.01, .ksize=3, .stride=1, .ch=10, .ich=3, /*.padding=1*/ },
 		{  size, CATS_PADDING, .sx=32, .sy=32, .ich=3, .padding=1 },
 		{     0, CATS_CONV,   0, 0.01, .ksize=3, .stride=1, .ch=10, .ich=3 },
@@ -31,8 +51,10 @@ int main()
 		{     0, CATS_LINEAR, 0, 0.01 },
 		{   256, _CATS_ACT_LEAKY_RELU },
 		{   256, CATS_LINEAR, 0, 0.01 },
+		//{ label, _CATS_ACT_SOFTMAX },
 		{ label, CATS_LOSS_0_1 },
 	};
+#endif
 /*	CatsEye_layer u[] = {	// 46.4%(100), 95.8%(1000), 99.7%(2000)
 		{   size, CATS_CONV,   CATS_ACT_LEAKY_RELU,  0.01, .ksize=3, .stride=1, .ch=10, .ich=3 },
 		{      0, CATS_CONV,   CATS_ACT_LEAKY_RELU,  0.01, .ksize=3, .stride=1, .ch=10 },
@@ -49,14 +71,6 @@ int main()
 		{      0, CATS_CONV,         CATS_ACT_RELU,  0.01, .ksize=3, .stride=1, .ch=10 },
 		{      0, CATS_MAXPOOL,                  0,  0.01, .ksize=2, .stride=2 },
 		{      0, CATS_LINEAR,       CATS_ACT_RELU,  0.01 },
-		{    256, CATS_LINEAR,   CATS_ACT_IDENTITY,  0.01 },
-		{  label, CATS_LOSS,         CATS_LOSS_0_1,  0.01 },
-	};*/
-	/*CatsEye_layer u[] = {	// !!!
-		{   size, CATS_CONV,         CATS_ACT_TANH,  0.01, .ksize=3, .stride=1, .ch=10, .ich=3 },
-		{      0, CATS_CONV,         CATS_ACT_TANH,  0.01, .ksize=3, .stride=1, .ch=10 },
-		{      0, CATS_MAXPOOL,                  0,  0.01, .ksize=2, .stride=2 },
-		{      0, CATS_LINEAR,       CATS_ACT_TANH,  0.01 },
 		{    256, CATS_LINEAR,   CATS_ACT_IDENTITY,  0.01 },
 		{  label, CATS_LOSS,         CATS_LOSS_0_1,  0.01 },
 	};*/
@@ -147,10 +161,12 @@ int main()
 	for (int i=0; i<10*10; i++) {
 		int p = _CatsEye_predict(&cat, x+size*i);
 
-		CatsEye_visualize(x+size*i, size/3, k, &pixels[p*k*k*10+(n[p]%10)*k], k*10);
+//		CatsEye_visualize(x+size*i, size/3, k, &pixels[p*k*k*10+(n[p]%10)*k], k*10);
+		_CatsEye_visualize(x+size*i, 32*32, 32, &pixels[(p*k*k*10+(n[p]%10)*k)*3], k*10, 3);
 		n[p]++;
 	}
-	stbi_write_png("cifar10_classify.png", k*10, k*10, 1, pixels, 0);
+//	stbi_write_png("cifar10_classify.png", k*10, k*10, 1, pixels, 0);
+	stbi_write_png("cifar10_classify.png", k*10, k*10, 3, pixels, 0);
 
 	memset(pixels, 0, size*100);
 	/*for (int i=0; i<10*10; i++)*/ {

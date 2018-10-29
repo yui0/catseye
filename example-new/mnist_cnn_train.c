@@ -25,6 +25,7 @@ int main()
 //		{     0, CATS_LINEAR, CATS_ACT_SIGMOID, 0.01 },
 		{     0, CATS_LINEAR, 0, 0.01 },
 //		{ label, _CATS_ACT_SIGMOID },
+		//{ label, _CATS_ACT_SOFTMAX },
 		{ label, CATS_LOSS_0_1 },
 	};
 	CatsEye cat;
