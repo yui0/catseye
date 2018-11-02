@@ -117,7 +117,7 @@ int main()
 //		{     0, _CATS_ACT_SIGMOID },
 		{  size, CATS_LOSS_MSE },
 	};*/
-	CatsEye_layer u[] = {
+/*	CatsEye_layer u[] = {
 		{  size, CATS_PADDING, .padding=1 },
 		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=16 },
 //		{     0, _CATS_ACT_RELU }, // minus??
@@ -129,21 +129,21 @@ int main()
 		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=1 },
 //		{     0, _CATS_ACT_SIGMOID },
 		{  size, CATS_LOSS_MSE },
-	};
-#if 0
+	};*/
+#if 1
 	CatsEye_layer u[] = {
 		{  size, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=16 },
+		{     0, CATS_CONV, 0, 0.001, .ksize=3, .stride=1, .ch=16 },
 		{     0, _CATS_ACT_LEAKY_RELU },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },	// 16,14,14
 
 		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=32 },
+		{     0, CATS_CONV, 0, 0.001, .ksize=3, .stride=1, .ch=32 },
 		{     0, _CATS_ACT_LEAKY_RELU },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },	// 32,7,7
 
 		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=4 },
+		{     0, CATS_CONV, 0, 0.001, .ksize=3, .stride=1, .ch=4 },
 		{     0, CATS_PIXELSHUFFLER, .r=4, .ch=1 },
 		{  size, CATS_LOSS_MSE },
 	};
