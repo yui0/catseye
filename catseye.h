@@ -68,7 +68,7 @@ int binomial(/*int n, */real p)
 
 /*void one_hot(uint8_t *a, int size, int data)
 {
-	memset(a, 0, size);
+	memset(a, 0, sizeof(uint8_t)*size);
 	a[data] = 1;
 }*/
 
@@ -195,11 +195,12 @@ typedef struct layer {
 	real *u;		// RNN [time * hidden]
 //	real *y;		// RNN [time * output]
 	real *v;		// RNN [time * output]
-	real (*act2)(real x);	// RNN
-	real (*dact2)(real x);	// RNN
+//	real (*act2)(real x);	// RNN
+//	real (*dact2)(real x);	// RNN
+	real gamma, beta;	// Batch Normalization
 
-	real (*act)(real x);
-	real (*dact)(real x);
+//	real (*act)(real x);
+//	real (*dact)(real x);
 	void (*forward)(struct layer*);
 	void (*backward)(struct layer*);
 	void (*update)(struct layer*);
@@ -211,14 +212,13 @@ typedef struct {
 	int layers, *u;
 	CatsEye_layer *layer;
 
+	// train parameter
+	int slide;
 	// label
 	int sel;
 	int16_t *clasify;
 	real *label;
 
-	// input layers
-//	real *xdata;
-//	int xsize;
 	// output layers [o = f(z)]
 	real **z, **o, *odata;
 	int osize;
@@ -609,7 +609,18 @@ void CatsEye_BatchNormalization_forward(CatsEye_layer *l)
 	x = l->x;
 	z = l->z;
 	for (int i=0; i<l->inputs/*out*/; i++) {
-		*z++ /= sigma;
+//		*z++ /= sigma;
+		*z = (*z / sigma) * l->gamma + l->beta;
+		z++;
+	}
+}
+// https://kevinzakka.github.io/2016/09/14/batch_normalization/
+void CatsEye_BatchNormalization_backward(CatsEye_layer *l)
+{
+	real *delta = l->dW;
+	real beta = 0;
+	for (int i=0; i<l->inputs; i++) {
+		beta += delta[i];
 	}
 }
 
@@ -679,12 +690,14 @@ void CatsEye_loss_delivative_0_1(CatsEye_layer *l)
 	CatsEye *p = (CatsEye *)l->p;
 	int a = p->clasify[p->sel];
 
-	real *d = l->prev_dw;
+	/*real *d = l->prev_dw;
 	real *o = l->x;
 	for (int i=0; i<l->inputs; i++) {
 		// 0-1 loss function
 		*d++ = a==i ? o[i]-1 : o[i];	// 1-of-K
-	}
+	}*/
+	memcpy(l->prev_dw, l->x, sizeof(real)*l->inputs);
+	l->prev_dw[a] = l->x[a]-1;
 	// http://d.hatena.ne.jp/echizen_tm/20110606/1307378609
 	// E = max(0, -twx), ∂E / ∂w = max(0, -tx)
 }
@@ -699,7 +712,7 @@ void CatsEye_loss_delivative_mse(CatsEye_layer *l)
 	for (int i=0; i<l->inputs; i++) {
 		// http://qiita.com/Ugo-Nama/items/04814a13c9ea84978a4c
 		// https://github.com/nyanp/tiny-cnn/wiki/%E5%AE%9F%E8%A3%85%E3%83%8E%E3%83%BC%E3%83%88
-		*d++ = *o++ - *a++;	// y - t [ (y - t) * (y - t) / 2 ]
+		*d++ = *o++ - *a++;	// (y - t) * (y - t) / 2  ->  y - t
 	}
 }
 // cross-entropy loss function for (multiple independent) binary classifications
@@ -882,7 +895,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			l->oy = l->sy * l->r;
 			l->outputs = l->ch * l->ox * l->oy;
 			n[i] = m[i] = 0;
-			printf("L%02d: PIXELSHUFFLER x%d [in:%d/out:%d]ch (w:%d h:%d)\n", i+1, l->r, l->ich, l->ch, l->ox, l->oy);
+			printf("L%02d: PIXELSHUFFLER x%d ch:%d->%d (w:%d h:%d)\n", i+1, l->r, l->ich, l->ch, l->ox, l->oy);
 			break;
 
 		case CATS_RECURRENT:
@@ -915,10 +928,11 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			l->ox = l->sx + l->padding*2;
 			l->oy = l->sy + l->padding*2;
 			l->outputs = l->ch * l->ox * l->oy;
-			printf("L%02d: PADIING %d\n", i+1, l->padding);
+			printf("L%02d: PADIING%d-%dch %dx%d/%dx%d\n", i+1, l->padding, l->ich, l->sx, l->sy, l->ox, l->oy);
 			break;
 
 		case _CATS_ACT_SIGMOID:
+		case _CATS_ACT_SOFTMAX:
 		case _CATS_ACT_RELU:
 		case _CATS_ACT_LEAKY_RELU:
 			n[i] = m[i] = 0;
@@ -989,6 +1003,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		CatsEye_layer *l = &this->layer[i];
 		printf("L%02d in:%d out:%d (x:%ld-z:%ld-d:%ld-w:%ld)\n", i+1, l->inputs, l->outputs, l->x-this->odata, l->z-this->odata, this->d[i]-this->ddata, this->w[i]-this->wdata);
 	}
+	this->slide = this->layer[0].inputs;
 #ifdef CATS_OPENCL
 	CatsEye_clSetup(this);
 #endif
@@ -1085,7 +1100,8 @@ int _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, int rando
 			this->sel = sample;
 
 			// forward propagation
-			_CatsEye_forward(this, x+sample*this->layer[0].inputs);
+//			_CatsEye_forward(this, x+sample*this->layer[0].inputs);
+			_CatsEye_forward(this, x+sample*this->slide);
 
 			// calculate the error of output and hidden layer
 			for (int i=this->layers-1; i>=0; i--) { // i=0 -> RNN
@@ -1102,8 +1118,12 @@ int _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, int rando
 		{
 			// calculate the mean squared error
 			real mse = 0;
-			for (int i=0; i<this->layer[a-1].outputs; i++) {
+/*			for (int i=0; i<this->layer[a-1].outputs; i++) {
 				mse += 0.5 * (this->d[a-1][i] * this->d[a-1][i]);
+			}*/
+			CatsEye_layer *l = &this->layer[a];
+			for (int i=0; i<l->inputs; i++) {
+				mse += l->prev_dw[i] * l->prev_dw[i];
 			}
 			err = 0.5 * (err + mse);
 		}
