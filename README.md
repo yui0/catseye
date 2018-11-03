@@ -19,6 +19,7 @@ Neural network library written in C and Javascript
 - Supported networks:
   - Activation functions
     - sigmoid
+    - softmax
     - tanh, scaled tanh (1.7519 * tanh(2/3x))
     - ReLU, Leaky ReLU, ELU
     - abs
@@ -28,9 +29,9 @@ Neural network library written in C and Javascript
   - Optimization algorithms
     - stochastic gradient descent (with/without L2 normalization and momentum)
   - Layer types
-    - convolutional
+    - convolution
     - max pooling
-    - pixel shuffler [Upscaling or Deconvolution]
+    - pixel shuffler / Sub-Pixel Convolution [Upscaling or Deconvolution]
     - linear
     - CCCP, Cascaded Cross Channel Parametric Pooling
 - Loader formats:
@@ -70,7 +71,7 @@ for more information, see example/
   ![sin](example/sin.png)
   ![quadratic function](example/quadratic.png)
 
-- Convolution Autoencoder ([example-new/mnist_autoencoder.c](example-new/mnist_autoencoder.c))
+- Convolution Autoencoder ([example-new/mnist_autoencoder.c](example-new/mnist_autoencoder.c)/[example-new/cifar_autoencoder.c](example-new/cifar_autoencoder.c))
 
   ![autoencoder](example-new/mnist_autoencoder_100.png)
   ![autoencoder](example-new/cifar_autoencoder_100.png)

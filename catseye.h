@@ -517,6 +517,7 @@ void _CatsEye_maxpooling_backward(CatsEye_layer *l)
 	}
 }
 
+// Sub-Pixel Convolution
 void CatsEye_PixelShuffler_forward(CatsEye_layer *l)
 {
 	int ch = l->ich / l->ch;
@@ -624,37 +625,6 @@ void CatsEye_BatchNormalization_backward(CatsEye_layer *l)
 	}
 }
 
-#define sigmoid_gain		1//0.1
-#define CATS_ACT_sigmoid(x)	(1.0 / (1.0 + exp(-x * sigmoid_gain)))
-#define CATS_DACT_sigmoid(x)	((1.0-x)*x * sigmoid_gain)
-
-// softmax function (output only)
-void _CatsEye_act_softmax(CatsEye_layer *l)
-{
-	real *x = l->x;
-	real *z = l->z;
-
-	real alpha = x[0];
-//	for (int i=1; i<l->inputs; i++) alpha = alpha>x[i] ? alpha : x[i]; ????
-	for (int i=1; i<l->inputs; i++) alpha = alpha<x[i] ? alpha : x[i];
-	real denom = 0.0;
-	for (int i=0; i<l->inputs; i++) denom += exp(x[i] - alpha);
-
-	for (int i=l->inputs/*out*/; i>0; i--) {
-		real numer = exp(*x++ - alpha);
-		*z++ = (numer / denom);
-	}
-}
-#define CATS_DACT_softmax(x)	((x) * (1.0 - (x)))
-
-// rectified linear unit function
-#define CATS_ACT_ReLU(x)	((x)>0 ? (x) : 0.0)
-#define CATS_DACT_ReLU(x)	((x)>0 ? 1.0 : 0.0)
-// leaky rectified linear unit function
-#define leaky_alpha	0.01	// 0 - 1
-#define CATS_ACT_LeakyReLU(x)	((x)>0 ? (x) : x*leaky_alpha)
-#define CATS_DACT_LeakyReLU(x)	((x)>0 ? 1.0 : leaky_alpha)
-
 #define CATS_ACT_ARRAY(type)	\
 void _CatsEye_act_##type(CatsEye_layer *l)\
 {\
@@ -676,13 +646,67 @@ void _CatsEye_dact_##type(CatsEye_layer *l)\
 		z++;\
 	}\
 }
+
+#define sigmoid_gain		1//0.1
+#define CATS_ACT_sigmoid(x)	(1.0 / (1.0 + exp(-x * sigmoid_gain)))
+#define CATS_DACT_sigmoid(x)	((1.0-x)*x * sigmoid_gain)
 CATS_ACT_ARRAY(sigmoid);
 CATS_DACT_ARRAY(sigmoid);
+
+// softmax function (output only)
+void _CatsEye_act_softmax(CatsEye_layer *l)
+{
+	real *x = l->x;
+	real *z = l->z;
+
+	real alpha = x[0];
+//	for (int i=1; i<l->inputs; i++) alpha = alpha>x[i] ? alpha : x[i]; ????
+	for (int i=1; i<l->inputs; i++) alpha = alpha<x[i] ? alpha : x[i];
+	real denom = 0.0;
+	for (int i=0; i<l->inputs; i++) denom += exp(x[i] - alpha);
+
+	for (int i=l->inputs/*out*/; i>0; i--) {
+		real numer = exp(*x++ - alpha);
+		*z++ = (numer / denom);
+	}
+}
+#define CATS_DACT_softmax(x)	((x) * (1.0 - (x)))
 CATS_DACT_ARRAY(softmax);
+
+// tanh function
+// https://github.com/nyanp/tiny-cnn/blob/master/tiny_cnn/activations/activation_function.h
+#define CATS_ACT_tanh(x)	(tanh(x))
+#define CATS_DACT_tanh(x)	(1.0-x*x)	// (1.0-tanh(x)*tanh(x))
+/*	real ep = exp(x);
+	real em = exp(-x);
+	return (ep-em) / (ep+em);*/
+
+	// error at paint.c
+	// fast approximation of tanh (improve 2-3% speed in LeNet-5)
+/*	real x1 = x;
+	real x2 = x1 * x1;
+	x1 *= 1.0 + x2 * (0.1653 + x2 * 0.0097);
+	return x1 / sqrt(1.0 + x2);*/
+CATS_ACT_ARRAY(tanh);
+CATS_DACT_ARRAY(tanh);
+
+// rectified linear unit function
+#define CATS_ACT_ReLU(x)	((x)>0 ? (x) : 0.0)
+#define CATS_DACT_ReLU(x)	((x)>0 ? 1.0 : 0.0)
 CATS_ACT_ARRAY(ReLU);
 CATS_DACT_ARRAY(ReLU);
+// leaky rectified linear unit function
+#define leaky_alpha	0.01	// 0 - 1
+#define CATS_ACT_LeakyReLU(x)	((x)>0 ? (x) : x*leaky_alpha)
+#define CATS_DACT_LeakyReLU(x)	((x)>0 ? 1.0 : leaky_alpha)
 CATS_ACT_ARRAY(LeakyReLU);
 CATS_DACT_ARRAY(LeakyReLU);
+// exponential rectified linear unit function
+// http://docs.chainer.org/en/stable/_modules/chainer/functions/activation/elu.html
+#define CATS_ACT_ELU(x)		((x)>0 ? (x) : exp(x)-1.0)
+#define CATS_DACT_ELU(x)	((x)>0 ? 1.0 : 1.0+x)
+CATS_ACT_ARRAY(ELU);
+CATS_DACT_ARRAY(ELU);
 
 // calculate the error of output layer
 void CatsEye_loss_delivative_0_1(CatsEye_layer *l)
@@ -758,8 +782,10 @@ void (*_CatsEye_layer_forward[])(CatsEye_layer *l) = {
 	// activation
 	_CatsEye_act_sigmoid,
 	_CatsEye_act_softmax,
+	_CatsEye_act_tanh,
 	_CatsEye_act_ReLU,
 	_CatsEye_act_LeakyReLU,
+	_CatsEye_act_ELU,
 
 	// loss
 	CatsEye_none,	// 0-1 loss
@@ -779,8 +805,10 @@ void (*_CatsEye_layer_backward[])(CatsEye_layer *l) = {
 	// activation
 	_CatsEye_dact_sigmoid,
 	_CatsEye_dact_softmax,
+	_CatsEye_dact_tanh,
 	_CatsEye_dact_ReLU,
 	_CatsEye_dact_LeakyReLU,
+	_CatsEye_dact_ELU,
 
 	// loss
 	CatsEye_loss_delivative_0_1,
@@ -800,8 +828,10 @@ void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
 	// activation
 	CatsEye_none,	// sigmoid
 	CatsEye_none,	// softmax
+	CatsEye_none,	// tanh
 	CatsEye_none,	// ReLU
 	CatsEye_none,	// LeakyReLU
+	CatsEye_none,	// ELU
 
 	// loss
 	CatsEye_none,	// 0-1 loss
@@ -812,7 +842,7 @@ void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
 typedef enum {
 	CATS_LINEAR, CATS_CONV, CATS_MAXPOOL, CATS_PIXELSHUFFLER, CATS_RECURRENT,
 	CATS_PADDING,
-	_CATS_ACT_SIGMOID, _CATS_ACT_SOFTMAX, _CATS_ACT_RELU, _CATS_ACT_LEAKY_RELU,
+	_CATS_ACT_SIGMOID, _CATS_ACT_SOFTMAX, _CATS_ACT_TANH, _CATS_ACT_RELU, _CATS_ACT_LEAKY_RELU, _CATS_ACT_ELU,
 	CATS_LOSS_0_1, CATS_LOSS_MSE, CATS_LOSS_CROSS_ENTROPY, CATS_LOSS_CROSS_ENTROPY_MULTICLASS
 } CATS_LAYER_TYPE;
 
