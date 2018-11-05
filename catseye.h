@@ -164,7 +164,7 @@ typedef struct layer {
 	int inputs;		// input size
 
 	int type;
-	int activation;
+//	int activation;
 
 	real eta;
 
@@ -197,6 +197,7 @@ typedef struct layer {
 	real *v;		// RNN [time * output]
 //	real (*act2)(real x);	// RNN
 //	real (*dact2)(real x);	// RNN
+
 	real gamma, beta;	// Batch Normalization
 
 //	real (*act)(real x);
@@ -527,15 +528,11 @@ void CatsEye_PixelShuffler_forward(CatsEye_layer *l)
 
 		for (int cc=0; cc<ch; cc++) { // in
 			real *x = xx + cc*l->sx*l->sy;
-//			real *x = l->x + cc*l->sx*l->sy;
 			int px = cc%l->r;
 			int py = cc/l->r;
-//			int px = 0;//cc%l->r;
-//			int py = 1;//cc/l->r;
 			for (int n=0; n<l->sy; n++) {
 				for (int m=0; m<l->sx; m++) {
 					o[m*l->r+px +(n*l->r+py)*l->ox] = *x++;
-//					o[m*l->r+px +(n*l->r+py)*l->ox] = 0.5;
 				}
 			}
 		}
@@ -550,7 +547,6 @@ void CatsEye_PixelShuffler_backward(CatsEye_layer *l)
 
 		for (int cc=0; cc<ch; cc++) { // in
 			real *x = d + cc*l->sx*l->sy;
-//			real *x = l->prev_dw + cc*l->sx*l->sy;
 			int px = cc%l->r;
 			int py = cc/l->r;
 			for (int n=0; n<l->sy; n++) {
@@ -1201,7 +1197,9 @@ int _CatsEye_saveJson(CatsEye *this, char *filename)
 
 	CatsEye_layer *l = this->layer;
 	for (int n=0; n<this->layers; n++) {
-		fprintf(fp, "var u%d = [%d,%d,%d,%d,%d,%d,%d,%d];\n", n, l->type, l->activation,
+//		fprintf(fp, "var u%d = [%d,%d,%d,%d,%d,%d,%d,%d];\n", n, l->type, l->activation,
+//			l->ch, l->inputs, l->sx, l->sy, l->ksize, l->stride);
+		fprintf(fp, "var u%d = [%d,%d,%d,%d,%d,%d,%d];\n", n, l->type,
 			l->ch, l->inputs, l->sx, l->sy, l->ksize, l->stride);
 		l++;
 	}

@@ -36,16 +36,16 @@ int main(int argc, char *argv[])
 	// https://deeplearningmania.quora.com/A-Fast-CNN-Face-Detection
 	CatsEye_layer u[] = {	// 12-net
 		// -- input 3x12x12
-		{   size, CATS_CONV,     0,  0.001, .ksize=3, .stride=1, .ch=16, .ich=3 },
+		{   size, CATS_CONV,  0.001, .ksize=3, .stride=1, .ch=16, .ich=3 },
 		// -- outputs 16x10x10
-		{      0, CATS_MAXPOOL,  0, .ksize=3, .stride=2 },
+		{      0, CATS_MAXPOOL, .ksize=3, .stride=2 },
 		{     0, _CATS_ACT_RELU },
 		// -- outputs 16x4x4
-		{      0, CATS_CONV,     0,  0.001, .ksize=4, .stride=1, .ch=16 },
+		{      0, CATS_CONV,  0.001, .ksize=4, .stride=1, .ch=16 },
 		{     0, _CATS_ACT_RELU },
 		// -- outputs 16x1x1
 //		{     16, CATS_LINEAR,   CATS_ACT_SIGMOID,  0.001 },	// face / non-face
-		{      0, CATS_CONV,     0,  0.001, .ksize=1, .stride=1, .ch=2 },
+		{      0, CATS_CONV,  0.001, .ksize=1, .stride=1, .ch=2 },
 //		{      0, _CATS_ACT_SOFTMAX },
 		// -- outputs 2x1x1
 		{      2, CATS_LOSS_0_1 },
