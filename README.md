@@ -21,7 +21,7 @@ Neural network library written in C and Javascript
     - sigmoid
     - softmax
     - tanh, scaled tanh (1.7519 * tanh(2/3x))
-    - ReLU, Leaky ReLU, ELU
+    - ReLU, Leaky ReLU, ELU, RReLU
     - abs
     - identity
   - Loss functions
