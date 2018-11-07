@@ -48,7 +48,8 @@ uint64_t xor128()
 	s1 ^= s1 << 23;
 	return ( seed[1] = ( s1 ^ s0 ^ ( s1 >> 17 ) ^ ( s0 >> 26 ) ) ) + s0;
 }
-#define frand()		( xor128() * (1.0 / (XOR128_MAX + 1.0f)) )
+#define frand()			( xor128() * (1.0 / (XOR128_MAX +1.0)) )
+#define random(min, max)	( xor128() * (1.0 / (XOR128_MAX +1.0)) * (max -min) +min )
 // http://www.sat.t.u-tokyo.ac.jp/~omi/random_variables_generation.html
 real rand_normal(real mu, real sigma)
 {
@@ -196,6 +197,7 @@ typedef struct layer {
 //	real (*dact2)(real x);	// RNN
 
 	real gamma, beta;	// Batch Normalization
+	real min, max, alpha;	// RReLU
 
 	void (*forward)(struct layer*);
 	void (*backward)(struct layer*);
@@ -697,11 +699,12 @@ CATS_DACT_ARRAY(LeakyReLU);
 CATS_ACT_ARRAY(ELU);
 CATS_DACT_ARRAY(ELU);
 // Randomized ReLU
-#define CATS_ACT_RReLU(x, l)		((x)>0 ? (x) : (x)*l->eta)
-#define CATS_DACT_RReLU(x, l)		((x)>0 ? 1.0 : l->eta)
+// https://qiita.com/Nezura/items/f52fdc483e5e7eceb6b9
+#define CATS_ACT_RReLU(x, l)		((x)>0 ? (x) : (x)*l->alpha)
+#define CATS_DACT_RReLU(x, l)		((x)>0 ? 1.0 : l->alpha)
 void _CatsEye_act_RReLU(CatsEye_layer *l)
 {
-	l->eta = frand()*0.1;	// 0-1
+	l->alpha = random(l->min, l->max);
 	real *x = l->x;
 	real *z = l->z;
 	for (int i=l->outputs; i>0; i--) {
@@ -964,6 +967,8 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			break;
 
 		case _CATS_ACT_RRELU:
+			l->min = 0;
+			l->max = 0.05;
 		case _CATS_ACT_LEAKY_RELU:
 			if (!l->eta) l->eta = 0.01;
 		case _CATS_ACT_SIGMOID:
