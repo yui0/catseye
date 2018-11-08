@@ -23,28 +23,28 @@ int main()
 	// Convolutional AutoEncoder
 	/*CatsEye_layer u[] = {
 		{  size, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=32 },
+		{     0, CATS_CONV, 0.01, .ksize=3, .stride=1, .ch=32 },
 		{     0, _CATS_ACT_LEAKY_RELU },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },	// 32,14,14
 
 		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=32 },
+		{     0, CATS_CONV, 0.01, .ksize=3, .stride=1, .ch=32 },
 		{     0, _CATS_ACT_LEAKY_RELU },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },	// 32,7,7
 
 
 		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=32 },
+		{     0, CATS_CONV, 0.01, .ksize=3, .stride=1, .ch=32 },
 		{     0, _CATS_ACT_LEAKY_RELU },
 		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=8 },
 
 		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=32 },
+		{     0, CATS_CONV, 0.01, .ksize=3, .stride=1, .ch=32 },
 		{     0, _CATS_ACT_LEAKY_RELU },
 		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=8 },
 
 		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV, 0, 0.01, .ksize=3, .stride=1, .ch=1 },
+		{     0, CATS_CONV, 0.01, .ksize=3, .stride=1, .ch=1 },
 		{     0, _CATS_ACT_SIGMOID },
 
 		{  size, CATS_LOSS_MSE },
@@ -52,14 +52,17 @@ int main()
 	CatsEye_layer u[] = {
 		{  size, CATS_PADDING, .padding=1, .ich=3 },
 		{     0, CATS_CONV, 0.001, .ksize=3, .stride=1, .ch=16*3, .sx=34, .sy=34, .ich=3 },
-		{     0, _CATS_ACT_LEAKY_RELU },
+		{     0, _CATS_ACT_LEAKY_RELU, /*.alpha=0.01*/ },
+//		{     0, _CATS_ACT_RRELU, .min=0, .max=0.01 },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
 
 //		{     0, CATS_PADDING, .padding=1 },
-//		{     0, CATS_CONV, 0, 0.001, .ksize=3, .stride=1, .ch=4*3 },
+//		{     0, CATS_CONV, 0.001, .ksize=3, .stride=1, .ch=4*3 },
 		{     0, CATS_CONV, 0.001, .ksize=1, .stride=1, .ch=4*3 },
-//		{     0, _CATS_ACT_LEAKY_RELU },
+		{     0, _CATS_ACT_LEAKY_RELU },
+//		{     0, _CATS_ACT_RRELU, .min=0, .max=0.01 },
 		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=3 },
+//		{     0, _CATS_ACT_RELU },
 //		{     0, _CATS_ACT_SIGMOID },	// anime
 //		{     0, _CATS_ACT_SOFTMAX },
 		{  size, CATS_LOSS_MSE },
