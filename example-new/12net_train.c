@@ -64,6 +64,7 @@ int main()
 		// -- outputs 16x1x1
 //		{     16, CATS_LINEAR,   CATS_ACT_SIGMOID,  0.001 },	// face / non-face
 		{      0, CATS_CONV,  0.001, .ksize=1, .stride=1, .ch=2 },
+		{      2, _CATS_ACT_SIGMOID },
 //		{      0, _CATS_ACT_SOFTMAX },
 		// -- outputs 2x1x1
 		{      2, CATS_LOSS_0_1 },
@@ -96,7 +97,8 @@ int main()
 	_CatsEye_saveJson(&cat, "12net.json");
 
 	// 結果の表示
-	unsigned char *pixels = calloc(1, size*100);
+//	unsigned char *pixels = calloc(1, size*100);
+	uint8_t *pixels = calloc(1, size*100);
 	int c = 0;
 	int r = 0;
 	for (int i=0; i<sample; i++) {
@@ -106,12 +108,12 @@ int main()
 			if (c<100) {
 //				CatsEye_visualize(x+size*i, size, k*3, &pixels[(c/10)*size*10+(c%10)*k*3], k*3*10);
 				real *xx = &x[size*i];
-				unsigned char *p = &pixels[(c/10)*size*10+(c%10)*k*3];
+				uint8_t *p = &pixels[(c/10)*size*10+(c%10)*k*3];
 				for (int y=0; y<k; y++) {
 					for (int x=0; x<k; x++) {
-						p[(y*k*10+x)*3  ] = xx[y*k+x] * 255.0;
-						p[(y*k*10+x)*3+1] = xx[k*k+y*k+x] * 255.0;
-						p[(y*k*10+x)*3+2] = xx[2*k*k+y*k+x] * 255.0;
+						p[(y*k*10+x)*3  ] = (uint8_t)(xx[y*k+x] * 255.0);
+						p[(y*k*10+x)*3+1] = (uint8_t)(xx[k*k+y*k+x] * 255.0);
+						p[(y*k*10+x)*3+2] = (uint8_t)(xx[2*k*k+y*k+x] * 255.0);
 					}
 				}
 			}
@@ -123,7 +125,7 @@ int main()
 	stbi_write_png("12net_train_wrong.png", k*10, k*10, 3, pixels, 0);
 
 	memset(pixels, 0, size*100);
-	int i = frand()*sample;
+	int i = (int)(frand()*sample);
 	CatsEye_visualize(x+size*i, size/3, k, &pixels[100* k*10 +100], k*10);
 	int p = _CatsEye_predict(&cat, x+size*i);
 	printf("predict %d -> %d [%d]\n", i, p, t[i]);

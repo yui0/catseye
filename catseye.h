@@ -50,6 +50,7 @@ uint64_t xor128()
 	return ( seed[1] = ( s1 ^ s0 ^ ( s1 >> 17 ) ^ ( s0 >> 26 ) ) ) + s0;
 }
 #define frand()			( xor128() * (1.0 / (XOR128_MAX +1.0)) )
+//#define rand(max)		(int)( xor128() * (1.0 / (XOR128_MAX +1.0)) * max)
 #define random(min, max)	( xor128() * (1.0 / (XOR128_MAX +1.0)) * (max -min) +min )
 // http://www.sat.t.u-tokyo.ac.jp/~omi/random_variables_generation.html
 real rand_normal(real mu, real sigma)
@@ -212,7 +213,7 @@ typedef struct {
 	// number of each layer
 	int layers, *u;
 	CatsEye_layer *layer;
-	int start;
+	int start, end;
 
 	// train parameter
 	int slide;
@@ -975,6 +976,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			if (l->alpha==0.0) l->alpha = 0.01;
 		case _CATS_ACT_SIGMOID:
 		case _CATS_ACT_SOFTMAX:
+		case _CATS_ACT_TANH:
 		case _CATS_ACT_RELU:
 			n[i] = m[i] = 0;
 			l->ch = l->ich;
@@ -1046,6 +1048,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 	}
 
 	this->start = 0;
+	this->end = this->layers-1;
 	this->slide = this->layer[0].inputs;
 #ifdef CATS_OPENCL
 	CatsEye_clSetup(this);
@@ -1092,7 +1095,7 @@ void _CatsEye_forward(CatsEye *this, real *x)
 		this->o[0][i] *= binomial(/*0.7(30%)*/0.5);
 	}
 #endif
-	for (int i=this->start; i<this->layers-1; i++) {
+	for (int i=this->start; i<this->end; i++) {
 //		this->o[i][this->layer[i].inputs] = 1;	// for bias
 //		this->layer[i].forward(&this->layer[i]);
 		l->x[l->inputs] = 1;	// for bias
@@ -1132,8 +1135,8 @@ int _CatsEye_accuracy(CatsEye *this, real *x, int16_t *t, int verify)
 
 int _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, int random, int verify)
 {
-	int a = this->layers-1;
-	this->layer[a].z = t;	//FIXME
+	int a = this->end;	// layers-1
+	this->layer[a].z = t;	// FIXME
 	this->clasify = (int16_t*)t;
 	this->label = (real*)t;
 
@@ -1153,12 +1156,12 @@ int _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, int rando
 			_CatsEye_forward(this, x+sample*this->slide);
 
 			// calculate the error of output and hidden layer
-			for (int i=/*this->layers-1*/a; i>=this->start; i--) { // i=0 -> RNN
-				this->layer[i].backward(&this->layer[i]);
+			for (int i=this->end; i>=this->start; i--) { // i=0 -> RNN
+				/*if (!this->layer[i].fix)*/ this->layer[i].backward(&this->layer[i]);
 			}
 
 			// update the weights
-			for (int i=/*this->layers-2*/a-1; i>=this->start; i--) {
+			for (int i=this->end-1; i>=this->start; i--) {
 				if (!this->layer[i].fix) this->layer[i].update(&this->layer[i]);
 			}
 		}
