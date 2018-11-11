@@ -23,14 +23,15 @@ int main()
 	CatsEye_layer u[] = {
 		// generator
 		{     100, CATS_LINEAR, 0.01 },
-		{    1024, _CATS_ACT_RELU },
+//		{    1024, _CATS_ACT_RELU },
+		{    1024, _CATS_ACT_LEAKY_RELU },
 		{       0, CATS_LINEAR, 0.01 },
-		{ 128*7*7, _CATS_ACT_RELU },	// 128 7x7
-//		{ 32*7*7, _CATS_ACT_RELU },	// 128 7x7
+//		{ 128*7*7, _CATS_ACT_RELU },	// 128 7x7
+		{ 128*7*7, _CATS_ACT_LEAKY_RELU },	// 128 7x7
 
 		{       0, CATS_PIXELSHUFFLER, .r=2, .ch=32, .sx=7, .sy=7 },	// 32 14x14
-//		{       0, CATS_PIXELSHUFFLER, .r=2, .ch=4, .sx=7, .sy=7 },	// 32 14x14
-		{       0, _CATS_ACT_RELU },
+//		{       0, _CATS_ACT_RELU },
+		{       0, _CATS_ACT_LEAKY_RELU },
 
 		{       0, CATS_CONV, 0.001, .ksize=1, .stride=1, .ch=4 },
 		{       0, CATS_PIXELSHUFFLER, .r=2, .ch=1 },	// 1 28x28
@@ -45,11 +46,13 @@ int main()
 		{       0, CATS_MAXPOOL, .ksize=2, .stride=2 },
 		{       0, _CATS_ACT_LEAKY_RELU },
 
-		{       0, CATS_LINEAR, 0.01 },
+		{       0, CATS_LINEAR, 0.001 },
 		{     256, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
-		{       0, CATS_LINEAR, 0.01 },
-		{       2, _CATS_ACT_SIGMOID },
-		{       2, CATS_LOSS_0_1 },
+		{       0, CATS_LINEAR, 0.001 },
+		{       1, _CATS_ACT_SIGMOID },
+		{       1, CATS_LOSS_MSE },
+//		{       2, _CATS_ACT_SIGMOID },
+//		{       2, CATS_LOSS_0_1 },
 	};
 	CatsEye cat;
 	_CatsEye__construct(&cat, u);
@@ -65,14 +68,18 @@ int main()
 	fread(data, 16, 1, fp);		// header
 	fread(data, size, sample, fp);	// data
 	for (int i=0; i<sample*size; i++) x[i] = data[i] / 255.0;
+//	for (int i=0; i<sample*size; i++) x[i] = data[i] /255.0 *2 -1;
 	fclose(fp);
 	free(data);
 	printf("OK\n");
 
-	int lreal[BATCH], lfake[BATCH];
+//	int lreal[BATCH], lfake[BATCH];
+	real lreal[BATCH], lfake[BATCH];
 	for (int i=0; i<BATCH; i++) {
-		lreal[i] = 1;
-		lfake[i] = 0;
+//		lreal[i] = 1;
+//		lfake[i] = 0;
+		lreal[i] = random(0.7, 1.2);
+		lfake[i] = random(0.0, 0.3);
 	}
 
 	// 訓練
@@ -85,18 +92,22 @@ int main()
 		_CatsEye_train(&cat, x, lreal, BATCH, 1/*repeat*/, 100/*random batch*/, 0);
 
 		for (int i=0; i<100*BATCH; i++) {
-			noise[i] = random(-1, 1);
+//			noise[i] = random(-1, 1);
+			noise[i] = rand_normal(0, 1);
 		}
 		cat.start = 0;
+		cat.stop = 9+1;
 		cat.slide = 100;
 		for (int i=0; i<9; i++) cat.layer[i].fix = 1;
 		printf("Training Discriminator [%d]: phase 2 [fake]\n", n);
 		_CatsEye_train(&cat, noise, lfake, BATCH, 1/*repeat*/, 100/*random batch*/, 0);
 		for (int i=0; i<9; i++) cat.layer[i].fix = 0;
+		cat.stop = 0;
 
 		// Training Generater
 		for (int i=0; i<100*BATCH; i++) {
-			noise[i] = random(-1, 1);
+//			noise[i] = random(-1, 1);
+			noise[i] = rand_normal(0, 1);
 		}
 		cat.start = 0;
 		cat.slide = 100;
@@ -110,9 +121,9 @@ int main()
 		unsigned char *pixels = calloc(1, size*100);
 		for (int i=0; i</*50*/100; i++) {
 //			double mse = 0;
-//			_CatsEye_forward(&cat, noise+100*i);
-			int p = _CatsEye_predict(&cat, noise+100*i);
-			printf("%d ", p);
+			_CatsEye_forward(&cat, noise+100*i);
+//			int p = _CatsEye_predict(&cat, noise+100*i);
+//			printf("%d ", p);
 			CatsEye_visualize(cat.layer[9].x, size, 28, &pixels[(i/10)*size*10+(i%10)*28], 28*10);
 
 //			cat.start = 9;

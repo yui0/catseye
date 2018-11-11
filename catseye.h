@@ -213,7 +213,7 @@ typedef struct {
 	// number of each layer
 	int layers, *u;
 	CatsEye_layer *layer;
-	int start, end;
+	int start, stop, end;
 
 	// train parameter
 	int slide;
@@ -1047,7 +1047,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		printf("L%02d in:%d out:%d (x:%ld-z:%ld-d:%ld-w:%ld)\n", i+1, l->inputs, l->outputs, l->x-this->odata, l->z-this->odata, this->d[i]-this->ddata, this->w[i]-this->wdata);
 	}
 
-	this->start = 0;
+	this->start = this->stop = 0;
 	this->end = this->layers-1;
 	this->slide = this->layer[0].inputs;
 #ifdef CATS_OPENCL
@@ -1156,8 +1156,8 @@ int _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, int rando
 			_CatsEye_forward(this, x+sample*this->slide);
 
 			// calculate the error of output and hidden layer
-			for (int i=this->end; i>=this->start; i--) { // i=0 -> RNN
-				/*if (!this->layer[i].fix)*/ this->layer[i].backward(&this->layer[i]);
+			for (int i=this->end; i>=this->stop/*start*/; i--) { // i=0 -> RNN
+				this->layer[i].backward(&this->layer[i]);
 			}
 
 			// update the weights
