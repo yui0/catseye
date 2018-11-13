@@ -198,7 +198,7 @@ int main()
 
 //			p[5*size*10+(j/28)*28*10+(j%28)] = x[size*i+j] * 255.0;
 			//p[5*size*10+(j/28)*28*10+(j%28)] = cat.layer[0].x[j] * 255.0;
-			p[5*size*10+(j/28)*28*10+(j%28)] = cat.o[0][j] * 255.0;
+			p[5*size*10+(j/28)*28*10+(j%28)] = (unsigned char)(cat.o[0][j] * 255.0);
 		}
 		printf("mse %lf\n", mse/size);
 	}

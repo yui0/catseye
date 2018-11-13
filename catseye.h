@@ -670,19 +670,30 @@ CATS_DACT_ARRAY(softmax);
 
 // tanh function
 // https://github.com/nyanp/tiny-cnn/blob/master/tiny_cnn/activations/activation_function.h
+//#ifdef CATS_NORMAL_TANH
+#if 1
 #define CATS_ACT_tanh(x, l)		(tanh(x))
-#define CATS_DACT_tanh(x, l)		(1.0-(x)*(x))	// (1.0-tanh(x)*tanh(x))
-/*	real ep = exp(x);
-	real em = exp(-x);
-	return (ep-em) / (ep+em);*/
-
-	// error at paint.c
-	// fast approximation of tanh (improve 2-3% speed in LeNet-5)
-/*	real x1 = x;
-	real x2 = x1 * x1;
-	x1 *= 1.0 + x2 * (0.1653 + x2 * 0.0097);
-	return x1 / sqrt(1.0 + x2);*/
 CATS_ACT_ARRAY(tanh);
+#else
+void _CatsEye_act_tanh(CatsEye_layer *l)
+{
+	real *x = l->x;
+	real *z = l->z;
+	for (int i=l->outputs; i>0; i--) {
+/*		real ep = exp(x);
+		real em = exp(-x);
+		return (ep-em) / (ep+em);*/
+		// fast approximation of tanh (improve 2-3% speed in LeNet-5)
+		real x1 = *x;
+		real x2 = x1 * x1;
+		x1 *= 1.0 + x2 * (0.1653 + x2 * 0.0097);
+
+		*z++ = x1 / sqrt(1.0 + x2);
+		x++;
+	}
+}
+#endif
+#define CATS_DACT_tanh(x, l)		(1.0-(x)*(x))	// (1.0-tanh(x)*tanh(x))
 CATS_DACT_ARRAY(tanh);
 
 // rectified linear unit function
@@ -758,7 +769,7 @@ void CatsEye_loss_delivative_cross_entropy(CatsEye_layer *l)
 	real *d = l->prev_dw;
 	real *y = l->x;
 	for (int i=0; i<l->inputs; i++) {
-		*d++ = (*y - *t++) / (*y * (1 - *y));	// -t * log(y) - (1.0 - t) * log(1.0 - y);
+		*d++ = (*y - *t++) / (*y * (1 - *y));	// -t * log(y) - (1 - t) * log(1 - y);
 		y++;
 	}
 }
@@ -1105,13 +1116,14 @@ void _CatsEye_forward(CatsEye *this, real *x)
 }
 
 // return most probable label to the input x
-int _CatsEye_predict(CatsEye *this, real *x)
+int16_t _CatsEye_predict(CatsEye *this, real *x)
 {
 	// forward propagation
 	_CatsEye_forward(this, x);
 
 	// biggest output means most probable label
-	CatsEye_layer *l = &this->layer[this->layers-1];
+//	CatsEye_layer *l = &this->layer[this->layers-1];
+	CatsEye_layer *l = &this->layer[this->end];
 	real max = l->x[0];
 	int ans = 0;
 	for (int i=1; i<l->inputs; i++) {
@@ -1127,7 +1139,8 @@ int _CatsEye_accuracy(CatsEye *this, real *x, int16_t *t, int verify)
 {
 	int r = 0;
 	for (int i=0; i<verify; i++) {
-		int16_t p = _CatsEye_predict(this, x+this->layer[0].inputs*i);
+//		int16_t p = _CatsEye_predict(this, x+this->layer[0].inputs*i);
+		int16_t p = _CatsEye_predict(this, x+i*this->slide);
 		if (p==t[i]) r++;
 	}
 	return r;

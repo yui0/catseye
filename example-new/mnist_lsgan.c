@@ -12,6 +12,10 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "../stb_image_write.h"
 
+#define NAME	"mnist_lsgan"
+#define ZDIM	100
+//#define NAME	"_mnist_lsgan"
+//#define ZDIM	10
 #define BATCH	60000
 
 int main()
@@ -22,7 +26,7 @@ int main()
 	// https://qiita.com/taku-buntu/items/0093a68bfae0b0ff879d
 	CatsEye_layer u[] = {
 		// generator
-		{     100, CATS_LINEAR, 0.01 },
+		{    ZDIM, CATS_LINEAR, 0.01 },
 //		{    1024, _CATS_ACT_RELU },
 		{    1024, _CATS_ACT_LEAKY_RELU },
 		{       0, CATS_LINEAR, 0.01 },
@@ -56,10 +60,13 @@ int main()
 	};
 	CatsEye cat;
 	_CatsEye__construct(&cat, u);
+	if (!CatsEye_loadCats(&cat, NAME".cats")) {
+		printf("OK\n");
+	}
 
 	real *x = malloc(sizeof(real)*size*sample);	// 訓練データ
 	unsigned char *data = malloc(sample*size);
-	real *noise = malloc(sizeof(real)*100*BATCH);
+	real *noise = malloc(sizeof(real)*ZDIM*BATCH);
 
 	// 訓練データの読み込み
 	printf("Training data: loading...");
@@ -73,7 +80,7 @@ int main()
 	free(data);
 	printf("OK\n");
 
-//	int lreal[BATCH], lfake[BATCH];
+//	int16_t lreal[BATCH], lfake[BATCH];
 	real lreal[BATCH], lfake[BATCH];
 	for (int i=0; i<BATCH; i++) {
 //		lreal[i] = 1;
@@ -88,31 +95,32 @@ int main()
 		// Training Discriminator
 		cat.start = 9;
 		cat.slide = size;
-		printf("Training Discriminator [%d]: phase 1 [real]\n", n);
+		printf("Training Discriminator #%d: phase 1 [real]\n", n);
 		_CatsEye_train(&cat, x, lreal, BATCH, 1/*repeat*/, 100/*random batch*/, 0);
 
-		for (int i=0; i<100*BATCH; i++) {
+		// Training Discriminator [ D(G(z)) = 0 ]
+		for (int i=0; i<ZDIM*BATCH; i++) {
 //			noise[i] = random(-1, 1);
 			noise[i] = rand_normal(0, 1);
 		}
 		cat.start = 0;
 		cat.stop = 9+1;
-		cat.slide = 100;
+		cat.slide = ZDIM;
 		for (int i=0; i<9; i++) cat.layer[i].fix = 1;
-		printf("Training Discriminator [%d]: phase 2 [fake]\n", n);
+		printf("Training Discriminator #%d: phase 2 [fake]\n", n);
 		_CatsEye_train(&cat, noise, lfake, BATCH, 1/*repeat*/, 100/*random batch*/, 0);
 		for (int i=0; i<9; i++) cat.layer[i].fix = 0;
 		cat.stop = 0;
 
-		// Training Generater
-		for (int i=0; i<100*BATCH; i++) {
+		// Training Generater [ D(G(z)) = 1 ]
+		for (int i=0; i<ZDIM*BATCH; i++) {
 //			noise[i] = random(-1, 1);
 			noise[i] = rand_normal(0, 1);
 		}
 		cat.start = 0;
-		cat.slide = 100;
+		cat.slide = ZDIM;
 		for (int i=9; i<cat.layers; i++) cat.layer[i].fix = 1;
-		printf("Training Generater [%d]\n", n);
+		printf("Training Generater #%d\n", n);
 		_CatsEye_train(&cat, noise, lreal, BATCH, 1/*repeat*/, 200/*random batch*/, 0);
 		for (int i=9; i<cat.layers; i++) cat.layer[i].fix = 0;
 
@@ -121,8 +129,8 @@ int main()
 		unsigned char *pixels = calloc(1, size*100);
 		for (int i=0; i</*50*/100; i++) {
 //			double mse = 0;
-			_CatsEye_forward(&cat, noise+100*i);
-//			int p = _CatsEye_predict(&cat, noise+100*i);
+			_CatsEye_forward(&cat, noise+ZDIM*i);
+//			int p = _CatsEye_predict(&cat, noise+ZDIM*i);
 //			printf("%d ", p);
 			CatsEye_visualize(cat.layer[9].x, size, 28, &pixels[(i/10)*size*10+(i%10)*28], 28*10);
 
@@ -142,9 +150,11 @@ int main()
 		}
 		printf("\n");
 		char buff[256];
-		sprintf(buff, "/tmp/mnist_lsgan_%05d.png", n);
+		sprintf(buff, "/tmp/"NAME"_%05d.png", n);
 		stbi_write_png(buff, 28*10, 28*10, 1, pixels, 28*10);
 		free(pixels);
+
+		CatsEye_saveCats(&cat, NAME".cats");
 	}
 	printf("Training complete\n");
 
