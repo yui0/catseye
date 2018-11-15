@@ -15,7 +15,6 @@ Neural network library written in C and Javascript
   - Multilayer perceptron (MLP)
   - Deep Neural Networks (DNN)
   - Convolutional Neural Networks (CNN)
-  - Network in Network (NIN)
 - Supported networks:
   - Activation functions
     - sigmoid
@@ -31,6 +30,7 @@ Neural network library written in C and Javascript
   - Layer types
     - convolution
     - max pooling
+    - average pooling
     - Sub-Pixel Convolution (Pixel Shuffler) [Upscaling or Deconvolution]
     - linear
     - CCCP, Cascaded Cross Channel Parametric Pooling

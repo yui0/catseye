@@ -49,9 +49,9 @@ uint64_t xor128()
 	s1 ^= s1 << 23;
 	return ( seed[1] = ( s1 ^ s0 ^ ( s1 >> 17 ) ^ ( s0 >> 26 ) ) ) + s0;
 }
-#define frand()			( xor128() * (1.0 / (XOR128_MAX +1.0)) )
-//#define rand(max)		(int)( xor128() * (1.0 / (XOR128_MAX +1.0)) * max)
-#define random(min, max)	( xor128() * (1.0 / (XOR128_MAX +1.0)) * (max -min) +min )
+#define frand()			( xor128() / (XOR128_MAX +1.0) )
+//#define rand(max)		(int)( xor128() / (XOR128_MAX +1.0) * max)
+#define random(min, max)	( xor128() / (XOR128_MAX +1.0) * (max -min) +min )
 // http://www.sat.t.u-tokyo.ac.jp/~omi/random_variables_generation.html
 real rand_normal(real mu, real sigma)
 {
@@ -523,7 +523,7 @@ void _CatsEye_maxpooling_backward(CatsEye_layer *l)
 void CatsEye_avgpooling_forward(CatsEye_layer *l)
 {
 	int step = l->sx-l->ksize;
-	real n = 1 / (l->ksize * l->ksize);
+	real n = l->ksize * l->ksize;
 	real *o = l->z;
 
 	for (int c=0; c<l->ch; c++) { // in/out
@@ -538,7 +538,7 @@ void CatsEye_avgpooling_forward(CatsEye_layer *l)
 					}
 					u += step;
 				}
-				*o++ = a * n;
+				*o++ = a / n;
 			}
 		}
 	}
@@ -546,23 +546,20 @@ void CatsEye_avgpooling_forward(CatsEye_layer *l)
 void CatsEye_avgpooling_backward(CatsEye_layer *l)
 {
 	int step = l->sx-l->ksize;
-	real n = 1 / (l->ksize * l->ksize);
+	real n = l->ksize * l->ksize;
 	real *delta = l->dW;
 
 	for (int c=0; c<l->ch; c++) { // in/out
 		for (int y=0; y<l->sy; y+=l->stride) {
 			int i = c*l->sx*l->sy + y*l->sx;
 			for (int x=0; x<l->sx; x+=l->stride) {
-//				real *u = l->x + i+x;
 				real *d = l->prev_dw + i+x;
-				real a = *delta++ * n;
+				real a = *delta++ / n;
 				for (int wy=l->ksize; wy>0; wy--) {
 					for (int wx=l->ksize; wx>0; wx--) {
-//						*d++ = a * (*u++);
 						*d++ = a;
 					}
 					d += step;
-//					u += step;
 				}
 			}
 		}
@@ -1269,7 +1266,7 @@ int CatsEye_saveCats(CatsEye *this, char *filename)
 	FILE *fp = fopen(filename, "wb");
 	if (fp==NULL) return -1;
 
-	printf("Saving weight... %lu bytes\n", this->wsize*sizeof(real));
+	printf("Saving #%d weight... %lu bytes\n", this->epoch, this->wsize*sizeof(real));
 	fwrite(this->wdata, this->wsize*sizeof(real), 1, fp);
 	fwrite(&this->epoch, sizeof(int), 1, fp);
 
@@ -1281,9 +1278,9 @@ int CatsEye_loadCats(CatsEye *this, char *filename)
 	FILE *fp = fopen(filename, "rb");
 	if (fp==NULL) return -1;
 
-	printf("Loading weight... %lu bytes\n", this->wsize*sizeof(real));
 	fread(this->wdata, this->wsize*sizeof(real), 1, fp);
 	fread(&this->epoch, sizeof(int), 1, fp);
+	printf("Loading #%d weight... %lu bytes\n", this->epoch++, this->wsize*sizeof(real));
 
 	fclose(fp);
 	return 0;

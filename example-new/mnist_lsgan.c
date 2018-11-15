@@ -64,7 +64,7 @@ int main()
 	_CatsEye__construct(&cat, u);
 	cat.epoch = 0;
 	if (!CatsEye_loadCats(&cat, NAME".cats")) {
-		printf("epoch #%d OK\n", cat.epoch);
+		printf("Loading success!!\n");
 	}
 
 	real *x = malloc(sizeof(real)*size*sample);	// 訓練データ
@@ -77,8 +77,8 @@ int main()
 	if (fp==NULL) return -1;
 	fread(data, 16, 1, fp);		// header
 	fread(data, size, sample, fp);	// data
-//	for (int i=0; i<sample*size; i++) x[i] = data[i] / 255.0;
-	for (int i=0; i<sample*size; i++) x[i] = data[i] /255.0 *2 -1;
+	for (int i=0; i<sample*size; i++) x[i] = data[i] / 255.0;
+//	for (int i=0; i<sample*size; i++) x[i] = data[i] /255.0 *2 -1;
 	fclose(fp);
 	free(data);
 	printf("OK\n");
