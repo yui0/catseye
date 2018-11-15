@@ -12,10 +12,10 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "../stb_image_write.h"
 
-#define NAME	"mnist_lsgan"
-#define ZDIM	100
-//#define NAME	"_mnist_lsgan"
-//#define ZDIM	10
+//#define NAME	"mnist_lsgan"
+//#define ZDIM	100
+#define NAME	"_mnist_lsgan"
+#define ZDIM	10
 #define BATCH	60000
 
 int main()
@@ -43,16 +43,18 @@ int main()
 
 		// discriminator
 		{   28*28, CATS_CONV, 0.001, .ksize=5, .stride=1/*2*/, .ch=64 },
-		{       0, CATS_MAXPOOL, .ksize=2, .stride=2 },
+//		{       0, CATS_MAXPOOL, .ksize=2, .stride=2 },
+		{       0, CATS_AVGPOOL, .ksize=2, .stride=2 },
 		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 
 		{       0, CATS_CONV, 0.001, .ksize=5, .stride=1/*2*/, .ch=128 },
-		{       0, CATS_MAXPOOL, .ksize=2, .stride=2 },
+//		{       0, CATS_MAXPOOL, .ksize=2, .stride=2 },
+		{       0, CATS_AVGPOOL, .ksize=2, .stride=2 },
 		{       0, _CATS_ACT_LEAKY_RELU },
 
-		{       0, CATS_LINEAR, 0.001 },
+		{       0, CATS_LINEAR, 0.01 },
 		{     256, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
-		{       0, CATS_LINEAR, 0.001 },
+		{       0, CATS_LINEAR, 0.01 },
 		{       1, _CATS_ACT_SIGMOID },
 		{       1, CATS_LOSS_MSE },
 //		{       2, _CATS_ACT_SIGMOID },
@@ -60,8 +62,9 @@ int main()
 	};
 	CatsEye cat;
 	_CatsEye__construct(&cat, u);
+	cat.epoch = 0;
 	if (!CatsEye_loadCats(&cat, NAME".cats")) {
-		printf("OK\n");
+		printf("epoch #%d OK\n", cat.epoch);
 	}
 
 	real *x = malloc(sizeof(real)*size*sample);	// 訓練データ
@@ -74,8 +77,8 @@ int main()
 	if (fp==NULL) return -1;
 	fread(data, 16, 1, fp);		// header
 	fread(data, size, sample, fp);	// data
-	for (int i=0; i<sample*size; i++) x[i] = data[i] / 255.0;
-//	for (int i=0; i<sample*size; i++) x[i] = data[i] /255.0 *2 -1;
+//	for (int i=0; i<sample*size; i++) x[i] = data[i] / 255.0;
+	for (int i=0; i<sample*size; i++) x[i] = data[i] /255.0 *2 -1;
 	fclose(fp);
 	free(data);
 	printf("OK\n");
@@ -91,7 +94,7 @@ int main()
 
 	// 訓練
 	printf("Starting training using (stochastic) gradient descent\n");
-	for (int n=0; n<1000; n++) {
+	for (int n=cat.epoch; n<1000; n++) {
 		// Training Discriminator
 		cat.start = 9;
 		cat.slide = size;
@@ -154,6 +157,7 @@ int main()
 		stbi_write_png(buff, 28*10, 28*10, 1, pixels, 28*10);
 		free(pixels);
 
+		cat.epoch = n;
 		CatsEye_saveCats(&cat, NAME".cats");
 	}
 	printf("Training complete\n");

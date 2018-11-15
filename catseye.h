@@ -216,6 +216,7 @@ typedef struct {
 	int start, stop, end;
 
 	// train parameter
+	int epoch;
 	int slide;
 	// label
 	int sel;
@@ -479,13 +480,15 @@ void _CatsEye_convolutional_update(CatsEye_layer *l)
 // calculate forward propagation
 void _CatsEye_maxpooling_forward(CatsEye_layer *l)
 {
+	int step = l->sx-l->ksize;
 	int *max = (int*)l->W; // temp
 	real *o = l->z;
 
 	for (int c=0; c<l->ch; c++) { // in/out
 		for (int y=0; y<l->sy/*-1*/; y+=l->stride) {
+			int i = c*l->sx*l->sy + y*l->sx;
 			for (int x=0; x<l->sx/*-1*/; x+=l->stride) {
-				int n = c*l->sx*l->sy + y*l->sx+x;
+				int n = i+x;
 				real a = l->x[n];
 				*max = n;
 				for (int wy=l->ksize; wy>0; wy--) {
@@ -496,7 +499,7 @@ void _CatsEye_maxpooling_forward(CatsEye_layer *l)
 						}
 						n++;
 					}
-					n += l->sx-l->ksize;
+					n += step;
 				}
 				max++;
 				*o++ = a;
@@ -514,6 +517,55 @@ void _CatsEye_maxpooling_backward(CatsEye_layer *l)
 	for (int i=0; i<l->outputs; i++) {
 		d[*max] = *delta++;
 		max++;
+	}
+}
+
+void CatsEye_avgpooling_forward(CatsEye_layer *l)
+{
+	int step = l->sx-l->ksize;
+	real n = 1 / (l->ksize * l->ksize);
+	real *o = l->z;
+
+	for (int c=0; c<l->ch; c++) { // in/out
+		for (int y=0; y<l->sy; y+=l->stride) {
+			int i = c*l->sx*l->sy + y*l->sx;
+			for (int x=0; x<l->sx; x+=l->stride) {
+				real *u = l->x + i+x;
+				real a = 0;
+				for (int wy=l->ksize; wy>0; wy--) {
+					for (int wx=l->ksize; wx>0; wx--) {
+						a += *u++;
+					}
+					u += step;
+				}
+				*o++ = a * n;
+			}
+		}
+	}
+}
+void CatsEye_avgpooling_backward(CatsEye_layer *l)
+{
+	int step = l->sx-l->ksize;
+	real n = 1 / (l->ksize * l->ksize);
+	real *delta = l->dW;
+
+	for (int c=0; c<l->ch; c++) { // in/out
+		for (int y=0; y<l->sy; y+=l->stride) {
+			int i = c*l->sx*l->sy + y*l->sx;
+			for (int x=0; x<l->sx; x+=l->stride) {
+//				real *u = l->x + i+x;
+				real *d = l->prev_dw + i+x;
+				real a = *delta++ * n;
+				for (int wy=l->ksize; wy>0; wy--) {
+					for (int wx=l->ksize; wx>0; wx--) {
+//						*d++ = a * (*u++);
+						*d++ = a;
+					}
+					d += step;
+//					u += step;
+				}
+			}
+		}
 	}
 }
 
@@ -794,6 +846,7 @@ void (*_CatsEye_layer_forward[])(CatsEye_layer *l) = {
 	_CatsEye_linear_forward,
 	_CatsEye_convolutional_forward,
 	_CatsEye_maxpooling_forward,
+	CatsEye_avgpooling_forward,
 	CatsEye_PixelShuffler_forward,
 	CatsEye_rnn_forward,
 
@@ -818,6 +871,7 @@ void (*_CatsEye_layer_backward[])(CatsEye_layer *l) = {
 	_CatsEye_linear_backward,
 	_CatsEye_convolutional_backward,
 	_CatsEye_maxpooling_backward,
+	CatsEye_avgpooling_backward,
 	CatsEye_PixelShuffler_backward,
 	CatsEye_rnn_backward,
 
@@ -842,6 +896,7 @@ void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
 	_CatsEye_linear_update,
 	_CatsEye_convolutional_update,
 	CatsEye_none,	// maxpool
+	CatsEye_none,	// avgpool
 	CatsEye_none,	// Pixel Shuffler
 	CatsEye_rnn_update,
 
@@ -863,7 +918,7 @@ void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
 	CatsEye_none,	// cross-entropy multiclass loss
 };
 typedef enum {
-	CATS_LINEAR, CATS_CONV, CATS_MAXPOOL, CATS_PIXELSHUFFLER, CATS_RECURRENT,
+	CATS_LINEAR, CATS_CONV, CATS_MAXPOOL, CATS_AVGPOOL, CATS_PIXELSHUFFLER, CATS_RECURRENT,
 	CATS_PADDING,
 	_CATS_ACT_SIGMOID, _CATS_ACT_SOFTMAX, _CATS_ACT_TANH,
 	_CATS_ACT_RELU, _CATS_ACT_LEAKY_RELU, _CATS_ACT_ELU, _CATS_ACT_RRELU,
@@ -917,6 +972,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		}
 		if (!l->sx && l->ich) l->sx = l->sy = (int)sqrt(l->inputs/l->ich);
 
+		n[i] = m[i] = 0;
 		switch (l->type) {
 		case CATS_CONV:
 			l->ox = l->px = (l->sx +2*l->padding -l->ksize) /l->stride +1;
@@ -929,21 +985,24 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			m[i] = l->ch * l->ich;		// channel
 			printf("L%02d: CONV%d-%dch i/o:%d/%d[%dx%d/%dx%d] (%d[ksize^2]x%d[ch])\n", i+1, l->ksize, l->ch, l->inputs, l->outputs, l->sx, l->sy, l->ox, l->oy, n[i], m[i]);
 			break;
+
 		case CATS_MAXPOOL:
+			n[i] = l->ox * l->oy;
+			m[i] = l->ch;
+		case CATS_AVGPOOL:
 			l->ch = l->ich;
 			l->ox = (l->sx +2*l->padding -l->ksize) /l->stride +1;
 			l->oy = (l->sy +2*l->padding -l->ksize) /l->stride +1;
 			l->outputs = l->ch * l->ox * l->oy;
-			n[i] = l->ox * l->oy;
-			m[i] = l->ch;
 			printf("L%02d: POOL%d-%dch (w:%d h:%d [%d])\n", i+1, l->ksize, l->ch, l->ox, l->oy, n[i]);
 			break;
+
 		case CATS_PIXELSHUFFLER:
 			l->ich = l->ch * l->r*l->r;
 			l->ox = l->sx * l->r;
 			l->oy = l->sy * l->r;
 			l->outputs = l->ch * l->ox * l->oy;
-			n[i] = m[i] = 0;
+//			n[i] = m[i] = 0;
 			printf("L%02d: PIXELSHUFFLER x%d ch:%d->%d (w:%d h:%d)\n", i+1, l->r, l->ich, l->ch, l->ox, l->oy);
 			break;
 
@@ -972,7 +1031,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			break;
 
 		case CATS_PADDING:
-			n[i] = m[i] = 0;
+//			n[i] = m[i] = 0;
 			l->ch = l->ich;
 			l->ox = l->sx + l->padding*2;
 			l->oy = l->sy + l->padding*2;
@@ -989,7 +1048,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		case _CATS_ACT_SOFTMAX:
 		case _CATS_ACT_TANH:
 		case _CATS_ACT_RELU:
-			n[i] = m[i] = 0;
+//			n[i] = m[i] = 0;
 			l->ch = l->ich;
 			l->outputs = l->inputs;
 			printf("L%02d: ACT\n", i+1);
@@ -1212,6 +1271,7 @@ int CatsEye_saveCats(CatsEye *this, char *filename)
 
 	printf("Saving weight... %lu bytes\n", this->wsize*sizeof(real));
 	fwrite(this->wdata, this->wsize*sizeof(real), 1, fp);
+	fwrite(&this->epoch, sizeof(int), 1, fp);
 
 	fclose(fp);
 	return 0;
@@ -1223,6 +1283,7 @@ int CatsEye_loadCats(CatsEye *this, char *filename)
 
 	printf("Loading weight... %lu bytes\n", this->wsize*sizeof(real));
 	fread(this->wdata, this->wsize*sizeof(real), 1, fp);
+	fread(&this->epoch, sizeof(int), 1, fp);
 
 	fclose(fp);
 	return 0;
