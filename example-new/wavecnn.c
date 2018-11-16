@@ -35,6 +35,8 @@ int main()
 //		{  1024, _CATS_ACT_SIGMOID },
 		{   512, _CATS_ACT_LEAKY_RELU },
 		{   512, CATS_LINEAR, 0.01 },
+//		{  2048, _CATS_ACT_LEAKY_RELU },
+//		{  2048, CATS_LINEAR, 0.01 },
 		{   256, _CATS_ACT_SIGMOID },
 //		{   256, _CATS_ACT_SOFTMAX },
 		{   256, CATS_LOSS_0_1 },
@@ -43,22 +45,18 @@ int main()
 	_CatsEye__construct(&cat, u);
 
 	// 訓練データ
-	real x[sample];
+	real x[sample];		// -1 - 1
 	for (int i=0; i<sample; i++) x[i] = sin(2.0*M_PI / (TIME/2) * i *10);
-//	for (int i=0; i<sample; i++) x[i] = sin(2.0*M_PI / sample * i *10)/2.0+0.5;
-//	for (int i=0; i<sample; i++) x[i] = (sin(2.0*M_PI / sample * i *10)/2.0+0.5)*256;
-	int16_t t[sample];
+//	for (int i=0; i<sample; i++) x[i] = sin(2.0*M_PI / TIME * i);
+	//for (int i=0; i<sample; i++) x[i] = sin(2.0*M_PI / (TIME/2) * i);
+	//for (int i=0; i<sample; i++) x[i] = sin(2.0*M_PI / TIME * i*10);
+	int16_t t[sample];	// 0 - 255
 	for (int i=0; i<sample; i++) t[i] = (int16_t)(x[i+TIME+1]*127+128);
-//	for (int i=0; i<sample; i++) t[i] = (int16_t)(x[i+TIME+1]*256);
-//	for (int i=0; i<sample; i++) t[i] = (int16_t)(x[i+TIME+1]);
 
 	// 訓練
 	printf("Starting training using (stochastic) gradient descent\n");
+	cat.slide = 1;
 	_CatsEye_train(&cat, x, t, sample/TIME, 10/*repeat*/, 1000/*random batch*/, 0);
-//	cat.slide = 1;
-//	_CatsEye_train(&cat, x, t, sample-TIME, 10/*repeat*/, 1000/*random batch*/, 0);
-	//_CatsEye_train(&cat, x, t, sample-TIME, 10/*repeat*/, 0/*random batch*/, 0);
-//	_CatsEye_train(&cat, x, t, 10, 10/*repeat*/, 10/*random batch*/, 0);
 	printf("Training complete\n");
 
 	// 結果の表示
@@ -72,7 +70,7 @@ int main()
 	}
 	fclose(fp);
 
-	// postscriptで表示
+	// postscriptで表示 [x: -0.5 - 2*3.14+0.5, y: -1.2 - 1.2 ]
 	PS_init("/tmp/sin.ps");
 	PS_viewport(0.2, 0.2, 0.8, 0.8);
 	PS_xyworld(-0.5, -1.2, 2.0*M_PI+0.5, 1.2);
@@ -87,10 +85,9 @@ int main()
 
 	PS_setrgb(0.0, 0.0, 1.0);	// sin
 //	PS_plot(x[0], t[0], 3);
-//	for (int i=1; i<sample; i++) {
-	for (int i=1; i<sample-TIME; i+=8) {
-//		PS_plot(x[i], t[i], 2);
-		PS_circ(x[i], t[i], 0.05);
+	for (int i=1; i<TIME; i+=8) {
+//		PS_circ(x[i], t[i]/256.0, 0.05);
+		PS_circ(2*M_PI*i/TIME, t[i]/128.0-1, 0.05);
 		PS_stroke();
 	}
 //	PS_stroke();
@@ -102,11 +99,13 @@ int main()
 //	PS_plot(x[0], cat.layer[cat.layers-1].x[0], 3);
 	int p = _CatsEye_predict(&cat, x);
 	PS_plot(x[0], p/256.0, 3);
+//	PS_plot(2*M_PI*1/TIME, p/128.0-1, 2);
 	for (int i=1; i<TIME; i++) {
 //		_CatsEye_forward(&cat, x+i);
 //		PS_plot(x[i], cat.layer[cat.layers-1].x[0], 2);
 		int p = _CatsEye_predict(&cat, x+i);
-		PS_plot(x[i], p/256.0, 2);
+//		PS_plot(x[i], p/256.0, 2);
+		PS_plot(2*M_PI*i/TIME, p/128.0-1, 2);
 	}
 	PS_stroke();
 	PS_fin();
