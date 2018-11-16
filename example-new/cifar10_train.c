@@ -54,7 +54,7 @@ int main()
 //		{   256, _CATS_ACT_LEAKY_RELU },
 		{   256, _CATS_ACT_RRELU, .min=-0.1, .max=0.1 },
 		{   256, CATS_LINEAR, 0.01 },
-		{ label, _CATS_ACT_SIGMOID },
+		{ label, _CATS_ACT_SIGMOID }, // <- slow learning, but good recognize
 		//{ label, _CATS_ACT_SOFTMAX },
 		{ label, CATS_LOSS_0_1 },
 	};
