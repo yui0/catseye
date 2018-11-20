@@ -14,9 +14,14 @@
 
 //#define NAME	"mnist_lsgan"
 //#define ZDIM	100
+//#define ZDIM	62
 #define NAME	"_mnist_lsgan"
 #define ZDIM	10
-#define BATCH	60000
+
+#define SAMPLE	60000
+#define BATCH	100
+#define BATCH_G	200
+#define OUTPUT	9
 
 int main()
 {
@@ -37,12 +42,21 @@ int main()
 //		{       0, _CATS_ACT_RELU },
 		{       0, _CATS_ACT_LEAKY_RELU },
 
+/*		{       0, CATS_CONV, 0.001, .ksize=1, .stride=1, .ch=64 },
+		{       0, CATS_PIXELSHUFFLER, .r=2, .ch=16, .sx=7, .sy=7 },	// 16 14x14
+		{       0, _CATS_ACT_LEAKY_RELU },*/
+
 		{       0, CATS_CONV, 0.001, .ksize=1, .stride=1, .ch=4 },
 		{       0, CATS_PIXELSHUFFLER, .r=2, .ch=1 },	// 1 28x28
-		{       0, _CATS_ACT_TANH },
+		{    size, _CATS_ACT_TANH },	// [-1,1]
+//		{    size, _CATS_ACT_SIGMOID },	// [0,1]
+
+//		{       0, CATS_PIXELSHUFFLER, .r=2, .ch=8 },	// 8 28x28
+//		{       0, CATS_CONV, 0.001, .ksize=1, .stride=1, .ch=1 },
+//		{    size, _CATS_ACT_SIGMOID },	// [0,1]
 
 		// discriminator
-		{   28*28, CATS_CONV, 0.001, .ksize=5, .stride=1/*2*/, .ch=64 },
+		{    size, CATS_CONV, 0.001, .ksize=5, .stride=1/*2*/, .ch=64 },
 //		{       0, CATS_MAXPOOL, .ksize=2, .stride=2 },
 		{       0, CATS_AVGPOOL, .ksize=2, .stride=2 },
 		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
@@ -50,10 +64,11 @@ int main()
 		{       0, CATS_CONV, 0.001, .ksize=5, .stride=1/*2*/, .ch=128 },
 //		{       0, CATS_MAXPOOL, .ksize=2, .stride=2 },
 		{       0, CATS_AVGPOOL, .ksize=2, .stride=2 },
-		{       0, _CATS_ACT_LEAKY_RELU },
+		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 
 		{       0, CATS_LINEAR, 0.01 },
 		{     256, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+//		{    1024, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 		{       0, CATS_LINEAR, 0.01 },
 		{       1, _CATS_ACT_SIGMOID },
 		{       1, CATS_LOSS_MSE },
@@ -69,7 +84,7 @@ int main()
 
 	real *x = malloc(sizeof(real)*size*sample);	// 訓練データ
 	unsigned char *data = malloc(sample*size);
-	real *noise = malloc(sizeof(real)*ZDIM*BATCH);
+	real *noise = malloc(sizeof(real)*ZDIM*SAMPLE);
 
 	// 訓練データの読み込み
 	printf("Training data: loading...");
@@ -83,9 +98,9 @@ int main()
 	free(data);
 	printf("OK\n");
 
-//	int16_t lreal[BATCH], lfake[BATCH];
-	real lreal[BATCH], lfake[BATCH];
-	for (int i=0; i<BATCH; i++) {
+//	int16_t lreal[SAMPLE], lfake[SAMPLE];
+	real lreal[SAMPLE], lfake[SAMPLE];
+	for (int i=0; i<SAMPLE; i++) {
 //		lreal[i] = 1;
 //		lfake[i] = 0;
 		lreal[i] = random(0.7, 1.2);
@@ -94,38 +109,38 @@ int main()
 
 	// 訓練
 	printf("Starting training using (stochastic) gradient descent\n");
-	for (int n=cat.epoch; n<1000; n++) {
+	for (int n=cat.epoch; n<10000; n++) {
 		// Training Discriminator
-		cat.start = 9;
+		cat.start = OUTPUT;
 		cat.slide = size;
 		printf("Training Discriminator #%d: phase 1 [real]\n", n);
-		_CatsEye_train(&cat, x, lreal, BATCH, 1/*repeat*/, 100/*random batch*/, 0);
+		_CatsEye_train(&cat, x, lreal, SAMPLE, 1/*repeat*/, BATCH/*random batch*/, 0);
 
 		// Training Discriminator [ D(G(z)) = 0 ]
-		for (int i=0; i<ZDIM*BATCH; i++) {
+		for (int i=0; i<ZDIM*SAMPLE; i++) {
 //			noise[i] = random(-1, 1);
 			noise[i] = rand_normal(0, 1);
 		}
 		cat.start = 0;
-		cat.stop = 9+1;
+		cat.stop = OUTPUT+1;
 		cat.slide = ZDIM;
-		for (int i=0; i<9; i++) cat.layer[i].fix = 1;
+		for (int i=0; i<OUTPUT; i++) cat.layer[i].fix = 1;
 		printf("Training Discriminator #%d: phase 2 [fake]\n", n);
-		_CatsEye_train(&cat, noise, lfake, BATCH, 1/*repeat*/, 100/*random batch*/, 0);
-		for (int i=0; i<9; i++) cat.layer[i].fix = 0;
+		_CatsEye_train(&cat, noise, lfake, SAMPLE, 1/*repeat*/, BATCH/*random batch*/, 0);
+		for (int i=0; i<OUTPUT; i++) cat.layer[i].fix = 0;
 		cat.stop = 0;
 
 		// Training Generater [ D(G(z)) = 1 ]
-		for (int i=0; i<ZDIM*BATCH; i++) {
+		for (int i=0; i<ZDIM*SAMPLE; i++) {
 //			noise[i] = random(-1, 1);
 			noise[i] = rand_normal(0, 1);
 		}
 		cat.start = 0;
 		cat.slide = ZDIM;
-		for (int i=9; i<cat.layers; i++) cat.layer[i].fix = 1;
+		for (int i=OUTPUT; i<cat.layers; i++) cat.layer[i].fix = 1;
 		printf("Training Generater #%d\n", n);
-		_CatsEye_train(&cat, noise, lreal, BATCH, 1/*repeat*/, 200/*random batch*/, 0);
-		for (int i=9; i<cat.layers; i++) cat.layer[i].fix = 0;
+		_CatsEye_train(&cat, noise, lreal, SAMPLE, 1/*repeat*/, BATCH_G/*random batch*/, 0);
+		for (int i=OUTPUT; i<cat.layers; i++) cat.layer[i].fix = 0;
 
 
 		// 結果の表示
@@ -135,7 +150,7 @@ int main()
 			_CatsEye_forward(&cat, noise+ZDIM*i);
 //			int p = _CatsEye_predict(&cat, noise+ZDIM*i);
 //			printf("%d ", p);
-			CatsEye_visualize(cat.layer[9].x, size, 28, &pixels[(i/10)*size*10+(i%10)*28], 28*10);
+			CatsEye_visualize(cat.layer[OUTPUT].x, size, 28, &pixels[(i/10)*size*10+(i%10)*28], 28*10);
 
 //			cat.start = 9;
 //			_CatsEye_forward(&cat, x+size*i);

@@ -251,8 +251,11 @@ void _CatsEye_linear_backward(CatsEye_layer *l)
 {
 	real *o = l->x;
 	real *d = l->prev_dw;
+	real *w = l->W;
 	for (int i=0; i<=l->inputs; i++) {	// bias!!
-		*d++ = dotvv(&l->W[i*l->outputs], l->dW, l->outputs);
+//		*d++ = dotvv(&l->W[i*l->outputs], l->dW, l->outputs);
+		*d++ = dotvv(w, l->dW, l->outputs);
+		w += l->outputs;
 	}
 }
 void _CatsEye_linear_update(CatsEye_layer *l)

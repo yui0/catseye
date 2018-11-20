@@ -35,6 +35,8 @@ int main()
 //		{  1024, _CATS_ACT_SIGMOID },
 		{   512, _CATS_ACT_LEAKY_RELU },
 		{   512, CATS_LINEAR, 0.01 },
+		{   128, _CATS_ACT_LEAKY_RELU },
+		{   128, CATS_LINEAR, 0.01 },
 //		{  2048, _CATS_ACT_LEAKY_RELU },
 //		{  2048, CATS_LINEAR, 0.01 },
 		{   256, _CATS_ACT_SIGMOID },
@@ -98,8 +100,8 @@ int main()
 //	_CatsEye_forward(&cat, x);
 //	PS_plot(x[0], cat.layer[cat.layers-1].x[0], 3);
 	int p = _CatsEye_predict(&cat, x);
-	PS_plot(x[0], p/256.0, 3);
-//	PS_plot(2*M_PI*1/TIME, p/128.0-1, 2);
+//	PS_plot(x[0], p/256.0, 3);
+	PS_plot(2*M_PI*0/TIME, p/128.0-1, 3);
 	for (int i=1; i<TIME; i++) {
 //		_CatsEye_forward(&cat, x+i);
 //		PS_plot(x[i], cat.layer[cat.layers-1].x[0], 2);
