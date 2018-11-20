@@ -76,6 +76,10 @@ for more information, see example/
   ![autoencoder](example-new/mnist_autoencoder_100.png)
   ![autoencoder](example-new/cifar_autoencoder_100.png)
 
+- DCGAN ([example/mnist_lsgan.c](example/mnist_lsgan.c))
+
+  ![dcgan](example-new/mnist_lsgan.png)
+
 - Autoencoder ([example/mnist_autoencoder.c](example/mnist_autoencoder.c))
   - Unit 64 [tied weight]
 
