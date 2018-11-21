@@ -14,13 +14,9 @@ int main()
 {
 	int sample = 360;
 
-/*	CatsEye_layer u[] = {
-		{   1, CATS_LINEAR, CATS_ACT_SIGMOID,  0.01 }, // input layer
-		{ 100, CATS_LINEAR, CATS_ACT_IDENTITY, 0.01 }, // hidden layer
-		{   1, CATS_LOSS_MSE }, // output layer
-	};*/
 	CatsEye_layer u[] = {
 		{   1, CATS_LINEAR, 0.01 }, // input layer
+		//{ 100, CATS_BATCHNORMAL },
 		{ 100, _CATS_ACT_SIGMOID },
 		{ 100, CATS_LINEAR, 0.01 }, // hidden layer
 //		{   1, _CATS_ACT_SIGMOID },

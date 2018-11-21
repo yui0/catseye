@@ -15,6 +15,7 @@ Neural network library written in C and Javascript
   - Multilayer perceptron (MLP)
   - Deep Neural Networks (DNN)
   - Convolutional Neural Networks (CNN)
+  - Generative Adversarial Network (GAN)
 - Supported networks:
   - Activation functions
     - sigmoid
@@ -31,6 +32,7 @@ Neural network library written in C and Javascript
     - convolution
     - max pooling
     - average pooling
+    - batch normalization
     - Sub-Pixel Convolution (Pixel Shuffler) [Upscaling or Deconvolution]
     - linear
     - CCCP, Cascaded Cross Channel Parametric Pooling
@@ -76,7 +78,7 @@ for more information, see example/
   ![autoencoder](example-new/mnist_autoencoder_100.png)
   ![autoencoder](example-new/cifar_autoencoder_100.png)
 
-- DCGAN ([example/mnist_lsgan.c](example/mnist_lsgan.c))
+- DCGAN ([example-new/mnist_lsgan.c](example-new/mnist_lsgan.c))
 
   ![dcgan](example-new/mnist_lsgan.png)
 

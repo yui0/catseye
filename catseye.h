@@ -200,6 +200,7 @@ typedef struct layer {
 //	real (*act2)(real x);	// RNN
 //	real (*dact2)(real x);	// RNN
 
+	real mu, var;		// Batch Normalization [average, variance]
 	real gamma, beta;	// Batch Normalization
 	real alpha, min, max;	// Leaky ReLU, RReLU
 
@@ -638,37 +639,64 @@ void CatsEye_padding_backward(CatsEye_layer *l)
 // http://cielan.hateblo.jp/entry/2017/09/25/232217
 void CatsEye_BatchNormalization_forward(CatsEye_layer *l)
 {
+	// average
 	real *x = l->x;
 	real avg = 0;
 	for (int i=0; i<l->inputs; i++) avg += *x++;
 	avg /= l->inputs;
 
+	// variance
 	x = l->x;
-	real sigma = 0;
+	real var = 0;
 	real *z = l->z;
 	for (int i=0; i<l->inputs; i++) {
 		*z = *x++ -avg;
-		sigma += (*z) * (*z);
+		var += (*z) * (*z);
 		z++;
 	}
-	sigma /= l->inputs;
-	sigma = sqrt(sigma + 0.00000001);
+	var /= l->inputs;
+	real sigma = sqrt(var + 1e-8);
 
-	x = l->x;
 	z = l->z;
 	for (int i=0; i<l->inputs/*out*/; i++) {
-//		*z++ /= sigma;
 		*z = (*z / sigma) * l->gamma + l->beta;
 		z++;
 	}
+
+	l->mu = avg;
+	l->var = var;
 }
 // https://kevinzakka.github.io/2016/09/14/batch_normalization/
+// https://deepnotes.io/batchnorm
 void CatsEye_BatchNormalization_backward(CatsEye_layer *l)
 {
+	real *x = l->x;
 	real *delta = l->dW;
-	real beta = 0;
+	real *d = l->prev_dw;
+	real sigma = sqrt(l->var + 1e-8);
+//	real dbeta = 0;
+	real dvar = 0;
+	real dmu = 0;
+	real dmu2 = 0;
 	for (int i=0; i<l->inputs; i++) {
-		beta += delta[i];
+//		dbeta += delta[i];
+
+		real X_mu = *x++ - l->mu;
+		real dX_norm = *delta++ * l->gamma;
+		*d = dX_norm / sigma;
+		dvar += dX_norm * X_mu;
+		dmu += - *d++; //dX_norm / -sigma;
+		dmu2 += -2.0 * X_mu;
+	}
+	dvar *= -0.5 * pow(l->var + 1e-8, -3.0/2.0);
+	dmu += dvar / l->inputs * dmu2;
+
+	x = l->x;
+	d = l->prev_dw;
+	real a = dmu / l->inputs;
+	real b = dvar * 2.0 / l->inputs;
+	for (int i=0; i<l->inputs; i++) {
+		*d++ += a + b * (*x++ - l->mu);
 	}
 }
 
@@ -851,6 +879,7 @@ void (*_CatsEye_layer_forward[])(CatsEye_layer *l) = {
 	CatsEye_rnn_forward,
 
 	CatsEye_padding_forward,
+	CatsEye_BatchNormalization_forward,
 
 	// activation
 	_CatsEye_act_sigmoid,
@@ -876,6 +905,7 @@ void (*_CatsEye_layer_backward[])(CatsEye_layer *l) = {
 	CatsEye_rnn_backward,
 
 	CatsEye_padding_backward,
+	CatsEye_BatchNormalization_backward,
 
 	// activation
 	_CatsEye_dact_sigmoid,
@@ -901,6 +931,7 @@ void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
 	CatsEye_rnn_update,
 
 	CatsEye_none,	// padding
+	CatsEye_none,	// Batch Normalization
 
 	// activation
 	CatsEye_none,	// sigmoid
@@ -919,7 +950,7 @@ void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
 };
 typedef enum {
 	CATS_LINEAR, CATS_CONV, CATS_MAXPOOL, CATS_AVGPOOL, CATS_PIXELSHUFFLER, CATS_RECURRENT,
-	CATS_PADDING,
+	CATS_PADDING, CATS_BATCHNORMAL,
 	_CATS_ACT_SIGMOID, _CATS_ACT_SOFTMAX, _CATS_ACT_TANH,
 	_CATS_ACT_RELU, _CATS_ACT_LEAKY_RELU, _CATS_ACT_ELU, _CATS_ACT_RRELU,
 	CATS_LOSS_0_1, CATS_LOSS_MSE, CATS_LOSS_CROSS_ENTROPY, CATS_LOSS_CROSS_ENTROPY_MULTICLASS
@@ -1037,6 +1068,14 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			l->oy = l->sy + l->padding*2;
 			l->outputs = l->ch * l->ox * l->oy;
 			printf("L%02d: PADIING%d-%dch %dx%d/%dx%d\n", i+1, l->padding, l->ich, l->sx, l->sy, l->ox, l->oy);
+			break;
+
+		case CATS_BATCHNORMAL:
+			l->gamma = 1.0;
+			l->beta = 0;
+			l->ch = l->ich;
+			l->outputs = l->inputs;
+			printf("L%02d: BATCH NORMALIZATION\n", i+1);
 			break;
 
 		case _CATS_ACT_RRELU:
