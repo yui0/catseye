@@ -18,6 +18,7 @@
 #elif defined CATS_USE_FLOAT
 #define real		float
 #define sqrt		sqrtf
+#define pow		powf
 #else
 #define real		double
 #warning "using double!!"
@@ -636,7 +637,7 @@ void CatsEye_padding_backward(CatsEye_layer *l)
 	}
 }
 
-// http://cielan.hateblo.jp/entry/2017/09/25/232217
+// https://deepnotes.io/batchnorm
 void CatsEye_BatchNormalization_forward(CatsEye_layer *l)
 {
 	// average
@@ -666,8 +667,6 @@ void CatsEye_BatchNormalization_forward(CatsEye_layer *l)
 	l->mu = avg;
 	l->var = var;
 }
-// https://kevinzakka.github.io/2016/09/14/batch_normalization/
-// https://deepnotes.io/batchnorm
 void CatsEye_BatchNormalization_backward(CatsEye_layer *l)
 {
 	real *x = l->x;
@@ -1017,14 +1016,16 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			printf("L%02d: CONV%d-%dch i/o:%d/%d[%dx%d/%dx%d] (%d[ksize^2]x%d[ch])\n", i+1, l->ksize, l->ch, l->inputs, l->outputs, l->sx, l->sy, l->ox, l->oy, n[i], m[i]);
 			break;
 
-		case CATS_MAXPOOL:
-			n[i] = l->ox * l->oy;
-			m[i] = l->ch;
 		case CATS_AVGPOOL:
+		case CATS_MAXPOOL:
 			l->ch = l->ich;
 			l->ox = (l->sx +2*l->padding -l->ksize) /l->stride +1;
 			l->oy = (l->sy +2*l->padding -l->ksize) /l->stride +1;
 			l->outputs = l->ch * l->ox * l->oy;
+			if (l->type == CATS_MAXPOOL) {
+				n[i] = l->ox * l->oy;
+				m[i] = l->ch;
+			}
 			printf("L%02d: POOL%d-%dch (w:%d h:%d [%d])\n", i+1, l->ksize, l->ch, l->ox, l->oy, n[i]);
 			break;
 

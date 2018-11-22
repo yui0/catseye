@@ -21,7 +21,8 @@
 #define SAMPLE	60000
 #define BATCH	100
 #define BATCH_G	200
-#define OUTPUT	9
+//#define OUTPUT	9
+#define OUTPUT	13
 
 int main()
 {
@@ -32,13 +33,16 @@ int main()
 	CatsEye_layer u[] = {
 		// generator
 		{    ZDIM, CATS_LINEAR, 0.01 },
+		{    1024, CATS_BATCHNORMAL },
 //		{    1024, _CATS_ACT_RELU },
 		{    1024, _CATS_ACT_LEAKY_RELU },
 		{       0, CATS_LINEAR, 0.01 },
+		{ 128*7*7, CATS_BATCHNORMAL },
 //		{ 128*7*7, _CATS_ACT_RELU },	// 128 7x7
 		{ 128*7*7, _CATS_ACT_LEAKY_RELU },	// 128 7x7
 
 		{       0, CATS_PIXELSHUFFLER, .r=2, .ch=32, .sx=7, .sy=7 },	// 32 14x14
+		{       0, CATS_BATCHNORMAL },
 //		{       0, _CATS_ACT_RELU },
 		{       0, _CATS_ACT_LEAKY_RELU },
 
@@ -48,6 +52,7 @@ int main()
 
 		{       0, CATS_CONV, 0.001, .ksize=1, .stride=1, .ch=4 },
 		{       0, CATS_PIXELSHUFFLER, .r=2, .ch=1 },	// 1 28x28
+		{       0, CATS_BATCHNORMAL },
 		{    size, _CATS_ACT_TANH },	// [-1,1]
 //		{    size, _CATS_ACT_SIGMOID },	// [0,1]
 
