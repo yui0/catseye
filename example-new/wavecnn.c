@@ -30,17 +30,29 @@ int main()
 //		{   256, _CATS_ACT_SOFTMAX },
 		{   256, CATS_LOSS_0_1 },
 	};*/
-	CatsEye_layer u[] = {
+/*	CatsEye_layer u[] = {
 		{  TIME, CATS_LINEAR, 0.01 },
-//		{  1024, _CATS_ACT_SIGMOID },
+//		{   512, _CATS_ACT_SIGMOID },
 		{   512, _CATS_ACT_LEAKY_RELU },
 		{   512, CATS_LINEAR, 0.01 },
+//		{   128, _CATS_ACT_SIGMOID },
 		{   128, _CATS_ACT_LEAKY_RELU },
 		{   128, CATS_LINEAR, 0.01 },
 //		{  2048, _CATS_ACT_LEAKY_RELU },
 //		{  2048, CATS_LINEAR, 0.01 },
 		{   256, _CATS_ACT_SIGMOID },
 //		{   256, _CATS_ACT_SOFTMAX },
+		{   256, CATS_LOSS_0_1 },
+	};*/
+	CatsEye_layer u[] = {
+		{  TIME, CATS_LINEAR, 0.01, .outputs=128 },
+		{     0, _CATS_ACT_LEAKY_RELU },
+		{     0, CATS_LINEAR, 0.01, .outputs=512 },
+		{     0, _CATS_ACT_LEAKY_RELU },
+		{     0, CATS_LINEAR, 0.01, .outputs=1024 },
+		{     0, _CATS_ACT_LEAKY_RELU },
+		{     0, CATS_LINEAR, 0.01, .outputs=256 },
+		{     0, _CATS_ACT_SIGMOID },
 		{   256, CATS_LOSS_0_1 },
 	};
 	CatsEye cat;

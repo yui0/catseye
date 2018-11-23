@@ -4,96 +4,76 @@
 //		©2018 Yuichiro Nakada
 //---------------------------------------------------------
 
-// gcc mnist_lsgan.c -o mnist_lsgan -lm -Ofast -fopenmp -lgomp
-// clang mnist_lsgan.c -o mnist_lsgan -lm -Ofast
+// gcc mnist_gan.c -o mnist_gan -lm -Ofast -fopenmp -lgomp
+// clang mnist_gan.c -o mnist_gan -lm -Ofast
 
 #define CATS_USE_FLOAT
 #include "../catseye.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "../stb_image_write.h"
 
-#define NAME	"mnist_lsgan"
-//#define ZDIM	100
-//#define ZDIM	62
-//#define NAME	"_mnist_lsgan"
-#define ZDIM	10
+#define NAME	"mnist_gan"
+#define ZDIM	100
+//#define NAME	"_mnist_gan"
+//#define ZDIM	10
 
 #define SAMPLE	60000
-#define BATCH	100
-#define BATCH_G	200
-#define OUTPUT	9
-//#define OUTPUT	10
+#define BATCH	640
+#define BATCH_G	1280
+//#define OUTPUT	8
+#define OUTPUT	11
 
 int main()
 {
 	int size = 28*28;	// 入出力層(28x28)
 	int sample = 60000;
 
-	// https://qiita.com/taku-buntu/items/0093a68bfae0b0ff879d
+	// https://qiita.com/triwave33/items/1890ccc71fab6cbca87e
+	// https://github.com/gwaygenomics/keras_gan/blob/master/mnist_mlp_gan.ipynb
 	CatsEye_layer u[] = {
 		// generator
-#if 0
-		{    ZDIM, CATS_LINEAR, 0.01, .outputs=1024 },
+/*		{    ZDIM, CATS_LINEAR, 0.01, },
+		{     256, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 		{       0, CATS_BATCHNORMAL },
-//		{    1024, _CATS_ACT_RELU },
-		{    1024, _CATS_ACT_LEAKY_RELU },
 
-		{       0, CATS_LINEAR, 0.01, .outputs=128*7*7 },
+		{       0, CATS_LINEAR, 0.01 },
+		{     512, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 		{       0, CATS_BATCHNORMAL },
-//		{ 128*7*7, _CATS_ACT_RELU },	// 128 7x7
-		{ 128*7*7, _CATS_ACT_LEAKY_RELU },	// 128 7x7
 
-		{       0, CATS_PIXELSHUFFLER, .r=2, .ch=32, .sx=7, .sy=7 },	// 32 14x14
-		//{       0, CATS_BATCHNORMAL },
-//		{       0, _CATS_ACT_RELU },
-		//{       0, _CATS_ACT_LEAKY_RELU },
-
-/*		{       0, CATS_CONV, 0.001, .ksize=1, .stride=1, .ch=64 },
-		{       0, CATS_PIXELSHUFFLER, .r=2, .ch=16, .sx=7, .sy=7 },	// 16 14x14
-		{       0, _CATS_ACT_LEAKY_RELU },*/
-
-		{       0, CATS_CONV, 0.001, .ksize=1, .stride=1, .ch=4 },
-		{       0, CATS_PIXELSHUFFLER, .r=2, .ch=1 },	// 1 28x28
+		{       0, CATS_LINEAR, 0.01 },
+		{    1024, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 		//{       0, CATS_BATCHNORMAL }, // BAD[output]
-		{    size, _CATS_ACT_TANH },	// [-1,1]
-//		{    size, _CATS_ACT_SIGMOID },	// [0,1]
 
-//		{       0, CATS_PIXELSHUFFLER, .r=2, .ch=8 },	// 8 28x28
-//		{       0, CATS_CONV, 0.001, .ksize=1, .stride=1, .ch=1 },
-//		{    size, _CATS_ACT_SIGMOID },	// [0,1]
-#endif
-		{    ZDIM, CATS_LINEAR, 0.01, .outputs=1024 },
+		{       0, CATS_LINEAR, 0.01 },
+//		{    size, _CATS_ACT_TANH },	// ??? [-1,1]
+		{    size, _CATS_ACT_SIGMOID },	// [0,1]*/
+
+		{    ZDIM, CATS_LINEAR, 0.01, .outputs=1600 },
 		{       0, CATS_BATCHNORMAL },
-		{       0, _CATS_ACT_LEAKY_RELU },
+		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.3 },
 
-		{       0, CATS_LINEAR, 0.01, .outputs=128*7*7 },
+		{       0, CATS_LINEAR, 0.01, .outputs=1200 },
 		{       0, CATS_BATCHNORMAL },
-		{       0, _CATS_ACT_LEAKY_RELU },	// 128 7x7
+		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.3 },
 
-		{       0, CATS_CONV, 0.001, .ksize=1, .stride=1, .ch=16, .ich=128, .sx=7, .sy=7 },
-		{       0, CATS_PIXELSHUFFLER, .r=4, .ch=1 },	// 1 28x28
-		{    size, _CATS_ACT_TANH },	// [-1,1]
+		{       0, CATS_LINEAR, 0.01, .outputs=1000 },
+		{       0, CATS_BATCHNORMAL },
+		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.3 },
 
+		{       0, CATS_LINEAR, 0.01 },
+		{    size, _CATS_ACT_SIGMOID },	// [0,1]
 
 		// discriminator
-		{    size, CATS_CONV, 0.001, .ksize=5, .stride=1/*2*/, .ch=64 },
-//		{       0, CATS_MAXPOOL, .ksize=2, .stride=2 },
-		{       0, CATS_AVGPOOL, .ksize=2, .stride=2 },
-		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
-
-		{       0, CATS_CONV, 0.001, .ksize=5, .stride=1/*2*/, .ch=128 },
-//		{       0, CATS_MAXPOOL, .ksize=2, .stride=2 },
-		{       0, CATS_AVGPOOL, .ksize=2, .stride=2 },
-		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+		{    size, CATS_LINEAR, 0.01 },
+		{     512, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 
 		{       0, CATS_LINEAR, 0.01 },
 		{     256, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
-//		{    1024, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+
 		{       0, CATS_LINEAR, 0.01 },
 		{       1, _CATS_ACT_SIGMOID },
+
 		{       1, CATS_LOSS_MSE },
-//		{       2, _CATS_ACT_SIGMOID },
-//		{       2, CATS_LOSS_0_1 },
 	};
 	CatsEye cat;
 	_CatsEye__construct(&cat, u);
@@ -138,6 +118,7 @@ int main()
 
 		// Training Discriminator [ D(G(z)) = 0 ]
 		for (int i=0; i<ZDIM*SAMPLE; i++) {
+//			noise[i] = random(0, 1);
 //			noise[i] = random(-1, 1);
 			noise[i] = rand_normal(0, 1);
 		}
@@ -152,6 +133,7 @@ int main()
 
 		// Training Generater [ D(G(z)) = 1 ]
 		for (int i=0; i<ZDIM*SAMPLE; i++) {
+//			noise[i] = random(0, 1);
 //			noise[i] = random(-1, 1);
 			noise[i] = rand_normal(0, 1);
 		}

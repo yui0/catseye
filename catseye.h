@@ -989,7 +989,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 
 		osize[i] = 0;
 		if (i>0) {
-			l->ich = (l-1)->ch;
+			if (!l->ich) l->ich = (l-1)->ch;
 			if (!l->inputs) l->inputs = (l-1)->outputs;
 			else if (l->inputs<0) { // select the layer
 				l->inputs = (l+l->inputs)->outputs;
@@ -1099,7 +1099,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		case CATS_LOSS_MSE:
 			if (l->type==CATS_LOSS_MSE) printf("L%02d: LOSS MSE\n", i+1);
 		default: // LINEAR
-			if (i<this->layers-1) {
+			if (i<this->layers-1 && !l->outputs) {
 				if ((l+1)->inputs>0) l->outputs = (l+1)->inputs;
 				else { l->outputs = l->inputs; printf("warning: out:%d\n", l->outputs); }
 			}
