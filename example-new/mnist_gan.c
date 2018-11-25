@@ -13,42 +13,45 @@
 #include "../stb_image_write.h"
 
 #define NAME	"mnist_gan"
-#define ZDIM	100
+//#define ZDIM	100
 //#define NAME	"_mnist_gan"
-//#define ZDIM	10
+#define ZDIM	10
 
 #define SAMPLE	60000
-#define BATCH	640
-#define BATCH_G	1280
-//#define OUTPUT	8
-#define OUTPUT	11
+#define BATCH	10240
+#define BATCH_G	20480
+#define OUTPUT	4
+//#define BATCH	640
+//#define BATCH_G	1280
+//#define OUTPUT	11
 
 int main()
 {
 	int size = 28*28;	// 入出力層(28x28)
 	int sample = 60000;
 
+#if 0
 	// https://qiita.com/triwave33/items/1890ccc71fab6cbca87e
 	// https://github.com/gwaygenomics/keras_gan/blob/master/mnist_mlp_gan.ipynb
 	CatsEye_layer u[] = {
 		// generator
-/*		{    ZDIM, CATS_LINEAR, 0.01, },
-		{     256, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+		{    ZDIM, CATS_LINEAR, 0.01, .outputs=256 },
+		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 		{       0, CATS_BATCHNORMAL },
 
-		{       0, CATS_LINEAR, 0.01 },
-		{     512, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+		{       0, CATS_LINEAR, 0.01, .outputs=512 },
+		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 		{       0, CATS_BATCHNORMAL },
 
-		{       0, CATS_LINEAR, 0.01 },
-		{    1024, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+		{       0, CATS_LINEAR, 0.01, .outputs=1024 },
+		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 		//{       0, CATS_BATCHNORMAL }, // BAD[output]
 
 		{       0, CATS_LINEAR, 0.01 },
-//		{    size, _CATS_ACT_TANH },	// ??? [-1,1]
-		{    size, _CATS_ACT_SIGMOID },	// [0,1]*/
+		{    size, _CATS_ACT_TANH },	// [-1,1]
+//		{    size, _CATS_ACT_SIGMOID },	// [0,1]
 
-		{    ZDIM, CATS_LINEAR, 0.01, .outputs=1600 },
+/*		{    ZDIM, CATS_LINEAR, 0.01, .outputs=1600 },
 		{       0, CATS_BATCHNORMAL },
 		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.3 },
 
@@ -61,7 +64,7 @@ int main()
 		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.3 },
 
 		{       0, CATS_LINEAR, 0.01 },
-		{    size, _CATS_ACT_SIGMOID },	// [0,1]
+		{    size, _CATS_ACT_SIGMOID },	// [0,1]*/
 
 		// discriminator
 		{    size, CATS_LINEAR, 0.01 },
@@ -71,6 +74,25 @@ int main()
 		{     256, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 
 		{       0, CATS_LINEAR, 0.01 },
+		{       1, _CATS_ACT_SIGMOID },
+
+		{       1, CATS_LOSS_MSE },
+	};
+#endif
+	// https://cntk.ai/pythondocs/CNTK_206A_Basic_GAN.html
+	CatsEye_layer u[] = {
+		// generator
+		{    ZDIM, CATS_LINEAR, 0.00005, .outputs=128 },
+		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+
+		{       0, CATS_LINEAR, 0.00005 },
+		{    size, _CATS_ACT_TANH },	// [-1,1]
+
+		// discriminator
+		{    size, CATS_LINEAR, 0.00005, .outputs=128 },
+		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+
+		{       0, CATS_LINEAR, 0.00005 },
 		{       1, _CATS_ACT_SIGMOID },
 
 		{       1, CATS_LOSS_MSE },
