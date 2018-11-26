@@ -61,11 +61,13 @@ int main()
 //	CatsEye_saveBin(&cat, "mnist.bin");
 
 	// 結果の表示
+	int result[10][10];
 	unsigned char *pixels = calloc(1, size*100);
 	int c = 0;
 	int r = 0;
 	for (int i=0; i<sample; i++) {
 		int p = _CatsEye_predict(&cat, x+size*i);
+		result[t[i]][p]++;
 		if (p==t[i]) r++;
 		else {
 			if (c<100) {
@@ -84,33 +86,15 @@ int main()
 		}
 //		printf("%d -> %d\n", p, t[i]);
 	}
+	for (int i=0; i<10; i++) {
+		for (int j=0; j<10; j++) {
+			printf("%3d ", result[i][j]);
+		}
+		printf("\n");
+	}
 	printf("Prediction accuracy on training data = %f%%\n", (float)r/sample*100.0);
 	stbi_write_png("mnist_cnn_train_wrong.png", 28*10, 28*10, 1, pixels, 28*10);
 	memset(pixels, 0, size*100);
-
-/*	for (int i=0; i<10; i++) {
-//		CatsEye_forward(&cat, x+size*i);
-		_CatsEye_forward(&cat, x+size*i);
-
-		// 初段フィルタ出力
-		CatsEye_visualizeUnits(&cat, 0, 1, 0, &pixels[i*28], 28*10);
-		CatsEye_visualizeUnits(&cat, 0, 1, 1, &pixels[28*28*10+i*28], 28*10);
-		CatsEye_visualizeUnits(&cat, 0, 1, 2, &pixels[28*28*10*2+i*28], 28*10);
-		CatsEye_visualizeUnits(&cat, 0, 1, 3, &pixels[28*28*10*3+i*28], 28*10);
-		CatsEye_visualizeUnits(&cat, 0, 1, 4, &pixels[28*28*10*4+i*28], 28*10);
-
-		// 2段目フィルタ出力
-		CatsEye_visualizeUnits(&cat, 0, 2, 0, &pixels[28*28*10*5+i*28], 28*10);
-		CatsEye_visualizeUnits(&cat, 0, 2, 1, &pixels[28*28*10*6+i*28], 28*10);
-		CatsEye_visualizeUnits(&cat, 0, 2, 2, &pixels[28*28*10*7+i*28], 28*10);
-		CatsEye_visualizeUnits(&cat, 0, 2, 3, &pixels[28*28*10*8+i*28], 28*10);
-	}
-	// フィルタ
-	for (int i=0; i<u[CHANNEL+LPLEN]; i++) {
-		int n = (u[KSIZE+LPLEN]+2);
-		CatsEye_visualizeUnits(&cat, 1, 0, i, &pixels[28*28*10*(9+(i*n)/(28*10))+(i*n)%(28*10)], 28*10);
-	}
-	stbi_write_png("mnist_cnn_train.png", 28*10, 28*10, 1, pixels, 28*10);*/
 	free(pixels);
 
 	free(x);

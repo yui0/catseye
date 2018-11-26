@@ -73,12 +73,13 @@ for more information, see example/
   ![sin](example/sin.png)
   ![quadratic function](example/quadratic.png)
 
-- Convolution Autoencoder ([example-new/mnist_autoencoder.c](example-new/mnist_autoencoder.c)/[example-new/cifar_autoencoder.c](example-new/cifar_autoencoder.c))
+- Convolution Autoencoder ([example-new/mnist_autoencoder.c](example-new/mnist_autoencoder.c),[example-new/cifar_autoencoder.c](example-new/cifar_autoencoder.c))
 
   ![autoencoder](example-new/mnist_autoencoder_100.png)
   ![autoencoder](example-new/cifar_autoencoder_100.png)
 
 - DCGAN ([example-new/mnist_lsgan.c](example-new/mnist_lsgan.c))
+  - epoch 1900
 
   ![dcgan](example-new/mnist_lsgan.png)
 

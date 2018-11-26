@@ -20,7 +20,9 @@
 #define SAMPLE	60000
 #define BATCH	100
 #define BATCH_G	200
-#define OUTPUT	9
+//#define OUTPUT	9
+#define OUTPUT	7
+#define ETA	0.0001
 
 int main()
 {
@@ -28,15 +30,17 @@ int main()
 	int sample = 60000;
 
 	// https://qiita.com/taku-buntu/items/0093a68bfae0b0ff879d
+	// http://yusuke-ujitoko.hatenablog.com/entry/2017/08/30/205204
 	CatsEye_layer u[] = {
 		// generator
-		{     DIM, CATS_LINEAR, 0.01, .outputs=1024 },
-		{       0, CATS_BATCHNORMAL },
-		{       0, _CATS_ACT_LEAKY_RELU },
+//		{     DIM, CATS_LINEAR, ETA, .outputs=1024 },
+		{     DIM, CATS_LINEAR, ETA, .outputs=512 },
+//		{       0, CATS_BATCHNORMAL },
+		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 
-		{       0, CATS_LINEAR, 0.01, .outputs=128*7*7 },
-		{       0, CATS_BATCHNORMAL },
-		{       0, _CATS_ACT_LEAKY_RELU },	// 128 7x7
+		{       0, CATS_LINEAR, ETA, .outputs=128*7*7 },
+//		{       0, CATS_BATCHNORMAL },
+		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },	// 128 7x7
 
 		{       0, CATS_CONV, 0.001, .ksize=1, .stride=1, .ch=16, .ich=128, .sx=7, .sy=7 },
 		{       0, CATS_PIXELSHUFFLER, .r=4, .ch=1 },	// 1 28x28
@@ -52,9 +56,9 @@ int main()
 		{       0, CATS_AVGPOOL, .ksize=2, .stride=2 },
 		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 
-		{       0, CATS_LINEAR, 0.01, .outputs=256 },
+		{       0, CATS_LINEAR, ETA, .outputs=256 },
 		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
-		{       0, CATS_LINEAR, 0.01 },
+		{       0, CATS_LINEAR, ETA },
 		{       2, _CATS_ACT_SIGMOID },
 		{       2, CATS_LOSS_MSE },
 	};
@@ -109,7 +113,8 @@ int main()
 			noise[i] = rand_normal(0, 1);
 		}
 		for (int i=0; i<SAMPLE; i++) {
-			noise[i*DIM+ZDIM] = (int)(frand()*9);
+//			noise[i*DIM+ZDIM] = (int)(frand()*9);
+			noise[i*DIM+ZDIM] = lfake[i*2+1];
 		}
 		cat.start = 0;
 		cat.stop = OUTPUT+1;

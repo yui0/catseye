@@ -21,6 +21,8 @@
 #define BATCH	10240
 #define BATCH_G	20480
 #define OUTPUT	4
+//#define ETA	0.00005
+#define ETA	0.00008
 //#define BATCH	640
 //#define BATCH_G	1280
 //#define OUTPUT	11
@@ -82,17 +84,17 @@ int main()
 	// https://cntk.ai/pythondocs/CNTK_206A_Basic_GAN.html
 	CatsEye_layer u[] = {
 		// generator
-		{    ZDIM, CATS_LINEAR, 0.00005, .outputs=128 },
+		{    ZDIM, CATS_LINEAR, ETA, .outputs=128 },
 		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 
-		{       0, CATS_LINEAR, 0.00005 },
+		{       0, CATS_LINEAR, ETA },
 		{    size, _CATS_ACT_TANH },	// [-1,1]
 
 		// discriminator
-		{    size, CATS_LINEAR, 0.00005, .outputs=128 },
+		{    size, CATS_LINEAR, ETA, .outputs=128 },
 		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 
-		{       0, CATS_LINEAR, 0.00005 },
+		{       0, CATS_LINEAR, ETA },
 		{       1, _CATS_ACT_SIGMOID },
 
 		{       1, CATS_LOSS_MSE },
