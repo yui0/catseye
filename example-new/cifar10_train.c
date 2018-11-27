@@ -12,6 +12,8 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "../stb_image_write.h"
 
+#define ETA	0.001
+
 int main()
 {
 	int k = 32;		// image size
@@ -21,17 +23,17 @@ int main()
 
 	/*CatsEye_layer u[] = {	// 38.4%(10)
 		{  size, CATS_PADDING, .sx=32, .sy=32, .ich=3, .padding=1 },
-		{     0, CATS_CONV,   0, 0.01, .ksize=3, .stride=1, .ch=20, .ich=3 },
+		{     0, CATS_CONV,   0, ETA, .ksize=3, .stride=1, .ch=20, .ich=3 },
 		{     0, _CATS_ACT_LEAKY_RELU },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
 
 		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   0, 0.01, .ksize=3, .stride=1, .ch=20, },
+		{     0, CATS_CONV,   0, ETA, .ksize=3, .stride=1, .ch=20, },
 		{     0, _CATS_ACT_LEAKY_RELU },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
 
 		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   0, 0.01, .ksize=3, .stride=1, .ch=20, },
+		{     0, CATS_CONV,   0, ETA, .ksize=3, .stride=1, .ch=20, },
 		{     0, _CATS_ACT_LEAKY_RELU },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
 
@@ -41,46 +43,46 @@ int main()
 #if 1
 	CatsEye_layer u[] = {	// 50.4%(10), 95.8%(1000), 99.7%(2000)
 		{  size, CATS_PADDING, .sx=32, .sy=32, .ich=3, .padding=1 },
-		{     0, CATS_CONV,   0.001, .ksize=3, .stride=1, .ch=10, .ich=3 },
-		//{     0, CATS_BATCHNORMAL },
-//		{     0, _CATS_ACT_LEAKY_RELU },
-		{     0, _CATS_ACT_RRELU, .min=-0.1, .max=0.1 },
+		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=10, .ich=3 },
+		{     0, CATS_BATCHNORMAL },
+		{     0, _CATS_ACT_LEAKY_RELU },
+//		{     0, _CATS_ACT_RRELU, .min=-0.1, .max=0.1 },
 
 		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   0.001, .ksize=3, .stride=1, .ch=10, },
-		//{     0, CATS_BATCHNORMAL },
-//		{     0, _CATS_ACT_LEAKY_RELU },
-		{     0, _CATS_ACT_RRELU, .min=-0.1, .max=0.1 },
+		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=10, },
+		{     0, CATS_BATCHNORMAL },
+		{     0, _CATS_ACT_LEAKY_RELU },
+//		{     0, _CATS_ACT_RRELU, .min=-0.1, .max=0.1 },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
 //		{     0, CATS_AVGPOOL, .ksize=2, .stride=2 },
 
-		{     0, CATS_LINEAR, 0.01 },
-		//{   256, CATS_BATCHNORMAL },
-//		{   256, _CATS_ACT_LEAKY_RELU },
-		{   256, _CATS_ACT_RRELU, .min=-0.1, .max=0.1 },
+		{     0, CATS_LINEAR, 0.01, .outputs=128 },
+//		{     0, CATS_BATCHNORMAL },
+		{     0, _CATS_ACT_LEAKY_RELU },
+//		{     0, _CATS_ACT_RRELU, .min=-0.1, .max=0.1 },
 
-		{   256, CATS_LINEAR, 0.01 },
-		//{     0, CATS_BATCHNORMAL },
-		{ label, _CATS_ACT_SIGMOID }, // <- slow learning, but good recognize
+		{     0, CATS_LINEAR, 0.01, .outputs=label },
+//		{     0, CATS_BATCHNORMAL },
+		{     0, _CATS_ACT_SIGMOID }, // <- slow learning, but good recognize
 		//{ label, _CATS_ACT_SOFTMAX },
 		{ label, CATS_LOSS_0_1 },
 	};
 #endif
 /*	CatsEye_layer u[] = {	// 46.4%(100), 95.8%(1000), 99.7%(2000)
-		{   size, CATS_CONV,   CATS_ACT_LEAKY_RELU,  0.01, .ksize=3, .stride=1, .ch=10, .ich=3 },
-		{      0, CATS_CONV,   CATS_ACT_LEAKY_RELU,  0.01, .ksize=3, .stride=1, .ch=10 },
-//		{   size, CATS_CONV,   CATS_ACT_LEAKY_RELU,  0.01, .ksize=3, .stride=1, .ch=10, .padding=1, .ich=3 },
-//		{      0, CATS_CONV,   CATS_ACT_LEAKY_RELU,  0.01, .ksize=3, .stride=1, .ch=10, .padding=1 },
-		{      0, CATS_MAXPOOL,                  0,  0.01, .ksize=2, .stride=2 },
+		{   size, CATS_CONV,   CATS_ACT_LEAKY_RELU,  ETA, .ksize=3, .stride=1, .ch=10, .ich=3 },
+		{      0, CATS_CONV,   CATS_ACT_LEAKY_RELU,  ETA, .ksize=3, .stride=1, .ch=10 },
+//		{   size, CATS_CONV,   CATS_ACT_LEAKY_RELU,  ETA, .ksize=3, .stride=1, .ch=10, .padding=1, .ich=3 },
+//		{      0, CATS_CONV,   CATS_ACT_LEAKY_RELU,  ETA, .ksize=3, .stride=1, .ch=10, .padding=1 },
+		{      0, CATS_MAXPOOL,                  0,  ETA, .ksize=2, .stride=2 },
 		{      0, CATS_LINEAR, CATS_ACT_LEAKY_RELU,  0.01 },
 		{    256, CATS_LINEAR,   CATS_ACT_IDENTITY,  0.01 },
 		//{    256, CATS_LINEAR,    CATS_ACT_SIGMOID,  0.01 },//!!!
 		{  label, CATS_LOSS_0_1 },
 	};*/
 	/*CatsEye_layer u[] = {	// 43.9%(100)
-		{   size, CATS_CONV,         CATS_ACT_RELU,  0.01, .ksize=3, .stride=1, .ch=10, .ich=3 },
-		{      0, CATS_CONV,         CATS_ACT_RELU,  0.01, .ksize=3, .stride=1, .ch=10 },
-		{      0, CATS_MAXPOOL,                  0,  0.01, .ksize=2, .stride=2 },
+		{   size, CATS_CONV,         CATS_ACT_RELU,  ETA, .ksize=3, .stride=1, .ch=10, .ich=3 },
+		{      0, CATS_CONV,         CATS_ACT_RELU,  ETA, .ksize=3, .stride=1, .ch=10 },
+		{      0, CATS_MAXPOOL,                  0,  ETA, .ksize=2, .stride=2 },
 		{      0, CATS_LINEAR,       CATS_ACT_RELU,  0.01 },
 		{    256, CATS_LINEAR,   CATS_ACT_IDENTITY,  0.01 },
 		{  label, CATS_LOSS,         CATS_LOSS_0_1,  0.01 },
@@ -94,9 +96,9 @@ int main()
 	  (fc3): Linear(in_features=84, out_features=10)
 	)*/
 	/*CatsEye_layer u[] = {	// 32.4%(100)
-		{   size, CATS_CONV,       CATS_ACT_RELU,  0.01, .ksize=5, .stride=1, .ch=6, .ich=3 },
-		{      0, CATS_MAXPOOL,                0,  0.01, .ksize=2, .stride=2 },
-		{      0, CATS_CONV,       CATS_ACT_RELU,  0.01, .ksize=5, .stride=1, .ch=16 },
+		{   size, CATS_CONV,       CATS_ACT_RELU,  ETA, .ksize=5, .stride=1, .ch=6, .ich=3 },
+		{      0, CATS_MAXPOOL,                0,  ETA, .ksize=2, .stride=2 },
+		{      0, CATS_CONV,       CATS_ACT_RELU,  ETA, .ksize=5, .stride=1, .ch=16 },
 		{      0, CATS_LINEAR,     CATS_ACT_RELU,  0.01 },
 		{    120, CATS_LINEAR,     CATS_ACT_RELU,  0.01 },
 		{     84, CATS_LINEAR, CATS_ACT_IDENTITY,  0.01 },
@@ -104,12 +106,12 @@ int main()
 	};*/
 	// https://cs.stanford.edu/people/karpathy/convnetjs/demo/cifar10.html
 	/*CatsEye_layer u[] = {	// 33.2%(100)
-		{   size, CATS_CONV,       CATS_ACT_RELU,  0.01, .ksize=5, .stride=1, .ch=16, .ich=3 },
-		{      0, CATS_MAXPOOL,                0,  0.01, .ksize=2, .stride=2 },
-		{      0, CATS_CONV,       CATS_ACT_RELU,  0.01, .ksize=5, .stride=1, .ch=20 },
-		{      0, CATS_MAXPOOL,                0,  0.01, .ksize=2, .stride=2 },
-		//{      0, CATS_CONV,       CATS_ACT_RELU,  0.01, .ksize=5, .stride=1, .ch=20 },
-		//{      0, CATS_MAXPOOL,                0,  0.01, .ksize=2, .stride=2 },
+		{   size, CATS_CONV,       CATS_ACT_RELU,  ETA, .ksize=5, .stride=1, .ch=16, .ich=3 },
+		{      0, CATS_MAXPOOL,                0,  ETA, .ksize=2, .stride=2 },
+		{      0, CATS_CONV,       CATS_ACT_RELU,  ETA, .ksize=5, .stride=1, .ch=20 },
+		{      0, CATS_MAXPOOL,                0,  ETA, .ksize=2, .stride=2 },
+		//{      0, CATS_CONV,       CATS_ACT_RELU,  ETA, .ksize=5, .stride=1, .ch=20 },
+		//{      0, CATS_MAXPOOL,                0,  ETA, .ksize=2, .stride=2 },
 //		{      0, CATS_LINEAR,  CATS_ACT_SIGMOID,  0.01 },
 		{      0, CATS_LINEAR, CATS_ACT_IDENTITY,  0.01 },
 		{  label, CATS_LOSS,       CATS_LOSS_0_1,  0.01 },
@@ -135,11 +137,13 @@ int main()
 //	CatsEye_saveBin(&cat, "cifar10.bin");
 
 	// 結果の表示
+	static int result[10][10];
 	unsigned char *pixels = calloc(1, size*100);
 	int c = 0;
 	int r = 0;
 	for (int i=0; i<sample; i++) {
 		int p = _CatsEye_predict(&cat, x+size*i);
+		result[t[i]][p]++;
 		if (p==t[i]) r++;
 		else {
 			if (c<100) {
@@ -162,6 +166,12 @@ int main()
 			c++;
 		}
 //		printf("%d -> %d\n", p, t[i]);
+	}
+	for (int i=0; i<10; i++) {
+		for (int j=0; j<10; j++) {
+			printf("%3d ", result[i][j]);
+		}
+		printf("\n");
 	}
 	printf("Prediction accuracy on training data = %f%%\n", (float)r/sample*100.0);
 	stbi_write_png("cifar10_train_wrong.png", k*10, k*10, 3/*bpp*/, pixels, 0);

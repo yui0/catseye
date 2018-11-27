@@ -12,6 +12,8 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "../stb_image_write.h"
 
+#define ETA	0.001
+
 int main()
 {
 	int k = 32;		// image size
@@ -22,60 +24,60 @@ int main()
 	CatsEye_layer u[] = {
 		{  size, CATS_PADDING, .sx=32, .sy=32, .ich=3, .padding=1 },
 //		{  size, CATS_PADDING, .sx=224, .sy=224, .ich=3, .padding=1 },
-		{     0, CATS_CONV,   0.001, .ksize=3, .stride=1, .ch=64, .ich=3 },
+		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=64, .ich=3 },
 		{     0, _CATS_ACT_RELU },
 		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   0.001, .ksize=3, .stride=1, .ch=64 },
+		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=64 },
 		{     0, _CATS_ACT_RELU },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 }, // 64,112x112
 
 		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   0.001, .ksize=3, .stride=1, .ch=128, },
+		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=128, },
 		{     0, _CATS_ACT_RELU },
 		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   0.001, .ksize=3, .stride=1, .ch=128, },
+		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=128, },
 		{     0, _CATS_ACT_RELU },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 }, // 128,56x56
 
 		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   0.001, .ksize=3, .stride=1, .ch=256, },
+		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=256, },
 		{     0, _CATS_ACT_RELU },
 		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   0.001, .ksize=3, .stride=1, .ch=256, },
+		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=256, },
 		{     0, _CATS_ACT_RELU },
 		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   0.001, .ksize=3, .stride=1, .ch=256, },
+		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=256, },
 		{     0, _CATS_ACT_RELU },
-		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 }, // 256,28x28
+/*		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 }, // 256,28x28
 
 		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   0.001, .ksize=3, .stride=1, .ch=512, },
+		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=512, },
 		{     0, _CATS_ACT_RELU },
 		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   0.001, .ksize=3, .stride=1, .ch=512, },
+		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=512, },
 		{     0, _CATS_ACT_RELU },
 		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   0.001, .ksize=3, .stride=1, .ch=512, },
+		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=512, },
 		{     0, _CATS_ACT_RELU },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 }, // 512,14x14
 
 		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   0.001, .ksize=3, .stride=1, .ch=512, },
+		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=512, },
 		{     0, _CATS_ACT_RELU },
 		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   0.001, .ksize=3, .stride=1, .ch=512, },
+		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=512, },
 		{     0, _CATS_ACT_RELU },
 		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   0.001, .ksize=3, .stride=1, .ch=512, },
+		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=512, },
 		{     0, _CATS_ACT_RELU },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 }, // 512,7x7
-
-		{     0, CATS_LINEAR, 0.001, .outputs=4096 },
+*/
+		{     0, CATS_LINEAR, 0.01, .outputs=4096 },
 		{     0, _CATS_ACT_RELU },
-		{     0, CATS_LINEAR, 0.001, .outputs=4096 },
+		{     0, CATS_LINEAR, 0.01, .outputs=4096 },
 		{     0, _CATS_ACT_RELU },
-		{     0, CATS_LINEAR, 0.001, .outputs=label },
-		{ label, _CATS_ACT_SIGMOID }, // <- slow learning, but good recognize
+		{     0, CATS_LINEAR, 0.01, .outputs=label },
+		{     0, _CATS_ACT_SIGMOID }, // <- slow learning, but good recognize
 		//{ label, _CATS_ACT_SOFTMAX },
 		{ label, CATS_LOSS_0_1 },
 	};
@@ -95,11 +97,13 @@ int main()
 	printf("Training complete\n");
 
 	// 結果の表示
+	static int result[10][10];
 	unsigned char *pixels = calloc(1, size*100);
 	int c = 0;
 	int r = 0;
-	for (int i=0; i<sample; i++) {
+	for (int i=0; i</*sample*/100; i++) {
 		int p = _CatsEye_predict(&cat, x+size*i);
+		result[t[i]][p]++;
 		if (p==t[i]) r++;
 		else {
 			if (c<100) {
@@ -122,6 +126,12 @@ int main()
 			c++;
 		}
 //		printf("%d -> %d\n", p, t[i]);
+	}
+	for (int i=0; i<10; i++) {
+		for (int j=0; j<10; j++) {
+			printf("%3d ", result[i][j]);
+		}
+		printf("\n");
 	}
 	printf("Prediction accuracy on training data = %f%%\n", (float)r/sample*100.0);
 	stbi_write_png("vgg16_train_wrong.png", k*10, k*10, 3/*bpp*/, pixels, 0);

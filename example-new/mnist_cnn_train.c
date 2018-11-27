@@ -61,7 +61,7 @@ int main()
 //	CatsEye_saveBin(&cat, "mnist.bin");
 
 	// 結果の表示
-	int result[10][10];
+	static int result[10][10];
 	unsigned char *pixels = calloc(1, size*100);
 	int c = 0;
 	int r = 0;

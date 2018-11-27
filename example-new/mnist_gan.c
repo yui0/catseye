@@ -22,7 +22,7 @@
 #define BATCH_G	20480
 #define OUTPUT	4
 //#define ETA	0.00005
-#define ETA	0.00008
+#define ETA	0.00007
 //#define BATCH	640
 //#define BATCH_G	1280
 //#define OUTPUT	11

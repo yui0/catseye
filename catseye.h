@@ -954,6 +954,13 @@ typedef enum {
 	_CATS_ACT_RELU, _CATS_ACT_LEAKY_RELU, _CATS_ACT_ELU, _CATS_ACT_RRELU,
 	CATS_LOSS_0_1, CATS_LOSS_MSE, CATS_LOSS_CROSS_ENTROPY, CATS_LOSS_CROSS_ENTROPY_MULTICLASS
 } CATS_LAYER_TYPE;
+char CatsEye_string[][16] = {
+	"dense", "conv", "max", "avg", "subpixel", "rnn",
+	"pad", "bn",
+	"sigmoid", "softmax", "tanh",
+	"relu", "leaky", "elu", "rrelu",
+	"binary", "mse", "cross", "mcross"
+};
 
 #define _CatsEye__construct(t, p)	__CatsEye__construct(t, p, sizeof(p)/sizeof(CatsEye_layer))
 void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
@@ -1013,7 +1020,8 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			l->outputs = l->ch * l->ox * l->oy;
 			n[i] = l->ksize * l->ksize;	// kernel size
 			m[i] = l->ch * l->ich;		// channel
-			printf("L%02d: CONV%d-%dch i/o:%d/%d[%dx%d/%dx%d] (%d[ksize^2]x%d[ch])\n", i+1, l->ksize, l->ch, l->inputs, l->outputs, l->sx, l->sy, l->ox, l->oy, n[i], m[i]);
+//			printf("L%02d: CONV%d-%dch i/o:%d/%d[%dx%d/%dx%d] (%d[ksize^2]x%d[ch])\n", i+1, l->ksize, l->ch, l->inputs, l->outputs, l->sx, l->sy, l->ox, l->oy, n[i], m[i]);
+			printf("%3d %-8s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
 		case CATS_AVGPOOL:
@@ -1026,7 +1034,8 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 				n[i] = l->ox * l->oy;
 				m[i] = l->ch;
 			}
-			printf("L%02d: POOL%d-%dch (w:%d h:%d [%d])\n", i+1, l->ksize, l->ch, l->ox, l->oy, n[i]);
+//			printf("L%02d: POOL%d-%dch (w:%d h:%d [%d])\n", i+1, l->ksize, l->ch, l->ox, l->oy, n[i]);
+			printf("%3d %-8s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
 		case CATS_PIXELSHUFFLER:
@@ -1035,7 +1044,8 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			l->oy = l->sy * l->r;
 			l->outputs = l->ch * l->ox * l->oy;
 //			n[i] = m[i] = 0;
-			printf("L%02d: PIXELSHUFFLER x%d ch:%d->%d (w:%d h:%d)\n", i+1, l->r, l->ich, l->ch, l->ox, l->oy);
+//			printf("L%02d: PIXELSHUFFLER x%d ch:%d->%d (w:%d h:%d)\n", i+1, l->r, l->ich, l->ch, l->ox, l->oy);
+			printf("%3d %-8s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
 		case CATS_RECURRENT:
@@ -1059,7 +1069,8 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 //			n[i] = l->hiddens;
 			n[i] = l->inputs;
 			m[i] = l->hiddens;
-			printf("L%02d: RECURRENT %d %d\n", i+1, n[i], m[i]);
+//			printf("L%02d: RECURRENT %d %d\n", i+1, n[i], m[i]);
+			printf("%3d %-8s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
 		case CATS_PADDING:
@@ -1068,7 +1079,8 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			l->ox = l->sx + l->padding*2;
 			l->oy = l->sy + l->padding*2;
 			l->outputs = l->ch * l->ox * l->oy;
-			printf("L%02d: PADIING%d-%dch %dx%d/%dx%d\n", i+1, l->padding, l->ich, l->sx, l->sy, l->ox, l->oy);
+//			printf("L%02d: PADIING%d-%dch %dx%d/%dx%d\n", i+1, l->padding, l->ich, l->sx, l->sy, l->ox, l->oy);
+			printf("%3d %-8s %4d     %d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->ch, l->padding, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
 		case CATS_BATCHNORMAL:
@@ -1076,7 +1088,8 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			l->beta = 0;
 			l->ch = l->ich;
 			l->outputs = l->inputs;
-			printf("L%02d: BATCH NORMALIZATION\n", i+1);
+//			printf("L%02d: BATCH NORMALIZATION\n", i+1);
+			printf("%3d %-8s %4d       %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->ch, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
 		case _CATS_ACT_RRELU:
@@ -1091,13 +1104,16 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 //			n[i] = m[i] = 0;
 			l->ch = l->ich;
 			l->outputs = l->inputs;
-			printf("L%02d: ACT\n", i+1);
+			l->ox = l->sx;
+			l->oy = l->sy;
+//			printf("L%02d: ACT\n", i+1);
+			printf("%3d %-8s %4d       %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->ch, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
 		case CATS_LOSS_0_1:
-			printf("L%02d: LOSS 0-1\n", i+1);
+//			printf("L%02d: LOSS 0-1\n", i+1);
 		case CATS_LOSS_MSE:
-			if (l->type==CATS_LOSS_MSE) printf("L%02d: LOSS MSE\n", i+1);
+//			if (l->type==CATS_LOSS_MSE) printf("L%02d: LOSS MSE\n", i+1);
 		default: // LINEAR
 			if (i<this->layers-1 && !l->outputs) {
 				if ((l+1)->inputs>0) l->outputs = (l+1)->inputs;
@@ -1105,7 +1121,8 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			}
 			n[i] = l->inputs;
 			m[i] = l->outputs;
-			if (l->type==CATS_LINEAR) printf("L%02d: LINEAR %d %d\n", i+1, n[i], m[i]);
+//			if (l->type==CATS_LINEAR) printf("L%02d: LINEAR %d %d\n", i+1, n[i], m[i]);
+			printf("%3d %-8s %4d       %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->ch, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 		}
 		wsize[i] = this->wsize;
 		this->ws[i] = (n[i]+1)*m[i];
@@ -1156,6 +1173,10 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		CatsEye_layer *l = &this->layer[i];
 		printf("L%02d in:%d out:%d (x:%ld-z:%ld-d:%ld-w:%ld)\n", i+1, l->inputs, l->outputs, l->x-this->odata, l->z-this->odata, this->d[i]-this->ddata, this->w[i]-this->wdata);
 	}
+	/*for (int i=0; i<this->layers; i++) {
+		CatsEye_layer *l = &this->layer[i];
+		printf("%3d %-8s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->padding, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
+	}*/
 
 	this->start = this->stop = 0;
 	this->end = this->layers-1;

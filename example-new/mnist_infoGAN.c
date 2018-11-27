@@ -22,7 +22,8 @@
 #define BATCH_G	200
 //#define OUTPUT	9
 #define OUTPUT	7
-#define ETA	0.0001
+//#define ETA	0.0001
+#define ETA	0.01
 
 int main()
 {
@@ -34,12 +35,12 @@ int main()
 	CatsEye_layer u[] = {
 		// generator
 //		{     DIM, CATS_LINEAR, ETA, .outputs=1024 },
-		{     DIM, CATS_LINEAR, ETA, .outputs=512 },
-//		{       0, CATS_BATCHNORMAL },
+		{     DIM, CATS_LINEAR, ETA, .outputs=256 },
+		{       0, CATS_BATCHNORMAL },
 		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 
 		{       0, CATS_LINEAR, ETA, .outputs=128*7*7 },
-//		{       0, CATS_BATCHNORMAL },
+		{       0, CATS_BATCHNORMAL },
 		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },	// 128 7x7
 
 		{       0, CATS_CONV, 0.001, .ksize=1, .stride=1, .ch=16, .ich=128, .sx=7, .sy=7 },
