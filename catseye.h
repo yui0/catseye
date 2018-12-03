@@ -247,6 +247,8 @@ void _CatsEye_linear_forward(CatsEye_layer *l)
 	real *w = l->W;
 	for (int i=l->outputs; i>0; i--) {
 		*o++ = dotTv(w++, l->x, l->inputs+1, l->outputs);	// bias!!
+///		*o++ = dotvv(w, l->x, l->inputs+1);	// bias!!
+///		w += l->inputs+1;
 	}
 }
 void _CatsEye_linear_backward(CatsEye_layer *l)
@@ -258,6 +260,7 @@ void _CatsEye_linear_backward(CatsEye_layer *l)
 //		*d++ = dotvv(&l->W[i*l->outputs], l->dW, l->outputs);
 		*d++ = dotvv(w, l->dW, l->outputs);
 		w += l->outputs;
+///		*d++ = dotTv(w++, l->dW, l->outputs, l->inputs+1);	// bias!!
 	}
 }
 void _CatsEye_linear_update(CatsEye_layer *l)
@@ -345,6 +348,7 @@ void CatsEye_rnn_update(CatsEye_layer *l)
 void _CatsEye_convolutional_forward(CatsEye_layer *l)
 {
 	int step = l->sx - l->ksize;
+///	int ks = l->ksize * l->ksize;
 
 	// c[out], c[in], ksize, h, w
 	real *s, *z, *o;
@@ -355,22 +359,25 @@ void _CatsEye_convolutional_forward(CatsEye_layer *l)
 		o = l->z + c*l->ox*l->oy;
 		for (int cc=l->ich; cc>0; cc--) {	// in
 //			s = l->x + (l->ich-cc)*l->sx*l->sy;
-			for (int wy=l->ksize; wy>0; wy--) {
+			for (int wy=0; wy<l->ksize; wy++) {
 				for (int wx=0; wx<l->ksize; wx++) {
 					real *p = s++;	// in
 					z = o;		// out
+///					real W = w[wx*l->ksize+wy];
 					for (int y=l->py; y>0; y--) {
 						_fma(z, p, *w, l->px);	// *z++ += (*p++) * (*w); p += m;
+///						_fma(z, p, W, l->px);	// *z++ += (*p++) * (*w); p += m;
 						p += l->sx;
 						z += l->ox;
 					}
 					w++;
 				}
 				s += step;
-///				s += l->sx;
+////				s += l->sx;
 			}
 			r += l->sx * l->sy;
 			s = r;
+///			w += ks;
 		}
 	}
 }
@@ -419,6 +426,7 @@ void _CatsEye_convolutional_forward(CatsEye_layer *l)
 void _CatsEye_convolutional_backward(CatsEye_layer *l)
 {
 	int step = l->sx - l->ksize;
+///	int ks = l->ksize * l->ksize;
 
 	// c[out], c[in], ksize, h, w
 	real *d, *prev_delta;
@@ -428,12 +436,14 @@ void _CatsEye_convolutional_backward(CatsEye_layer *l)
 	for (int c=l->ch; c>0; c--) {	// out
 		real *r = prev_delta = l->prev_dw;
 		for (int cc=l->ich; cc>0; cc--) {	// in
-			for (int wy=l->ksize; wy>0; wy--) {
-				for (int wx=l->ksize; wx>0; wx--) {
+			for (int wy=0; wy<l->ksize; wy++) {
+				for (int wx=0; wx<l->ksize; wx++) {
 					real *p = prev_delta++;	// in
 					d = delta;		// out
+///					real W = w[wx*l->ksize+wy];
 					for (int y=l->oy; y>0; y--) {
 						_fma(p, d, *w, l->ox);	// *p++ += (*d++) * (*w);
+///						_fma(p, d, W, l->ox);	// *p++ += (*d++) * (*w);
 						p += l->sx;
 						d += l->ox;
 					}
@@ -443,6 +453,7 @@ void _CatsEye_convolutional_backward(CatsEye_layer *l)
 			}
 			r += l->sx * l->sy;
 			prev_delta = r;
+///			w += ks;
 		}
 		delta = d;
 //		prev_delta = l->prev_dw;
@@ -452,21 +463,24 @@ void _CatsEye_convolutional_backward(CatsEye_layer *l)
 void _CatsEye_convolutional_update(CatsEye_layer *l)
 {
 	int step = l->sx - l->ksize;
+///	int ks = l->ksize * l->ksize;
 
 	// c[out], c[in], ksize, h, w
 	real *w = l->W;
 	real *d, *prev_out;
-	real *curr_delta = l->dW;
+	real *delta = l->dW;
 	for (int c=l->ch; c>0; c--) {	// out
 		real *r = prev_out = l->x;
 		for (int cc=l->ich; cc>0; cc--) {	// in
-			for (int wy=l->ksize; wy>0; wy--) {
-				for (int wx=l->ksize; wx>0; wx--) {
+			for (int wy=0; wy<l->ksize; wy++) {
+				for (int wx=0; wx<l->ksize; wx++) {
 					real *p = prev_out++;	// in
-					d = curr_delta;		// out
-					real a = 0;
+					d = delta;		// out
+///					real dW = delta[wx*l->ksize+wy];
+					register real a = 0;
 					for (int y=l->oy; y>0; y--) {
 						a += dotvv(d, p, l->ox);	// a += d * p;
+///						a += dotvv(dW, p, l->ox);	// a += d * p;
 						p += l->sx;
 						d += l->ox;
 					}
@@ -477,7 +491,7 @@ void _CatsEye_convolutional_update(CatsEye_layer *l)
 			r += l->sx * l->sy;
 			prev_out = r;
 		}
-		curr_delta = d;
+		delta = d;
 //		prev_out = l->x;
 	}
 }
@@ -1089,7 +1103,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			l->ch = l->ich;
 			l->outputs = l->inputs;
 //			printf("L%02d: BATCH NORMALIZATION\n", i+1);
-			printf("%3d %-8s %4d       %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->ch, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
+			printf("%3d %-8s %10d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
 		case _CATS_ACT_RRELU:
@@ -1107,7 +1121,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			l->ox = l->sx;
 			l->oy = l->sy;
 //			printf("L%02d: ACT\n", i+1);
-			printf("%3d %-8s %4d       %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->ch, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
+			printf("%3d %-8s %10d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
 		case CATS_LOSS_0_1:
@@ -1121,8 +1135,9 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			}
 			n[i] = l->inputs;
 			m[i] = l->outputs;
+//			l->ich = 1; // FIXME (for initialize weights)
 //			if (l->type==CATS_LINEAR) printf("L%02d: LINEAR %d %d\n", i+1, n[i], m[i]);
-			printf("%3d %-8s %4d       %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->ch, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
+			printf("%3d %-8s %10d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 		}
 		wsize[i] = this->wsize;
 		this->ws[i] = (n[i]+1)*m[i];
@@ -1155,13 +1170,22 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		this->d[i] = this->ddata + dsize[i];
 		this->w[i] = this->wdata + wsize[i];
 
-		if (i==this->layers-1) break;
+		if (i==this->layers-1) {
+			if ((l-1)->type >= _CATS_ACT_SIGMOID) { // FIXME: for loss function
+				(l-1)->backward = CatsEye_none;
+				(l-2)->dW = l->prev_dw;
+			}
+			break;
+		}
+
 		this->o[i][l->outputs] = 1;	// bias
 
 		// initialize weights (http://aidiary.hatenablog.com/entry/20150618/1434628272)
 		// range depends on the research of Y. Bengio et al. (2010)
+		// http://jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf
 		xor128_init(time(0));
 		real range = sqrt(6)/sqrt(n[i]+m[i]+2);
+//		real range = sqrt(6)/sqrt(n[i]+(float)m[i]/l->ich+2); // FIXME
 		for (int j=0; j<this->ws[i]; j++) {
 			this->w[i][j] = 2.0*range*frand()-range;
 		}

@@ -91,14 +91,14 @@ int main()
 #if 1
 	CatsEye_layer u[] = {
 		{  size, CATS_PADDING, .padding=1 }, // 30x30
-		{     0, CATS_CONV, 0.01, .ksize=3, .stride=1, .ch=16 }, // 16,28x28
+		{     0, CATS_CONV, 0.001, .ksize=3, .stride=1, .ch=16 }, // 16,28x28
 //		{     0, _CATS_ACT_RELU }, // minus??
 		{     0, _CATS_ACT_LEAKY_RELU },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 }, // 16,14x14
 
 //		{     0, CATS_PADDING, .padding=1 }, // 16,16x16
-//		{     0, CATS_CONV, 0.01, .ksize=3, .stride=1, .ch=4 }, // 4,14x14
-		{     0, CATS_CONV, 0.01, .ksize=1, .stride=1, .ch=4 }, // 4,14x14
+//		{     0, CATS_CONV, 0.001, .ksize=3, .stride=1, .ch=4 }, // 4,14x14
+		{     0, CATS_CONV, 0.001, .ksize=1, .stride=1, .ch=4 }, // 4,14x14
 		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=1 }, // 28x28
 //		{     0, _CATS_ACT_SIGMOID },
 		{  size, CATS_LOSS_MSE },

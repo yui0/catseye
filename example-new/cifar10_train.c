@@ -12,7 +12,7 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "../stb_image_write.h"
 
-#define ETA	0.001
+#define ETA	0.01
 
 int main()
 {
@@ -41,30 +41,30 @@ int main()
 		{ label, CATS_LOSS_0_1 },
 	};*/
 #if 1
-	CatsEye_layer u[] = {	// 50.4%(10), 95.8%(1000), 99.7%(2000)
+	CatsEye_layer u[] = {	// 52.4%(10), 95.8%(1000), 99.7%(2000)
 		{  size, CATS_PADDING, .sx=32, .sy=32, .ich=3, .padding=1 },
 		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=10, .ich=3 },
-		{     0, CATS_BATCHNORMAL },
+//		{     0, CATS_BATCHNORMAL },
 		{     0, _CATS_ACT_LEAKY_RELU },
 //		{     0, _CATS_ACT_RRELU, .min=-0.1, .max=0.1 },
 
 		{     0, CATS_PADDING, .padding=1 },
 		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=10, },
-		{     0, CATS_BATCHNORMAL },
+//		{     0, CATS_BATCHNORMAL },
 		{     0, _CATS_ACT_LEAKY_RELU },
 //		{     0, _CATS_ACT_RRELU, .min=-0.1, .max=0.1 },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
 //		{     0, CATS_AVGPOOL, .ksize=2, .stride=2 },
 
-		{     0, CATS_LINEAR, 0.01, .outputs=128 },
+		{     0, CATS_LINEAR, 0.01, .outputs=256 },
 //		{     0, CATS_BATCHNORMAL },
 		{     0, _CATS_ACT_LEAKY_RELU },
 //		{     0, _CATS_ACT_RRELU, .min=-0.1, .max=0.1 },
 
 		{     0, CATS_LINEAR, 0.01, .outputs=label },
 //		{     0, CATS_BATCHNORMAL },
-		{     0, _CATS_ACT_SIGMOID }, // <- slow learning, but good recognize
-		//{ label, _CATS_ACT_SOFTMAX },
+		//{     0, _CATS_ACT_SIGMOID }, // <- slow learning, but good recognize
+		{     0, _CATS_ACT_SOFTMAX },
 		{ label, CATS_LOSS_0_1 },
 	};
 #endif
@@ -128,7 +128,7 @@ int main()
 	// 訓練
 	printf("Starting training using (stochastic) gradient descent\n");
 	_CatsEye_train(&cat, x, t, sample, 10/*repeat*/, 1000/*random batch*/, sample/10/*verify*/);
-//	_CatsEye_train(&cat, x, t, sample, 100/*repeat*/, 100/*random batch*/);
+//	_CatsEye_train(&cat, x, t, sample, 100/*repeat*/, 100/*random batch*/, sample/10/*verify*/);
 //	_CatsEye_train(&cat, x, t, sample, 1000/*repeat*/, 100/*random batch*/);
 //	_CatsEye_train(&cat, x, t, sample, 2000/*repeat*/, 100/*random batch*/);
 	printf("Training complete\n");

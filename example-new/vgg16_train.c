@@ -12,7 +12,8 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "../stb_image_write.h"
 
-#define ETA	0.001
+//#define ETA	0.001
+#define ETA	1e-5
 
 int main()
 {
@@ -32,46 +33,46 @@ int main()
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 }, // 64,112x112
 
 		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=128, },
+		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=128 },
 		{     0, _CATS_ACT_RELU },
 		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=128, },
+		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=128 },
 		{     0, _CATS_ACT_RELU },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 }, // 128,56x56
 
 		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=256, },
+		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=256 },
 		{     0, _CATS_ACT_RELU },
 		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=256, },
+		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=256 },
 		{     0, _CATS_ACT_RELU },
 		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=256, },
+		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=256 },
 		{     0, _CATS_ACT_RELU },
-/*		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 }, // 256,28x28
+		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 }, // 256,28x28
 
 		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=512, },
+		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=512 },
 		{     0, _CATS_ACT_RELU },
 		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=512, },
+		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=512 },
 		{     0, _CATS_ACT_RELU },
 		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=512, },
+		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=512 },
 		{     0, _CATS_ACT_RELU },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 }, // 512,14x14
 
 		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=512, },
+		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=512 },
 		{     0, _CATS_ACT_RELU },
 		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=512, },
+		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=512 },
 		{     0, _CATS_ACT_RELU },
 		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=512, },
+		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=512 },
 		{     0, _CATS_ACT_RELU },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 }, // 512,7x7
-*/
+
 		{     0, CATS_LINEAR, 0.01, .outputs=4096 },
 		{     0, _CATS_ACT_RELU },
 		{     0, CATS_LINEAR, 0.01, .outputs=4096 },

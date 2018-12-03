@@ -60,8 +60,8 @@ int main()
 
 	// 訓練データ
 	real x[sample];		// -1 - 1
-	for (int i=0; i<sample; i++) x[i] = sin(2.0*M_PI / (TIME/2) * i *10);
-//	for (int i=0; i<sample; i++) x[i] = sin(2.0*M_PI / TIME * i);
+//	for (int i=0; i<sample; i++) x[i] = sin(2.0*M_PI / (TIME/2) * i *10);
+	for (int i=0; i<sample; i++) x[i] = sin(2.0*M_PI / TIME * i);
 	//for (int i=0; i<sample; i++) x[i] = sin(2.0*M_PI / (TIME/2) * i);
 	//for (int i=0; i<sample; i++) x[i] = sin(2.0*M_PI / TIME * i*10);
 	int16_t t[sample];	// 0 - 255

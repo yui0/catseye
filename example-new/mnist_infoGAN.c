@@ -13,23 +13,26 @@
 #include "../stb_image_write.h"
 
 #define NAME	"mnist_infoGAN"
-#define ZDIM	10
+#define ZDIM	100
+//#define NAME	"_mnist_infoGAN"
+//#define ZDIM	10
 #define CLASS	1
 #define DIM	(CLASS+ZDIM)
 
 #define SAMPLE	60000
 #define BATCH	100
 #define BATCH_G	200
-//#define OUTPUT	9
-#define OUTPUT	7
+#define OUTPUT	9
+//#define OUTPUT	7
 //#define ETA	0.0001
-#define ETA	0.01
+//#define ETA	0.01
 
 int main()
 {
 	int size = 28*28;	// 入出力層(28x28)
 	int sample = 60000;
 
+#if 0
 	// https://qiita.com/taku-buntu/items/0093a68bfae0b0ff879d
 	// http://yusuke-ujitoko.hatenablog.com/entry/2017/08/30/205204
 	CatsEye_layer u[] = {
@@ -59,6 +62,75 @@ int main()
 
 		{       0, CATS_LINEAR, ETA, .outputs=256 },
 		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+		{       0, CATS_LINEAR, ETA },
+		{       2, _CATS_ACT_SIGMOID },
+		{       2, CATS_LOSS_MSE },
+	};
+#endif
+#if 0
+	// https://cntk.ai/pythondocs/CNTK_206B_DCGAN.html
+	CatsEye_layer u[] = {
+		// generator
+		{     DIM, CATS_LINEAR, ETA, .outputs=1024 },
+		{       0, CATS_BATCHNORMAL },
+//		{       0, _CATS_ACT_RELU },
+		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+
+		{       0, CATS_LINEAR, ETA, .outputs=128*7*7 },
+		{       0, CATS_BATCHNORMAL },
+//		{       0, _CATS_ACT_RELU },	// 128 7x7
+		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+
+		{       0, CATS_CONV, 0.001, .ksize=1, .stride=1, .ch=16, .ich=128, .sx=7, .sy=7 },
+		{       0, CATS_PIXELSHUFFLER, .r=4, .ch=1 },	// 1 28x28
+//		{    size, _CATS_ACT_SIGMOID },	// [ 0,1]
+		{    size, _CATS_ACT_TANH },	// [-1,1]
+
+
+		// discriminator
+		{    size, CATS_CONV, 0.001, .ksize=3, .stride=1/*2*/, .ch=16 },
+		{       0, CATS_AVGPOOL, .ksize=2, .stride=2 },
+		{       0, CATS_BATCHNORMAL },
+		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+
+		{       0, CATS_CONV, 0.001, .ksize=3, .stride=1/*2*/, .ch=64 },
+		{       0, CATS_AVGPOOL, .ksize=2, .stride=2 },
+		{       0, CATS_BATCHNORMAL },
+		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+
+		{       0, CATS_LINEAR, ETA, .outputs=256 },
+		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+		{       0, CATS_LINEAR, ETA },
+		{       2, _CATS_ACT_SIGMOID },
+		{       2, CATS_LOSS_MSE },
+	};
+#endif
+#define ETA	1e-6
+	CatsEye_layer u[] = {
+		{     DIM, CATS_LINEAR, ETA, .outputs=1024 },
+		{       0, CATS_BATCHNORMAL },
+		{       0, _CATS_ACT_LEAKY_RELU },
+
+		{       0, CATS_LINEAR, ETA, .outputs=128*7*7 },
+		{       0, CATS_BATCHNORMAL },
+		{       0, _CATS_ACT_LEAKY_RELU },	// 128 7x7
+
+		{       0, CATS_CONV, ETA, .ksize=1, .stride=1, .ch=16, .ich=128, .sx=7, .sy=7 },
+		{       0, CATS_PIXELSHUFFLER, .r=4, .ch=1 },	// 1 28x28
+		{    size, _CATS_ACT_TANH },	// [-1,1]
+
+
+		// discriminator
+		{    size, CATS_CONV, ETA, .ksize=5, .stride=1/*2*/, .ch=64 },
+		{       0, CATS_AVGPOOL, .ksize=2, .stride=2 },
+		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+
+		{       0, CATS_CONV, ETA, .ksize=5, .stride=1/*2*/, .ch=128 },
+		{       0, CATS_AVGPOOL, .ksize=2, .stride=2 },
+		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+
+		{       0, CATS_LINEAR, ETA },
+		{     256, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 		{       0, CATS_LINEAR, ETA },
 		{       2, _CATS_ACT_SIGMOID },
 		{       2, CATS_LOSS_MSE },
