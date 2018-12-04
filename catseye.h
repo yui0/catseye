@@ -101,7 +101,7 @@ real dotvv(real *vec1, real *vec2, int n)
 	return s;
 }
 // mat * vec
-void dotmv(real *s, real *mat, real *vec, int n, int m)
+/*void dotmv(real *s, real *mat, real *vec, int n, int m)
 {
 //	#pragma omp parallel for simd
 	for (int i=m; i>0; i--) {
@@ -128,7 +128,7 @@ void muldot(real *s, real *mat, real *vec, int n, int m)
 		mat += n;
 	}
 	return;
-}
+}*/
 real dotTv(real *mat1, real *vec1, int r, int c)
 {
 	real s = 0;
@@ -147,13 +147,13 @@ void _fma(real *a, real *b, real z, int n)
 		b++;
 	}
 }
-void outeradd(real *s, real *vec1, real *vec2, int n, int m)
+/*void outeradd(real *s, real *vec1, real *vec2, int n, int m)
 {
 //	#pragma omp parallel for simd
 	for (int i=m; i>0; i--) {
 		_fma(s, vec2, *vec1++, n);
 	}
-}
+}*/
 void _fmax(real *vec1, real *vec2, real a, int n)
 {
 //	#pragma omp parallel for simd
@@ -246,37 +246,62 @@ void _CatsEye_linear_forward(CatsEye_layer *l)
 	real *o = l->z;
 	real *w = l->W;
 	for (int i=l->outputs; i>0; i--) {
-		*o++ = dotTv(w++, l->x, l->inputs+1, l->outputs);	// bias!!
+//		*o++ = dotTv(w++, l->x, l->inputs+1, l->outputs);	// bias!!
 ///		*o++ = dotvv(w, l->x, l->inputs+1);	// bias!!
 ///		w += l->inputs+1;
+
+		real *x = l->x;
+		register real a = 0;
+		for (int n=0; n<l->inputs; n++) {
+			a += (*x++) * (*w++);
+		}
+		*o++ = a + *w++;	// bias!!
 	}
 }
 void _CatsEye_linear_backward(CatsEye_layer *l)
 {
-	real *o = l->x;
 	real *d = l->prev_dw;
 	real *w = l->W;
 	for (int i=0; i<=l->inputs; i++) {	// bias!!
-//		*d++ = dotvv(&l->W[i*l->outputs], l->dW, l->outputs);
-		*d++ = dotvv(w, l->dW, l->outputs);
-		w += l->outputs;
-///		*d++ = dotTv(w++, l->dW, l->outputs, l->inputs+1);	// bias!!
+///		*d++ = dotvv(&l->W[i*l->outputs], l->dW, l->outputs);
+//		*d++ = dotvv(w, l->dW, l->outputs);
+//		w += l->outputs;
+		//*d++ = dotTv(w++, l->dW, l->outputs, l->inputs+1);	// bias!!
+
+		real *dw = l->dW;
+		real *ww = w++;
+		register real a = 0;
+		for (int n=0; n<l->outputs; n++) {
+			a += (*dw++) * (*ww);
+			ww += l->inputs+1;
+		}
+		*d++ = a;
 	}
 }
 void _CatsEye_linear_update(CatsEye_layer *l)
 {
-	real *o = l->x;
+	/*real *x = l->x;
 	real *w = l->W;
 	for (int i=0; i<=l->inputs; i++) {	// bias!!
-		real a = -l->eta * (*o++);
+		real a = -l->eta * (*x++);
 		_fma(w, l->dW, a, l->outputs);
 		w += l->outputs;
+	}*/
+	real *w = l->W;
+	real *d = l->dW;
+	for (int i=l->outputs; i>0; i--) {
+		real *x = l->x;
+		register real a = -l->eta * (*d++);
+		for (int n=0; n<l->inputs; n++) {
+			*w++ += (*x++) * a;
+		}
+		*w++ += a;	// bias!!
 	}
 }
 // RNN
 void CatsEye_rnn_forward(CatsEye_layer *l)
 {
-	real *u = l->u;
+/*	real *u = l->u;
 	real *s = l->s;
 	real *v = l->v;
 	real *y = l->z;
@@ -298,11 +323,11 @@ void CatsEye_rnn_forward(CatsEye_layer *l)
 //		CatsEye_act_array(l->act, s, u, l->hiddens);
 		dotmv(v, l->Wo, s, l->hiddens, l->outputs);
 //		CatsEye_act_array(l->act2, y, v, l->outputs);
-	}
+	}*/
 }
 void CatsEye_rnn_backward(CatsEye_layer *l)
 {
-	real *d = l->dW + (l->inputs-1)*l->outputs;
+/*	real *d = l->dW + (l->inputs-1)*l->outputs;
 	real *s = l->s + (l->inputs-1)*l->hiddens;
 	real *u = l->u + (l->inputs-1)*l->hiddens;
 	real *eh = l->eh + (l->inputs-1)*l->hiddens;
@@ -335,13 +360,13 @@ void CatsEye_rnn_backward(CatsEye_layer *l)
 
 		d -= l->outputs;
 		eh -= l->hiddens;
-	}
+	}*/
 }
 void CatsEye_rnn_update(CatsEye_layer *l)
 {
-	_fma(l->Wi, l->dWi, -l->eta, l->hiddens * l->inputs);
+/*	_fma(l->Wi, l->dWi, -l->eta, l->hiddens * l->inputs);
 	_fma(l->Wo, l->dWo, -l->eta, l->outputs * l->hiddens);
-	_fma(l->Wr, l->dWr, -l->eta, l->outputs * l->hiddens);
+	_fma(l->Wr, l->dWr, -l->eta, l->outputs * l->hiddens);*/
 }
 
 // calculate forward propagation

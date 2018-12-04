@@ -105,7 +105,7 @@ int main()
 		{       2, CATS_LOSS_MSE },
 	};
 #endif
-#define ETA	1e-6
+#define ETA	3e-6
 	CatsEye_layer u[] = {
 		{     DIM, CATS_LINEAR, ETA, .outputs=1024 },
 		{       0, CATS_BATCHNORMAL },

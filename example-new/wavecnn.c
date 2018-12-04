@@ -45,7 +45,7 @@ int main()
 		{   256, CATS_LOSS_0_1 },
 	};*/
 	CatsEye_layer u[] = {
-		{  TIME, CATS_LINEAR, 0.01, .outputs=128 },
+		{  TIME, CATS_LINEAR, 0.01, .outputs=512 },
 		{     0, _CATS_ACT_LEAKY_RELU },
 		{     0, CATS_LINEAR, 0.01, .outputs=512 },
 		{     0, _CATS_ACT_LEAKY_RELU },
