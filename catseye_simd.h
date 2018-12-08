@@ -223,9 +223,7 @@ void gemm_cpu(
 					C[n + m * ldc] = alpha * sum + beta * C[n + m * ldc];
 				}
 			}
-		}
-
-		if (transa == 'T' && transb == 'N') {
+		} else if (transa == 'T' && transb == 'N') {
 			for (int m=0; m<M; m++) {
 				for (int n=0; n<N; n++) {
 					register real sum = 0.0;
@@ -235,9 +233,7 @@ void gemm_cpu(
 					C[n + m * ldc] = alpha * sum + beta * C[n + m * ldc];
 				}
 			}
-		}
-
-		if (transa == 'N' && transb == 'T') {
+		} else if (transa == 'N' && transb == 'T') {
 			for (int m=0; m<M; m++) {
 				for (int n=0; n<N; n++) {
 					register real sum = 0.0;
@@ -247,9 +243,7 @@ void gemm_cpu(
 					C[n + m * ldc] = alpha * sum + beta * C[n + m * ldc];
 				}
 			}
-		}
-
-		if (transa == 'T' && transb == 'T') {
+		} else if (transa == 'T' && transb == 'T') {
 			for (int m=0; m<M; m++) {
 				for (int n=0; n<N; n++) {
 					register real sum = 0.0;
@@ -273,9 +267,7 @@ void gemm_cpu(
 					C[m + n * ldc] = alpha * sum + beta * C[m + n * ldc];
 				}
 			}
-		}
-
-		if (transa == 'T' && transb == 'N') {
+		} else if (transa == 'T' && transb == 'N') {
 			for (int m=0; m<M; m++) {
 				for (int n=0; n<N; n++) {
 					register real sum = 0.0;
@@ -285,9 +277,7 @@ void gemm_cpu(
 					C[m + n * ldc] = alpha * sum + beta * C[m + n * ldc];
 				}
 			}
-		}
-
-		if (transa == 'N' && transb == 'T') {
+		} else if (transa == 'N' && transb == 'T') {
 			for (int m=0; m<M; m++) {
 				for (int n=0; n<N; n++) {
 					register real sum = 0.0;
@@ -297,9 +287,7 @@ void gemm_cpu(
 					C[m + n * ldc] = alpha * sum + beta * C[m + n * ldc];
 				}
 			}
-		}
-
-		if (transa == 'T' && transb == 'T') {
+		} else if (transa == 'T' && transb == 'T') {
 			for (int m=0; m<M; m++) {
 				for (int n=0; n<N; n++) {
 					register real sum = 0.0;
