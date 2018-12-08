@@ -83,7 +83,7 @@ void muladd(float *vec1, float *vec2, float a, int n)
 		*vec1++ += a * (*vec2++);
 	}
 }
-#else
+#else // !CATS_AVX
 float dot(float *vec1, float *vec2, int n)
 {
 	int i;
@@ -156,7 +156,7 @@ void muladd(float *vec1, float *vec2, float a, int n)
 		*vec1++ += a * (*vec2++);
 	}
 }
-#endif
+#endif // !CATS_AVX
 #else
 double dot(double *vec1, double *vec2, int n)
 {
@@ -191,6 +191,124 @@ double dotT(double *mat1, double *vec1, int r, int c)
 	_mm_store_pd(t, u);
 	return t[0] + t[1];
 }
-#endif
+#endif // CATS_USE_FLOAT
 
-#endif
+#endif // CATS_SSE
+
+void gemm_cpu(
+	char		major,
+	char		transa,
+	char		transb,
+	const int	M,
+	const int	N,
+	const int	K,
+	const real	alpha,
+	const real	*A,
+	const int	lda,
+	const real	*B,
+	const int	ldb,
+	const real	beta,
+	real		*C,
+	const int	ldc)
+{
+	// RowMajor
+	if (major == 'R') {
+		if (transa == 'N' && transb == 'N') {
+			for (int m=0; m<M; m++) {
+				for (int n=0; n<N; n++) {
+					register real sum = 0.0;
+					for (int k=0; k<K; k++) {
+						sum += A[k + m * lda] * B[n + k * ldb];
+					}
+					C[n + m * ldc] = alpha * sum + beta * C[n + m * ldc];
+				}
+			}
+		}
+
+		if (transa == 'T' && transb == 'N') {
+			for (int m=0; m<M; m++) {
+				for (int n=0; n<N; n++) {
+					register real sum = 0.0;
+					for (int k=0; k<K; k++) {
+						sum += A[m + k * lda] * B[n + k * ldb];
+					}
+					C[n + m * ldc] = alpha * sum + beta * C[n + m * ldc];
+				}
+			}
+		}
+
+		if (transa == 'N' && transb == 'T') {
+			for (int m=0; m<M; m++) {
+				for (int n=0; n<N; n++) {
+					register real sum = 0.0;
+					for (int k=0; k<K; k++) {
+						sum += A[k + m * lda] * B[k + n * ldb];
+					}
+					C[n + m * ldc] = alpha * sum + beta * C[n + m * ldc];
+				}
+			}
+		}
+
+		if (transa == 'T' && transb == 'T') {
+			for (int m=0; m<M; m++) {
+				for (int n=0; n<N; n++) {
+					register real sum = 0.0;
+					for (int k=0; k<K; k++) {
+						sum += A[m + k * lda] * B[k + n * ldb];
+					}
+					C[n + m * ldc] = alpha * sum + beta * C[n + m * ldc];
+				}
+			}
+		}
+	} else
+	// ColMajor
+	/*if (major == 'C')*/ {
+		if (transa == 'N' && transb == 'N') {
+			for (int m=0; m<M; m++) {
+				for (int n=0; n<N; n++) {
+					register real sum = 0.0;
+					for (int k=0; k<K; k++) {
+						sum += A[m + k * lda] * B[k + n * ldb];
+					}
+					C[m + n * ldc] = alpha * sum + beta * C[m + n * ldc];
+				}
+			}
+		}
+
+		if (transa == 'T' && transb == 'N') {
+			for (int m=0; m<M; m++) {
+				for (int n=0; n<N; n++) {
+					register real sum = 0.0;
+					for (int k=0; k<K; k++) {
+						sum += A[k + m * lda] * B[k + n * ldb];
+					}
+					C[m + n * ldc] = alpha * sum + beta * C[m + n * ldc];
+				}
+			}
+		}
+
+		if (transa == 'N' && transb == 'T') {
+			for (int m=0; m<M; m++) {
+				for (int n=0; n<N; n++) {
+					register real sum = 0.0;
+					for (int k=0; k<K; k++) {
+						sum += A[m + k * lda] * B[n + k * ldb];
+					}
+					C[m + n * ldc] = alpha * sum + beta * C[m + n * ldc];
+				}
+			}
+		}
+
+		if (transa == 'T' && transb == 'T') {
+			for (int m=0; m<M; m++) {
+				for (int n=0; n<N; n++) {
+					register real sum = 0.0;
+					for (int k=0; k<K; k++) {
+						sum += A[k + m * lda] * B[n + k * ldb];
+					}
+					C[m + n * ldc] = alpha * sum + beta * C[m + n * ldc];
+				}
+			}
+		}
+	}
+}

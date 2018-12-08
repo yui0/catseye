@@ -76,9 +76,13 @@ int binomial(/*int n, */real p)
 	a[data] = 1;
 }*/
 
-#ifdef CATS_SSE
+//#define GEMM(def)	sgemm##def
+//#include "catseye_gemm.h"
+//#define gemm		sgemm_c
+
+//#ifdef CATS_SSE
 #include "catseye_simd.h"	// deprecated!
-#else
+//#else
 // vec1 * vec2
 real dotvv(real *vec1, real *vec2, int n)
 {
@@ -162,7 +166,7 @@ void _fmax(real *vec1, real *vec2, real a, int n)
 		vec1++;
 	}
 }
-#endif
+//#endif
 
 typedef struct layer {
 	int inputs;		// input size
@@ -240,15 +244,13 @@ typedef struct {
 	real *o3;
 } CatsEye;
 
-// FNN
+// Fully connected
 void _CatsEye_linear_forward(CatsEye_layer *l)
 {
 	real *o = l->z;
 	real *w = l->W;
 	for (int i=l->outputs; i>0; i--) {
 //		*o++ = dotTv(w++, l->x, l->inputs+1, l->outputs);	// bias!!
-///		*o++ = dotvv(w, l->x, l->inputs+1);	// bias!!
-///		w += l->inputs+1;
 
 		real *x = l->x;
 		register real a = 0;
@@ -257,6 +259,15 @@ void _CatsEye_linear_forward(CatsEye_layer *l)
 		}
 		*o++ = a + *w++;	// bias!!
 	}
+//	gemm('C', 'N', 'T', 1/*batch*/, l->outputs, l->inputs+1, 1, l->x, l->inputs+1, l->W, l->inputs+1, 0, l->z, l->outputs);
+//?	gemm('C', 'N', 'T', 1/*batch*/, l->inputs+1, l->outputs, 1, l->x, l->inputs+1, l->W, l->inputs+1/*T*/, 0, l->z, l->outputs);
+//?	gemm('C', 'N', 'N', 1/*batch*/, l->inputs+1, l->outputs, 1, l->x, l->inputs+1, l->W, l->outputs, 0, l->z, l->outputs);
+	// https://qiita.com/t-tkd3a/items/2d18af89097f42b12419
+//	gemm('C', 'N', 'N', l->outputs, 1/*batch*/, l->inputs+1, 1, l->W, l->outputs, l->x, l->inputs+1, 0, l->z, l->outputs);
+//	gemm('C', 'T', 'N', l->outputs, 1/*batch*/, l->inputs+1, 1, l->W, l->outputs, l->x, l->inputs+1, 0, l->z, l->outputs);
+
+//	gemm('C', 'N', 'T', 1/*batch*/, l->outputs, l->inputs+1, 1, l->W, l->outputs, l->x, l->inputs+1, 0, l->z, l->outputs);
+	//gemm_cpu('R', 'N', 'T', 1/*batch*/, l->outputs, l->inputs+1, 1, l->x, l->inputs+1, l->W, l->inputs+1, 0, l->z, l->outputs);
 }
 void _CatsEye_linear_backward(CatsEye_layer *l)
 {
@@ -264,9 +275,6 @@ void _CatsEye_linear_backward(CatsEye_layer *l)
 	real *w = l->W;
 	for (int i=0; i<=l->inputs; i++) {	// bias!!
 ///		*d++ = dotvv(&l->W[i*l->outputs], l->dW, l->outputs);
-//		*d++ = dotvv(w, l->dW, l->outputs);
-//		w += l->outputs;
-		//*d++ = dotTv(w++, l->dW, l->outputs, l->inputs+1);	// bias!!
 
 		real *dw = l->dW;
 		real *ww = w++;
@@ -277,6 +285,9 @@ void _CatsEye_linear_backward(CatsEye_layer *l)
 		}
 		*d++ = a;
 	}
+//x	gemm('C', 'T', 'N', l->outputs, l->inputs+1, 1/*batch*/, 1, l->prev_dw, l->outputs, l->dW, l->inputs+1, 0, l->W, l->inputs+1);
+//x	gemm('C', 'N', 'N', 1/*batch*/, l->inputs+1, l->outputs, 1, l->dW, l->outputs, l->W, l->inputs+1, 0, l->prev_dw, l->inputs+1);
+//	gemm('C', 'T', 'N', 1/*batch*/, l->inputs+1, l->outputs, 1, l->W, l->inputs+1, l->dW, l->outputs, 0, l->prev_dw, l->inputs+1);
 }
 void _CatsEye_linear_update(CatsEye_layer *l)
 {
@@ -367,6 +378,56 @@ void CatsEye_rnn_update(CatsEye_layer *l)
 /*	_fma(l->Wi, l->dWi, -l->eta, l->hiddens * l->inputs);
 	_fma(l->Wo, l->dWo, -l->eta, l->outputs * l->hiddens);
 	_fma(l->Wr, l->dWr, -l->eta, l->outputs * l->hiddens);*/
+}
+
+void im2col(const real* im, const int channels,
+	const int height, const int width, const int kernel_h, const int kernel_w,
+	const int pad_h, const int pad_w, const int stride_h, const int stride_w, real* col)
+{
+	int height_col = (height + 2 * pad_h - kernel_h) / stride_h + 1;
+	int width_col = (width + 2 * pad_w - kernel_w) / stride_w + 1;
+	int channels_col = channels * kernel_h * kernel_w;
+
+	for (int c = 0; c < channels_col; ++c) {
+		int w_offset = c % kernel_w;
+		int h_offset = (c / kernel_w) % kernel_h;
+		int c_im = c / kernel_h / kernel_w;
+		for (int h = 0; h < height_col; ++h) {
+			for (int w = 0; w < width_col; ++w) {
+				int h_pad = h * stride_h - pad_h + h_offset;
+				int w_pad = w * stride_w - pad_w + w_offset;
+				if (h_pad >= 0 && h_pad < height && w_pad >= 0 && w_pad < width)
+					col[(c * height_col + h) * width_col + w] =
+						im[(c_im * height + h_pad) * width + w_pad];
+				else
+					col[(c * height_col + h) * width_col + w] = 0;
+			}
+		}
+	}
+}
+void col2im(const real* col, const int channels,
+	const int height, const int width, const int patch_h, const int patch_w,
+	const int pad_h, const int pad_w, const int stride_h, const int stride_w, real* im)
+{
+	memset(im, 0, sizeof(real)*height * width * channels);
+	int height_col = (height + 2 * pad_h - patch_h) / stride_h + 1;
+	int width_col = (width + 2 * pad_w - patch_w) / stride_w + 1;
+	int channels_col = channels * patch_h * patch_w;
+
+	for (int c = 0; c < channels_col; ++c) {
+		int w_offset = c % patch_w;
+		int h_offset = (c / patch_w) % patch_h;
+		int c_im = c / patch_h / patch_w;
+		for (int h = 0; h < height_col; ++h) {
+			for (int w = 0; w < width_col; ++w) {
+				int h_pad = h * stride_h - pad_h + h_offset;
+				int w_pad = w * stride_w - pad_w + w_offset;
+				if (h_pad >= 0 && h_pad < height && w_pad >= 0 && w_pad < width)
+					im[(c_im * height + h_pad) * width + w_pad] +=
+						col[(c * height_col + h) * width_col + w];
+			}
+		}
+	}
 }
 
 // calculate forward propagation

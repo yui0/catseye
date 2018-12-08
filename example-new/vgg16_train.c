@@ -13,7 +13,8 @@
 #include "../stb_image_write.h"
 
 //#define ETA	0.001
-#define ETA	1e-5
+//#define ETA	1e-5
+#define ETA	1e-4
 
 int main()
 {
@@ -22,6 +23,7 @@ int main()
 	int label = 10;	// 出力層
 	int sample = 10000;
 
+	// http://blog.neko-ni-naritai.com/entry/2018/04/07/115504
 	CatsEye_layer u[] = {
 		{  size, CATS_PADDING, .sx=32, .sy=32, .ich=3, .padding=1 },
 //		{  size, CATS_PADDING, .sx=224, .sy=224, .ich=3, .padding=1 },
@@ -73,13 +75,13 @@ int main()
 		{     0, _CATS_ACT_RELU },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 }, // 512,7x7
 
-		{     0, CATS_LINEAR, 0.01, .outputs=4096 },
+		{     0, CATS_LINEAR, ETA, .outputs=4096 },
 		{     0, _CATS_ACT_RELU },
-		{     0, CATS_LINEAR, 0.01, .outputs=4096 },
+		{     0, CATS_LINEAR, ETA, .outputs=4096 },
 		{     0, _CATS_ACT_RELU },
-		{     0, CATS_LINEAR, 0.01, .outputs=label },
-		{     0, _CATS_ACT_SIGMOID }, // <- slow learning, but good recognize
-		//{ label, _CATS_ACT_SOFTMAX },
+		{     0, CATS_LINEAR, ETA, .outputs=label },
+		//{     0, _CATS_ACT_SIGMOID }, // <- slow learning, but good recognize
+		{     0, _CATS_ACT_SOFTMAX },
 		{ label, CATS_LOSS_0_1 },
 	};
 	CatsEye cat;

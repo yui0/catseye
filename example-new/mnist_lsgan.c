@@ -23,6 +23,7 @@
 #define BATCH_G	200
 #define OUTPUT	9
 //#define OUTPUT	10
+#define ETA	0.001
 
 int main()
 {
@@ -62,34 +63,34 @@ int main()
 //		{       0, CATS_CONV, 0.001, .ksize=1, .stride=1, .ch=1 },
 //		{    size, _CATS_ACT_SIGMOID },	// [0,1]
 #endif
-		{    ZDIM, CATS_LINEAR, 0.01, .outputs=1024 },
+		{    ZDIM, CATS_LINEAR, ETA, .outputs=1024 },
 		{       0, CATS_BATCHNORMAL },
 		{       0, _CATS_ACT_LEAKY_RELU },
 
-		{       0, CATS_LINEAR, 0.01, .outputs=128*7*7 },
+		{       0, CATS_LINEAR, ETA, .outputs=128*7*7 },
 		{       0, CATS_BATCHNORMAL },
 		{       0, _CATS_ACT_LEAKY_RELU },	// 128 7x7
 
-		{       0, CATS_CONV, 0.001, .ksize=1, .stride=1, .ch=16, .ich=128, .sx=7, .sy=7 },
+		{       0, CATS_CONV, ETA, .ksize=1, .stride=1, .ch=16, .ich=128, .sx=7, .sy=7 },
 		{       0, CATS_PIXELSHUFFLER, .r=4, .ch=1 },	// 1 28x28
 		{    size, _CATS_ACT_TANH },	// [-1,1]
 
 
 		// discriminator
-		{    size, CATS_CONV, 0.001, .ksize=5, .stride=1/*2*/, .ch=64 },
+		{    size, CATS_CONV, ETA, .ksize=5, .stride=1/*2*/, .ch=64 },
 //		{       0, CATS_MAXPOOL, .ksize=2, .stride=2 },
 		{       0, CATS_AVGPOOL, .ksize=2, .stride=2 },
 		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 
-		{       0, CATS_CONV, 0.001, .ksize=5, .stride=1/*2*/, .ch=128 },
+		{       0, CATS_CONV, ETA, .ksize=5, .stride=1/*2*/, .ch=128 },
 //		{       0, CATS_MAXPOOL, .ksize=2, .stride=2 },
 		{       0, CATS_AVGPOOL, .ksize=2, .stride=2 },
 		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 
-		{       0, CATS_LINEAR, 0.01 },
+		{       0, CATS_LINEAR, ETA },
 		{     256, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 //		{    1024, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
-		{       0, CATS_LINEAR, 0.01 },
+		{       0, CATS_LINEAR, ETA },
 		{       1, _CATS_ACT_SIGMOID },
 		{       1, CATS_LOSS_MSE },
 //		{       2, _CATS_ACT_SIGMOID },
