@@ -371,6 +371,7 @@ void CatsEye_rnn_update(CatsEye_layer *l)
 	_fma(l->Wr, l->dWr, -l->eta, l->outputs * l->hiddens);*/
 }
 
+// convolution
 void im2col(const real *im, const int channels,
 	const int height, const int width, const int kernel_h, const int kernel_w,
 	const int pad_h, const int pad_w, const int stride_h, const int stride_w, real *col)
@@ -420,20 +421,37 @@ void col2im(const real *col, const int channels,
 		}
 	}
 }
+static real col[32*32*256*30];
 void _CatsEye_convolutional_forward(CatsEye_layer *l)
 {
-	static real col[32*32*256*30];
+	real *workspace = col;
+	if (l->ksize==1) {
+		workspace = l->x;
+	} else {
+		im2col(l->x, l->ich, l->sy, l->sx, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, workspace);
+	}
+	gemm('R', 'N', 'N', l->ch, l->ox*l->oy*1/*batch*/, l->ksize*l->ksize*l->ich, 1, l->W, l->ksize*l->ksize*l->ich, workspace, l->ox*l->oy, 0, l->z, l->ox*l->oy);
+}
+void _CatsEye_convolutional_backward(CatsEye_layer *l)
+{
+	real *workspace = l->ksize!=1 ? col : l->prev_dw;
+	gemm('R', 'T', 'N', l->ksize*l->ksize*l->ich, l->ox*l->oy*1/*batch*/, l->ch, 1, l->W, l->ksize*l->ksize*l->ich, l->dW, l->ox*l->oy, 0, workspace, l->ox*l->oy);
+	if (l->ksize!=1) {
+		col2im(workspace, l->ich, l->sy, l->sx, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, l->prev_dw);
+	}
+}
+#if 0
+void _CatsEye_convolutional_update(CatsEye_layer *l)
+{
 	real *b = col;
 	if (l->ksize==1) {
 		b = l->x;
 	} else {
 		im2col(l->x, l->ich, l->sx, l->sy, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, b);
 	}
-//	gemm('R', 'N', 'T', 1/*batch*/, l->outputs, l->inputs+1, 1, l->x, l->inputs+1, l->W, l->inputs+1, 0, l->z, l->outputs);
-	//gemm('R', 'N', 'T', l->ch, l->ox*l->oy*1/*batch*/, l->ksize*l->ksize*l->ich, 1, l->W, l->ksize*l->ksize*l->ich, b, l->ox*l->oy, 0, l->z, l->ox*l->oy);
-	//gemm('R', 'N', 'T', l->ch, l->ox*l->oy*1/*batch*/, l->ksize*l->ksize*l->ich, 1, b, l->ox*l->oy, l->W, l->ksize*l->ksize*l->ich, 0, l->z, l->ox*l->oy);
 	gemm('R', 'N', 'N', l->ch, l->ox*l->oy*1/*batch*/, l->ksize*l->ksize*l->ich, 1, l->W, l->ksize*l->ksize*l->ich, b, l->ox*l->oy, 0, l->z, l->ox*l->oy);
 }
+#endif
 
 // calculate forward propagation
 /*void _CatsEye_convolutional_forward(CatsEye_layer *l)
@@ -472,49 +490,8 @@ void _CatsEye_convolutional_forward(CatsEye_layer *l)
 		}
 	}
 }*/
-/*void _CatsEye_convolutional_forward(CatsEye_layer *l)
-{
-	int step = l->sx - l->ksize;
-
-	// c[out], c[in], ksize, h, w
-	real *s, *z, *o;
-	real *w = l->W;
-	memset(l->z, 0, sizeof(real)*l->ch*l->ox*l->oy);
-//	int c;
-//	#pragma omp parallel for
-//	#pragma acc kernels copyin(l->x[0:l->inputs],l->W[0:l->ksize*l->ksize*l->ch*l->ich]), copyout(l->z[0:l->outputs)
-	for (int c=0; c<l->ch; c++) {	// out
-		real *r = s = l->x;
-		o = l->z + c*l->ox*l->oy;
-///		o = l->z + l->pz + c*l->ox*l->oy;
-		for (int cc=l->ich; cc>0; cc--) {	// in
-//			s = l->x + (l->ich-cc)*l->sx*l->sy;
-			for (int wy=l->ksize; wy>0; wy--) {
-///				for (int wx=l->ksize; wx>0; wx--) {
-				for (int wx=l->ksize-1; wx>=0; wx--) {
-///					real *p = s++;	// in
-					real *p = s;	// in
-					z = o;		// out
-					for (int y=l->oy; y>0; y--) {
-///					for (int y=l->py; y>0; y--) {
-///						_fma(z, p, *w, l->px);	// *z++ += (*p++) * (*w); p += m;
-						_fma(z+wx, p, *w, l->ox);	// *z++ += (*p++) * (*w); p += m;
-						p += l->sx;
-						z += l->ox;
-					}
-					w++;
-				}
-///				s += step;
-				s += l->sx;
-			}
-			r += l->sx * l->sy;
-			s = r;
-		}
-//		o = z + l->pz;
-	}
-}*/
 // calculate back propagation
-void _CatsEye_convolutional_backward(CatsEye_layer *l)
+/*void _CatsEye_convolutional_backward(CatsEye_layer *l)
 {
 	int step = l->sx - l->ksize;
 ///	int ks = l->ksize * l->ksize;
@@ -549,7 +526,7 @@ void _CatsEye_convolutional_backward(CatsEye_layer *l)
 		delta = d;
 //		prev_delta = l->prev_dw;
 	}
-}
+}*/
 // update the weights
 void _CatsEye_convolutional_update(CatsEye_layer *l)
 {
