@@ -318,7 +318,7 @@ void gemm_cpu(
 	}
 }
 
-real _dot_8(const real *x, const real *y, int n)
+real dot8(const real *x, const real *y, int n)
 {
 	int i, n8 = n>>3<<3;
 	real s, t[8];
@@ -336,7 +336,7 @@ real _dot_8(const real *x, const real *y, int n)
 	for (s=0.0; i<n; i++) s += x[i] * y[i];
 	return s + t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
 }
-float dot_avx_2(const float *vec1, const float *vec2, int n)
+/*float dot_avx_2(const float *vec1, const float *vec2, int n)
 {
 	int i, n16 = n>>4<<4;
 	__m256 u1 = {0};
@@ -359,9 +359,37 @@ float dot_avx_2(const float *vec1, const float *vec2, int n)
 
 	for (; i<n; i++) t[0] += vec1[i] * vec2[i];
 	return t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
-}
-float dot8_avx256(const float *vec1, const float *vec2, int n)
+}*/
+float sdot8_avx256(const float *a, const float *b, int n)
 {
+	int i, n8 = n>>3<<3;
+	register __m256 va, vb, vtemp;
+	register __m128 vhigh, vresult;
+	register real s = 0.0;
+
+	for (i=0; i<n8; i+=8) {
+		// load
+		va = _mm256_loadu_ps(a+i); // matrix_a[i][k]
+		vb = _mm256_loadu_ps(b+i); // matrix_b[j][k]
+
+		// multiply
+		vtemp = _mm256_mul_ps(va, vb);
+
+		// add
+		// extract higher four floats
+		vhigh = _mm256_extractf128_ps(vtemp, 1); // high 128
+		// add higher four floats to lower floats
+		vresult = _mm_add_ps(_mm256_castps256_ps128(vtemp), vhigh);
+		// horizontal add of that result
+		vresult = _mm_hadd_ps(vresult, vresult);
+		// another horizontal add of that result
+		vresult = _mm_hadd_ps(vresult, vresult);
+
+		// store
+		s += _mm_cvtss_f32(vresult);
+	}
+	for (; i<n; i++) s += a[i] * b[i];
+	return s;
 }
 //#define BLOCK_SIZE 50
 void gemm_(
@@ -380,49 +408,46 @@ void gemm_(
 	real		*C,
 	const int	ldc)
 {
-	memset(C, 0, ldc*M*sizeof(real));
 	if (transa == 'N' && transb == 'T') {
 		// RNT
-		/*for (int m=0; m<M; m++) {
+		for (int m=0; m<M; m++) {
 			for (int n=0; n<N; n++) {
-				C[n+m*ldc] += _dot_8(&A[m*lda], &B[n*ldb], K);
-//				C[n+m*ldc] += dot_avx_2(&A[m*lda], &B[n*ldb], K);
-//				C[n+m*ldc] += dot(&A[m*lda], &B[n*ldb], K);
-			}
-		}*/
-		int k, n8 = K>>3<<3;
-		__m256 va, vb, vtemp;
-		__m128 vlow, vhigh, vresult;
-		for (int i=0; i<M; i++) {
-			for (int j=0; j<N; j++) {
-				register real s = C[i*ldc+j];
-				for (k=0; k<n8; k+=8) {
-					// load
-					va = _mm256_loadu_ps(A+(i*lda)+k); // matrix_a[i][k]
-					vb = _mm256_loadu_ps(B+(j*ldb)+k); // matrix_b[j][k]
-
-					// multiply
-					vtemp = _mm256_mul_ps(va, vb);
-
-					// add
-					// extract higher four floats
-					vhigh = _mm256_extractf128_ps(vtemp, 1); // high 128
-					// add higher four floats to lower floats
-					vresult = _mm_add_ps(_mm256_castps256_ps128(vtemp), vhigh);
-					// horizontal add of that result
-					vresult = _mm_hadd_ps(vresult, vresult);
-					// another horizontal add of that result
-					vresult = _mm_hadd_ps(vresult, vresult);
-
-					// store
-					s += _mm_cvtss_f32(vresult);
-				}
-				for (; k<K; k++) s += A[k+i*lda] * B[k+j*ldb];
-				C[i*ldc+j] = s;
+#ifdef CATS_USE_FLOAT
+//				C[m*ldc+n] = sdot8_avx256(&A[m*lda], &B[n*ldb], K);
+				C[m*ldc+n] = alpha * sdot8_avx256(&A[m*lda], &B[n*ldb], K) + beta * C[m*ldc+n];
+#else
+				C[m*ldc+n] = alpha * dot8(&A[m*lda], &B[n*ldb], K) + beta * C[m*ldc+n];
+#endif
 			}
 		}
 	} else if (transa == 'N' && transb == 'N') {
 		// RNN
+		/*for (int i=0; i<M; i++) {
+			for(int j=0; j<N; j+=8) {
+				register __m256 va, vb, vr;
+				vr = _mm256_setzero_ps();
+				for (int k=0; k<K; k++) {
+					//result[i][j] += mat1[i][k] * mat2[k][j];
+					va = _mm256_loadu_ps(A+i*lda+k);
+					vb = _mm256_loadu_ps(B+k*ldb+j);
+					vr = _mm_add_epi32(vR, _mm_mullo_epi32(vA, vB));
+				}
+				_mm_storeu_si128((__m128i*)&result[i][j], vR));
+			}
+		}*/
+		/*for (int i=0; i<M; i++) {
+			for(int j=0; j<N; j+=4) {
+				// vectorize over this loop
+				__m128i vR = _mm_setzero_si128();
+				for (int k=0; k<K; k++) {
+					//result[i][j] += mat1[i][k] * mat2[k][j];
+					__m128i vA = _mm_set1_epi32(mat1[i][k]);  // load+broadcast is much cheaper than MOVD + 3 inserts (or especially 4x insert, which your new code is doing)
+					__m128i vB = _mm_loadu_si128((__m128i*)&mat2[k][j]);  // mat2[k][j+0..3]
+					vR = _mm_add_epi32(vR, _mm_mullo_epi32(vA, vB));
+				}
+				_mm_storeu_si128((__m128i*)&result[i][j], vR));
+			}
+		}*/
 		/*for (int n=0; n<N; n++) {
 			for (int i=0; i<K; i++) {
 				C[n+m*ldc] = alpha * sum + beta * C[n+m*ldc];
