@@ -4,8 +4,9 @@ PROGRAM = $(patsubst %.c,%,$(wildcard *.c))
 #OBJS = $(patsubst %.c,%.o,$(wildcard *.c))
 
 CC = clang
+# -fopt-info-optall-optimized 
 # -fsingle-precision-constant -Wdouble-promotion
-CFLAGS = -Wfloat-conversion -Ofast -march=native -funroll-loops -finline-functions -ffp-contract=fast -mf16c
+CFLAGS = -Wfloat-conversion -Ofast -march=native -funroll-loops -finline-functions -ffp-contract=fast -mf16c -ftree-vectorize
 LDFLAGS = -lm -Wl,-s -Wl,--gc-sections
 
 UNAME_S := $(shell uname -s)

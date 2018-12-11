@@ -48,7 +48,6 @@ int main()
 	for (int i=0; i<sample; i++) {
 		_CatsEye_forward(&cat, x+i);
 		fprintf(fp, "%d, %lf\n", i, cat.layer[cat.layers-1].x[0]);
-//		fprintf(fp, "%d, %lf\n", i, cat.o[1][0]);
 	}
 	fclose(fp);
 
@@ -80,11 +79,9 @@ int main()
 	PS_setrgb(1.0, 0.0, 0.0);
 	_CatsEye_forward(&cat, x);
 	PS_plot(x[0], cat.layer[cat.layers-1].x[0], 3);
-//	PS_plot(x[0], cat.o[1][0], 3);
 	for (int i=1; i<sample; i++) {
 		_CatsEye_forward(&cat, x+i);
 		PS_plot(x[i], cat.layer[cat.layers-1].x[0], 2);
-//		PS_plot(x[i], cat.o[1][0], 2);
 	}
 	PS_stroke();
 	PS_fin();

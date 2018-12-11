@@ -76,11 +76,13 @@ int binomial(/*int n, */real p)
 	a[data] = 1;
 }*/
 
-//#define GEMM(def)	sgemm##def
-//#include "catseye_gemm.h"
-//#define gemm		sgemm_c
+/*#define GEMM(def)	gemm##def
+#include "catseye_gemm.h"
+#define gemm		gemm_c*/
 #define gemm		gemm_cpu
 
+#define CATS_SSE
+//#define CATS_AVX
 //#ifdef CATS_SSE
 #include "catseye_simd.h"	// deprecated!
 //#else
@@ -260,7 +262,9 @@ void _CatsEye_linear_forward(CatsEye_layer *l)
 		}
 		*o++ = a + *w++;	// bias!!
 	}*/
+	// z = x * w**T
 	gemm('R', 'N', 'T', 1/*batch*/, l->outputs, l->inputs+1, 1, l->x, l->inputs+1, l->W, l->inputs+1, 0, l->z, l->outputs);
+//	gemm_('R', 'N', 'T', 1/*batch*/, l->outputs, l->inputs+1, 1, l->x, l->inputs+1, l->W, l->inputs+1, 0, l->z, l->outputs);
 }
 void _CatsEye_linear_backward(CatsEye_layer *l)
 {
@@ -278,6 +282,7 @@ void _CatsEye_linear_backward(CatsEye_layer *l)
 		}
 		*d++ = a;
 	}*/
+	// prev_dw = dW * W
 	gemm('R', 'N', 'N', 1/*batch*/, l->inputs+1, l->outputs, 1, l->dW, l->outputs, l->W, l->inputs+1, 0, l->prev_dw, l->inputs+1);
 }
 void _CatsEye_linear_update(CatsEye_layer *l)
@@ -290,7 +295,7 @@ void _CatsEye_linear_update(CatsEye_layer *l)
 		w += l->outputs;
 	}*/
 
-/*	real *w = l->W;
+	/*real *w = l->W;
 	real *d = l->dW;
 	for (int i=l->outputs; i>0; i--) {
 		real *x = l->x;
@@ -300,6 +305,8 @@ void _CatsEye_linear_update(CatsEye_layer *l)
 		}
 		*w++ += a;	// bias!!
 	}*/
+	// slow??
+	// W = W - eta * dW * x
 	gemm('R', 'T', 'N', l->outputs, l->inputs+1, 1/*batch*/, -l->eta, l->dW, l->outputs, l->x, l->inputs+1, 1, l->W, l->inputs+1);
 }
 // RNN
@@ -450,7 +457,6 @@ void _CatsEye_convolutional_update(CatsEye_layer *l)
 	} else {
 		im2col(l->x, l->ich, l->sy, l->sx, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, workspace);
 	}
-//	gemm('R', 'T', 'N', l->ox*l->oy*1/*batch*/, l->ksize*l->ksize*l->ich, l->ch, -l->eta, l->dW, l->ox*l->oy, workspace, l->ksize*l->ksize*l->ich, 1, l->W, l->ksize*l->ksize*l->ich);
 	gemm('R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1/*batch*/, -l->eta, l->dW, l->ox*l->oy, workspace, l->ox*l->oy, 1, l->W, l->ksize*l->ksize*l->ich);
 }
 
