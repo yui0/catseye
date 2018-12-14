@@ -3,9 +3,12 @@
 PROGRAM = $(patsubst %.c,%,$(wildcard *.c))
 #OBJS = $(patsubst %.c,%.o,$(wildcard *.c))
 
+#CC = gcc
+#CFLAGS = -Wfloat-conversion -fsingle-precision-constant -Ofast -march=native -funroll-loops -finline-functions -ffp-contract=fast -mf16c -ftree-vectorize
+## -fopt-info-optall-optimized -Wdouble-promotion
+#LDLIBS = -lm -Wl,-s -Wl,--gc-sections
+
 CC = clang
-# -fopt-info-optall-optimized 
-# -fsingle-precision-constant -Wdouble-promotion
 CFLAGS = -Wfloat-conversion -Ofast -march=native -funroll-loops -finline-functions -ffp-contract=fast -mf16c -ftree-vectorize
 LDFLAGS = -lm -Wl,-s -Wl,--gc-sections
 

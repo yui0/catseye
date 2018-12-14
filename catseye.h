@@ -19,6 +19,13 @@
 #define real		float
 #define sqrt		sqrtf
 #define pow		powf
+#define exp		expf
+#define log		logf
+#define fabs		fabsf
+#define sin		sinf
+#define cos		cosf
+#define tan		tanf
+#define tanh		tanhf
 #else
 #define real		double
 #warning "using double!!"
@@ -76,16 +83,12 @@ int binomial(/*int n, */real p)
 	a[data] = 1;
 }*/
 
-/*#define GEMM(def)	gemm##def
-#include "catseye_gemm.h"
-#define gemm		gemm_c*/
-#define gemm		gemm_cpu
-
 #define CATS_SSE
 //#define CATS_AVX
-//#ifdef CATS_SSE
+
+#ifdef CATS_SSE
 #include "catseye_simd.h"	// deprecated!
-//#else
+#else	// CATS_SSE
 // vec1 * vec2
 #define dot		dot_8
 real dot_8(const real *x, const real *y, int n)
@@ -107,69 +110,25 @@ real dot_8(const real *x, const real *y, int n)
 	s += t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
 	return s;
 }
-// mat * vec
-/*void dotmv(real *s, real *mat, real *vec, int n, int m)
-{
-//	#pragma omp parallel for simd
-	for (int i=m; i>0; i--) {
-		*s++ = dot(mat, vec, n);
-		mat += n;
-	}
-	return;
-}
-// vec += mat * vec
-void dotamv(real *s, real *mat, real *vec, int n, int m)
-{
-//	#pragma omp parallel for simd
-	for (int i=m; i>0; i--) {
-		*s++ += dot(mat, vec, n);
-		mat += n;
-	}
-	return;
-}
-void muldot(real *s, real *mat, real *vec, int n, int m)
-{
-//	#pragma omp parallel for simd
-	for (int i=m; i>0; i--) {
-		*s++ *= dot(mat, vec, n);
-		mat += n;
-	}
-	return;
-}*/
-real dotTv(real *mat1, real *vec1, int r, int c)
-{
-	real s = 0;
-//	#pragma omp parallel for simd reduction(+:s)
-	for (int i=r; i>0; i--) {
-		s += *mat1 * (*vec1++);
-		mat1 += c;
-	}
-	return s;
-}
-void _fma(real *a, real *b, real z, int n)
-{
-	for (int i=0; i<n; i++) {
-		*a += z * (*b);
-		a++;
-		b++;
-	}
-}
-/*void outeradd(real *s, real *vec1, real *vec2, int n, int m)
-{
-//	#pragma omp parallel for simd
-	for (int i=m; i>0; i--) {
-		_fma(s, vec2, *vec1++, n);
-	}
-}*/
-void _fmax(real *vec1, real *vec2, real a, int n)
-{
-//	#pragma omp parallel for simd
-	for (int i=n; i>0; i--) {
-		*vec1 += a * (*vec2++) + (*vec1) * 1e-8;
-		vec1++;
-	}
-}
-//#endif
+#endif	// CATS_SSE
+
+#ifdef CATS_USE_FLOAT
+#ifdef CATS_SSE
+#include "catseye_sgemm.h"
+#define gemm		sgemm_sse
+#else
+#define GEMM(def)	gemm##def
+#include "catseye_gemm.h"
+#define gemm		gemm_c
+#endif
+
+#else // CATS_USE_FLOAT
+
+/*#define GEMM(def)	gemm##def
+#include "catseye_gemm.h"
+#define gemm		gemm_c*/
+#define gemm		gemm_cpu
+#endif
 
 typedef struct layer {
 	int inputs;		// input size
@@ -263,8 +222,7 @@ void _CatsEye_linear_forward(CatsEye_layer *l)
 		*o++ = a + *w++;	// bias!!
 	}*/
 	// z = x * w**T
-//	gemm('R', 'N', 'T', 1/*batch*/, l->outputs, l->inputs+1, 1, l->x, l->inputs+1, l->W, l->inputs+1, 0, l->z, l->outputs);
-	gemm_('R', 'N', 'T', 1/*batch*/, l->outputs, l->inputs+1, 1, l->x, l->inputs+1, l->W, l->inputs+1, 0, l->z, l->outputs);
+	gemm('R', 'N', 'T', 1/*batch*/, l->outputs, l->inputs+1, 1, l->x, l->inputs+1, l->W, l->inputs+1, 0, l->z, l->outputs);
 }
 void _CatsEye_linear_backward(CatsEye_layer *l)
 {
@@ -457,8 +415,7 @@ void _CatsEye_convolutional_update(CatsEye_layer *l)
 	} else {
 		im2col(l->x, l->ich, l->sy, l->sx, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, workspace);
 	}
-//	gemm('R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1/*batch*/, -l->eta, l->dW, l->ox*l->oy, workspace, l->ox*l->oy, 1, l->W, l->ksize*l->ksize*l->ich);
-	gemm_('R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1/*batch*/, -l->eta, l->dW, l->ox*l->oy, workspace, l->ox*l->oy, 1, l->W, l->ksize*l->ksize*l->ich);
+	gemm('R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1/*batch*/, -l->eta, l->dW, l->ox*l->oy, workspace, l->ox*l->oy, 1, l->W, l->ksize*l->ksize*l->ich);
 }
 
 // calculate forward propagation
@@ -575,10 +532,11 @@ void _CatsEye_convolutional_update(CatsEye_layer *l)
 // calculate forward propagation
 void _CatsEye_maxpooling_forward(CatsEye_layer *l)
 {
-	int step = l->sx-l->ksize;
+//	int step = l->sx-l->ksize;
 	int *max = (int*)l->W; // temp
 	real *o = l->z;
 
+#if 0
 	for (int c=0; c<l->ch; c++) { // in/out
 		for (int y=0; y<l->sy/*-1*/; y+=l->stride) {
 			int i = c*l->sx*l->sy + y*l->sx;
@@ -587,6 +545,7 @@ void _CatsEye_maxpooling_forward(CatsEye_layer *l)
 				real a = l->x[n];
 				*max = n;
 				for (int wy=l->ksize; wy>0; wy--) {
+					int m = n;
 					for (int wx=l->ksize; wx>0; wx--) {
 						if (a<l->x[n]) {
 							a = l->x[n];
@@ -594,7 +553,32 @@ void _CatsEye_maxpooling_forward(CatsEye_layer *l)
 						}
 						n++;
 					}
-					n += step;
+//					n += step;
+					n += l->sx;
+				}
+				max++;
+				*o++ = a;
+			}
+		}
+	}
+#endif
+	for (int c=0; c<l->ch; c++) { // in/out
+		for (int y=0; y<l->oy; y++) {
+			int i = c*l->sx*l->sy + y*l->stride*l->sx;
+			for (int x=0; x<l->ox; x++) {
+				int n = i+x*l->stride;
+				real a = l->x[n];
+				*max = n;
+				for (int wy=l->ksize; wy>0; wy--) {
+					int m = n;
+					for (int wx=l->ksize; wx>0; wx--) {
+						if (a<l->x[n]) {
+							a = l->x[n];
+							*max = n;
+						}
+						n++;
+					}
+					n += l->sx;
 				}
 				max++;
 				*o++ = a;
@@ -703,6 +687,7 @@ void CatsEye_PixelShuffler_backward(CatsEye_layer *l)
 
 void CatsEye_padding_forward(CatsEye_layer *l)
 {
+	//real *x = l->x;
 //	memset(l->z, 0, sizeof(real)*l->outputs); // FIXME
 	for (int c=0; c<l->ch; c++) { // in/out
 		real *x = l->x +c*l->sx*l->sy;
@@ -716,6 +701,7 @@ void CatsEye_padding_forward(CatsEye_layer *l)
 }
 void CatsEye_padding_backward(CatsEye_layer *l)
 {
+	//real *d = l->prev_dw;
 	for (int c=0; c<l->ch; c++) { // in/out
 		real *d = l->prev_dw +c*l->sx*l->sy;
 		real *delta = l->dW +c*l->ox*l->oy +l->ox*l->padding +l->padding;
@@ -911,7 +897,8 @@ void CatsEye_loss_delivative_0_1(CatsEye_layer *l)
 		*d++ = a==i ? o[i]-1 : o[i];	// 1-of-K
 	}*/
 	memcpy(l->prev_dw, l->x, sizeof(real)*l->inputs);
-	l->prev_dw[a] = l->x[a]-1;
+	//l->prev_dw[a] = l->x[a]-1;
+	l->prev_dw[a] -= 1;
 	// http://d.hatena.ne.jp/echizen_tm/20110606/1307378609
 	// E = max(0, -twx), ∂E / ∂w = max(0, -tx)
 }
@@ -1550,6 +1537,32 @@ real *_CatsEye_loadCifar(char *name, int size, int lsize, int sample, int16_t **
 
 
 
+real dotTv(real *mat1, real *vec1, int r, int c)
+{
+	real s = 0;
+//	#pragma omp parallel for simd reduction(+:s)
+	for (int i=r; i>0; i--) {
+		s += *mat1 * (*vec1++);
+		mat1 += c;
+	}
+	return s;
+}
+void _fma(real *a, real *b, real z, int n)
+{
+	for (int i=0; i<n; i++) {
+		*a += z * (*b);
+		a++;
+		b++;
+	}
+}
+void _fmax(real *vec1, real *vec2, real a, int n)
+{
+//	#pragma omp parallel for simd
+	for (int i=n; i>0; i--) {
+		*vec1 += a * (*vec2++) + (*vec1) * 1e-8;
+		vec1++;
+	}
+}
 #define CATS_SIGMOID
 //#define CATS_SIGMOID_CROSSENTROPY
 #ifdef CATS_SIGMOID_CROSSENTROPY

@@ -12,9 +12,10 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "../stb_image_write.h"
 
-//#define ETA	0.001
 //#define ETA	1e-5
-#define ETA	1e-4
+//#define ETA	1e-4
+//#define ETA	0.1
+#define ETA	0.01	// conv*2
 
 int main()
 {
@@ -23,67 +24,73 @@ int main()
 	int label = 10;	// 出力層
 	int sample = 10000;
 
+#if 1
 	// http://blog.neko-ni-naritai.com/entry/2018/04/07/115504
 	CatsEye_layer u[] = {
-		{  size, CATS_PADDING, .sx=32, .sy=32, .ich=3, .padding=1 },
-//		{  size, CATS_PADDING, .sx=224, .sy=224, .ich=3, .padding=1 },
-		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=64, .ich=3 },
+//		{  size, CATS_CONV, ETA, .ksize=3, .stride=1, .ch=64, .sx=224, .sy=224, .ich=3, .padding=1 },
+		{  size, CATS_CONV, ETA, .ksize=3, .stride=1, .ch=64, .sx=32, .sy=32, .ich=3, .padding=1 },
 		{     0, _CATS_ACT_RELU },
-		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=64 },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .ch=64, .padding=1 },
 		{     0, _CATS_ACT_RELU },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 }, // 64,112x112
 
-		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=128 },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .ch=128, .padding=1 },
 		{     0, _CATS_ACT_RELU },
-		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=128 },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .ch=128, .padding=1 },
 		{     0, _CATS_ACT_RELU },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 }, // 128,56x56
 
-		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=256 },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .ch=256, .padding=1 },
 		{     0, _CATS_ACT_RELU },
-		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=256 },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .ch=256, .padding=1 },
 		{     0, _CATS_ACT_RELU },
-		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=256 },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .ch=256, .padding=1 },
 		{     0, _CATS_ACT_RELU },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 }, // 256,28x28
 
-		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=512 },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .ch=512, .padding=1 },
 		{     0, _CATS_ACT_RELU },
-		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=512 },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .ch=512, .padding=1 },
 		{     0, _CATS_ACT_RELU },
-		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=512 },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .ch=512, .padding=1 },
 		{     0, _CATS_ACT_RELU },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 }, // 512,14x14
 
-		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=512 },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .ch=512, .padding=1 },
 		{     0, _CATS_ACT_RELU },
-		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=512 },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .ch=512, .padding=1 },
 		{     0, _CATS_ACT_RELU },
-		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=512 },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .ch=512, .padding=1 },
 		{     0, _CATS_ACT_RELU },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 }, // 512,7x7
 
-		{     0, CATS_LINEAR, ETA, .outputs=4096 },
-		{     0, _CATS_ACT_RELU },
-		{     0, CATS_LINEAR, ETA, .outputs=4096 },
+//		{     0, CATS_LINEAR, ETA, .outputs=100/*4096*/ },
+//		{     0, _CATS_ACT_RELU },
+		{     0, CATS_LINEAR, ETA, .outputs=512/*4096*/ },
 		{     0, _CATS_ACT_RELU },
 		{     0, CATS_LINEAR, ETA, .outputs=label },
 		//{     0, _CATS_ACT_SIGMOID }, // <- slow learning, but good recognize
 		{     0, _CATS_ACT_SOFTMAX },
 		{ label, CATS_LOSS_0_1 },
 	};
+#endif
+	/*CatsEye_layer u[] = {	// 52.4%(10), 95.8%(1000), 99.7%(2000)
+		{  size, CATS_PADDING, .sx=32, .sy=32, .ich=3, .padding=1 },
+		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=10, .ich=3 },
+		{     0, _CATS_ACT_LEAKY_RELU },
+
+		{     0, CATS_PADDING, .padding=1 },
+		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=10, },
+		{     0, _CATS_ACT_LEAKY_RELU },
+		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
+
+		{     0, CATS_LINEAR, ETA, .outputs=256 },
+		{     0, _CATS_ACT_LEAKY_RELU },
+
+		{     0, CATS_LINEAR, ETA, .outputs=label },
+		{     0, _CATS_ACT_SOFTMAX },
+		{ label, CATS_LOSS_0_1 },
+	};*/
 	CatsEye cat;
 	_CatsEye__construct(&cat, u);
 
@@ -95,8 +102,9 @@ int main()
 
 	// 訓練
 	printf("Starting training using (stochastic) gradient descent\n");
-//	_CatsEye_train(&cat, x, t, sample, 10/*repeat*/, 1000/*random batch*/, sample/10/*verify*/);
-	_CatsEye_train(&cat, x, t, sample, 10/*repeat*/, 100/*random batch*/, 0);
+	_CatsEye_train(&cat, x, t, sample, 10/*repeat*/, 1000/*random batch*/, sample/10/*verify*/);
+//	_CatsEye_train(&cat, x, t, sample, 10/*repeat*/, 100/*random batch*/, 0);
+//	_CatsEye_train(&cat, x, t, sample, 10/*repeat*/, 10/*random batch*/, 0);
 	printf("Training complete\n");
 
 	// 結果の表示
@@ -136,7 +144,7 @@ int main()
 		}
 		printf("\n");
 	}
-	printf("Prediction accuracy on training data = %f%%\n", (float)r/sample*100.0);
+	printf("Prediction accuracy on training data = %f%%\n", (float)r/100/*sample*/*100.0);
 	stbi_write_png("vgg16_train_wrong.png", k*10, k*10, 3/*bpp*/, pixels, 0);
 
 	int n[10]; // 10 classes 
