@@ -532,7 +532,7 @@ void _CatsEye_convolutional_update(CatsEye_layer *l)
 // calculate forward propagation
 void _CatsEye_maxpooling_forward(CatsEye_layer *l)
 {
-//	int step = l->sx-l->ksize;
+	int step = l->sx-l->ksize;
 	int *max = (int*)l->W; // temp
 	real *o = l->z;
 
@@ -554,7 +554,7 @@ void _CatsEye_maxpooling_forward(CatsEye_layer *l)
 						n++;
 					}
 //					n += step;
-					n += l->sx;
+					n = m + l->sx;
 				}
 				max++;
 				*o++ = a;
@@ -570,7 +570,7 @@ void _CatsEye_maxpooling_forward(CatsEye_layer *l)
 				real a = l->x[n];
 				*max = n;
 				for (int wy=l->ksize; wy>0; wy--) {
-					int m = n;
+//					int m = n;
 					for (int wx=l->ksize; wx>0; wx--) {
 						if (a<l->x[n]) {
 							a = l->x[n];
@@ -578,7 +578,8 @@ void _CatsEye_maxpooling_forward(CatsEye_layer *l)
 						}
 						n++;
 					}
-					n += l->sx;
+					n += step;
+//					n = m + l->sx;
 				}
 				max++;
 				*o++ = a;
@@ -605,11 +606,27 @@ void CatsEye_avgpooling_forward(CatsEye_layer *l)
 	real n = l->ksize * l->ksize;
 	real *o = l->z;
 
-	for (int c=0; c<l->ch; c++) { // in/out
+	/*for (int c=0; c<l->ch; c++) { // in/out
 		for (int y=0; y<l->sy; y+=l->stride) {
 			int i = c*l->sx*l->sy + y*l->sx;
 			for (int x=0; x<l->sx; x+=l->stride) {
 				real *u = l->x + i+x;
+				real a = 0;
+				for (int wy=l->ksize; wy>0; wy--) {
+					for (int wx=l->ksize; wx>0; wx--) {
+						a += *u++;
+					}
+					u += step;
+				}
+				*o++ = a / n;
+			}
+		}
+	}*/
+	for (int c=0; c<l->ch; c++) { // in/out
+		for (int y=0; y<l->oy; y++) {
+			int i = c*l->sx*l->sy + y*l->stride*l->sx;
+			for (int x=0; x<l->ox; x++) {
+				real *u = l->x + i+x*l->stride;
 				real a = 0;
 				for (int wy=l->ksize; wy>0; wy--) {
 					for (int wx=l->ksize; wx>0; wx--) {
@@ -628,11 +645,26 @@ void CatsEye_avgpooling_backward(CatsEye_layer *l)
 	real n = l->ksize * l->ksize;
 	real *delta = l->dW;
 
-	for (int c=0; c<l->ch; c++) { // in/out
+	/*for (int c=0; c<l->ch; c++) { // in/out
 		for (int y=0; y<l->sy; y+=l->stride) {
 			int i = c*l->sx*l->sy + y*l->sx;
 			for (int x=0; x<l->sx; x+=l->stride) {
 				real *d = l->prev_dw + i+x;
+				real a = *delta++ / n;
+				for (int wy=l->ksize; wy>0; wy--) {
+					for (int wx=l->ksize; wx>0; wx--) {
+						*d++ = a;
+					}
+					d += step;
+				}
+			}
+		}
+	}*/
+	for (int c=0; c<l->ch; c++) { // in/out
+		for (int y=0; y<l->oy; y++) {
+			int i = c*l->sx*l->sy + y*l->stride*l->sx;
+			for (int x=0; x<l->ox; x++) {
+				real *d = l->prev_dw + i+x*l->stride;
 				real a = *delta++ / n;
 				for (int wy=l->ksize; wy>0; wy--) {
 					for (int wx=l->ksize; wx>0; wx--) {
