@@ -148,7 +148,8 @@ void dot8x8_avx(const float *a, const float *b, float *c, const int kc)
 		b5 = _mm256_broadcast_ss(b+5);
 		b6 = _mm256_broadcast_ss(b+6);
 		b7 = _mm256_broadcast_ss(b+7);
-		a0 = _mm256_loadu_ps(a);
+//		a0 = _mm256_loadu_ps(a);
+		a0 = _mm256_load_ps(a);
 
 		a += 8;
 		b += 8;
@@ -165,14 +166,22 @@ void dot8x8_avx(const float *a, const float *b, float *c, const int kc)
 		c7 = _mm256_add_ps(c7, _mm256_mul_ps(a0, b7));
 	}
 
-	_mm256_storeu_ps(c, c0);
+	/*_mm256_storeu_ps(c, c0);
 	_mm256_storeu_ps(c+8, c1);
 	_mm256_storeu_ps(c+16, c2);
 	_mm256_storeu_ps(c+24, c3);
 	_mm256_storeu_ps(c+32, c4);
 	_mm256_storeu_ps(c+40, c5);
 	_mm256_storeu_ps(c+48, c6);
-	_mm256_storeu_ps(c+56, c7);
+	_mm256_storeu_ps(c+56, c7);*/
+	_mm256_store_ps(c, c0);
+	_mm256_store_ps(c+8, c1);
+	_mm256_store_ps(c+16, c2);
+	_mm256_store_ps(c+24, c3);
+	_mm256_store_ps(c+32, c4);
+	_mm256_store_ps(c+40, c5);
+	_mm256_store_ps(c+48, c6);
+	_mm256_store_ps(c+56, c7);
 }
 //  Micro kernel for multiplying panels from A and B.
 static void _sgemm_micro_kernel(

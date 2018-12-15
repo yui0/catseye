@@ -388,7 +388,7 @@ void col2im(const real *col, const int channels,
 		}
 	}
 }
-static real col[32*32*512*30];
+static real col[32*32*1024*30];
 void _CatsEye_convolutional_forward(CatsEye_layer *l)
 {
 	real *workspace = col;

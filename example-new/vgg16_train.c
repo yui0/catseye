@@ -24,11 +24,11 @@ int main()
 	int label = 10;	// 出力層
 	int sample = 10000;
 
-#if 1
+#if 0
 	// http://blog.neko-ni-naritai.com/entry/2018/04/07/115504
 	CatsEye_layer u[] = {
-//		{  size, CATS_CONV, ETA, .ksize=3, .stride=1, .ch=64, .sx=224, .sy=224, .ich=3, .padding=1 },
-		{  size, CATS_CONV, ETA, .ksize=3, .stride=1, .ch=64, .sx=32, .sy=32, .ich=3, .padding=1 },
+//		{  size, CATS_CONV, ETA, .ksize=3, .stride=1, .ch=64, .padding=1, .sx=224, .sy=224, .ich=3 },
+		{  size, CATS_CONV, ETA, .ksize=3, .stride=1, .ch=64, .padding=1, .sx=32, .sy=32, .ich=3 },
 		{     0, _CATS_ACT_RELU },
 		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .ch=64, .padding=1 },
 		{     0, _CATS_ACT_RELU },
@@ -73,24 +73,54 @@ int main()
 		{     0, _CATS_ACT_SOFTMAX },
 		{ label, CATS_LOSS_0_1 },
 	};
-#endif
-	/*CatsEye_layer u[] = {	// 52.4%(10), 95.8%(1000), 99.7%(2000)
-		{  size, CATS_PADDING, .sx=32, .sy=32, .ich=3, .padding=1 },
-		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=10, .ich=3 },
-		{     0, _CATS_ACT_LEAKY_RELU },
+#else
+	CatsEye_layer u[] = {
+		{  size, CATS_CONV, ETA, .ksize=3, .stride=1, .ch=20, .padding=1, .sx=32, .sy=32, .ich=3 },
+		{     0, _CATS_ACT_RELU },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .ch=20, .padding=1 },
+		{     0, _CATS_ACT_RELU },
+		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 }, // 64,112x112
 
-		{     0, CATS_PADDING, .padding=1 },
-		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=10, },
-		{     0, _CATS_ACT_LEAKY_RELU },
-		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .ch=10, .padding=1 },
+		{     0, _CATS_ACT_RELU },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .ch=10, .padding=1 },
+		{     0, _CATS_ACT_RELU },
+		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 }, // 128,56x56
 
-		{     0, CATS_LINEAR, ETA, .outputs=256 },
-		{     0, _CATS_ACT_LEAKY_RELU },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .ch=10, .padding=1 },
+		{     0, _CATS_ACT_RELU },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .ch=10, .padding=1 },
+		{     0, _CATS_ACT_RELU },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .ch=10, .padding=1 },
+		{     0, _CATS_ACT_RELU },
+		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 }, // 256,28x28
 
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .ch=10, .padding=1 },
+		{     0, _CATS_ACT_RELU },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .ch=10, .padding=1 },
+		{     0, _CATS_ACT_RELU },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .ch=10, .padding=1 },
+		{     0, _CATS_ACT_RELU },
+		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 }, // 512,14x14
+
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .ch=10, .padding=1 },
+		{     0, _CATS_ACT_RELU },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .ch=10, .padding=1 },
+		{     0, _CATS_ACT_RELU },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .ch=10, .padding=1 },
+		{     0, _CATS_ACT_RELU },
+		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 }, // 512,7x7
+
+		{     0, CATS_LINEAR, ETA, .outputs=100/*4096*/ },
+		{     0, _CATS_ACT_RELU },
+		{     0, CATS_LINEAR, ETA, .outputs=100/*4096*/ },
+		{     0, _CATS_ACT_RELU },
 		{     0, CATS_LINEAR, ETA, .outputs=label },
+		//{     0, _CATS_ACT_SIGMOID }, // <- slow learning, but good recognize
 		{     0, _CATS_ACT_SOFTMAX },
 		{ label, CATS_LOSS_0_1 },
-	};*/
+	};
+#endif
 	CatsEye cat;
 	_CatsEye__construct(&cat, u);
 
@@ -164,6 +194,7 @@ int main()
 	/*for (int i=0; i<10*10; i++)*/ {
 		int p = _CatsEye_predict(&cat, x/*+size*i*/);
 
+		int x = 0;
 		for (int n=0; n<cat.layers; n++) {
 			CatsEye_layer *l = &cat.layer[n];
 			if (l->type == CATS_LINEAR) {
@@ -172,8 +203,10 @@ int main()
 
 			int mch = l->ch > 10 ? 10 : l->ch;
 			for (int ch=0; ch<mch; ch++) {
-				CatsEye_visualize(&l->z[ch*l->ox*l->oy], l->ox*l->oy, l->ox, &pixels[n*(k+2) +ch*(k+2)*k*10], k*10);
+//				CatsEye_visualize(&l->z[ch*l->ox*l->oy], l->ox*l->oy, l->ox, &pixels[n*(k+2) +ch*(k+2)*k*10], k*10);
+				CatsEye_visualize(&l->z[ch*l->ox*l->oy], l->ox*l->oy, l->ox, &pixels[x +ch*(l->oy+2)*k*10], k*10);
 			}
+			x += l->ox+2;
 		}
 	}
 	stbi_write_png("vgg16_predict.png", k*10, k*10, 1, pixels, 0);
