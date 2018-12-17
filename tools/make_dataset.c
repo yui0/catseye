@@ -26,7 +26,7 @@ void make_dataset(FILE *fp, char *name, int sx, int sy, int label)
 	pixels = stbi_load(name, &w, &h, &bpp, 3);
 //	printf("[%s]\n", name);
 	assert(pixels);
-	printf("#%d %s %dx%d %d\n", label, name, w, h, bpp);
+	printf("#%d %s %dx%d %d > %dx%d\n", label, name, w, h, bpp, sx, sy);
 	bpp = 3;
 
 	// resize
@@ -52,6 +52,8 @@ int main(int argc, char* argv[])
 	char *p;
 	char *dir = ".";
 	char *target = "datasets.bin";
+	int size = 12;
+	int max = 0;
 	static int32_t l[1000], lmax[1000];
 
 	for(int i=0; i<argc; i++) {
@@ -59,12 +61,23 @@ int main(int argc, char* argv[])
 		if (*p=='-') { // option
 			p++;
 			switch (*p) {
-			case 'o':
-				target = ++p;
+			case 'o': // file name
+				target = argv[i+1];
+				i++;
 				break;
 			case 'l':
 				lmax[0] = atoi(++p);
 				break;
+			case 's': // image size
+				size = atoi(argv[i+1]);
+				i++;
+				break;
+			case 'm': // max images
+				max = atoi(argv[i+1]);
+				i++;
+				break;
+//			case 'd': // dir
+//				dir = ++p;
 			}
 		} else {
 			dir = p;
@@ -72,12 +85,16 @@ int main(int argc, char* argv[])
 	}
 
 	FILE *fp = fopen(target, "wb");
+	if (!fp) {
+		printf("error at fopen %s\n", target);
+	}
 	char *name = dir;
 	int num;
 
-	pix = malloc(12*12*3 *2);
+	pix = malloc(size*size*3 *2);
 	LS_LIST *ls = ls_dir(name, 1, &num);
 //	fwrite(&num, sizeof(int32_t), 1, fp);
+	if (max) num = max;
 	for (int i=0; i<num; i++) {
 //		printf("\n%s\n", ls[i].d_name);
 /*		char buff[256];
@@ -93,7 +110,7 @@ int main(int argc, char* argv[])
 		l[label]++;
 		fwrite(&label, sizeof(int16_t), 1, fp);
 
-		make_dataset(fp, ls[i].d_name, 12, 12, label);
+		make_dataset(fp, ls[i].d_name, size, size, label);
 	}
 	free(ls);
 	free(pix);

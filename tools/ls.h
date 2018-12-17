@@ -27,6 +27,7 @@ int ls_count_dir(char *dir, int flag)
 
 	if (!(dp = opendir(dir))) {
 		perror("opendir");
+		printf("%s\n", dir);
 		return 0;
 	}
 	char *cpath = getcwd(0, 0);
@@ -48,6 +49,7 @@ int ls_count_dir(char *dir, int flag)
 
 		i++;
 	}
+	//printf("%s => %d\n", dir, i);
 
 	closedir(dp);
 	chdir(cpath);
@@ -106,7 +108,7 @@ LS_LIST *ls_dir(char *dir, int flag, int *num)
 {
 	int n = ls_count_dir(dir, flag);
 	if (!n) {
-		fprintf(stderr, "No file found [%s]!!\n", dir);
+		fprintf(stderr, "No file found in %s\n", dir);
 		return 0;
 	}
 
