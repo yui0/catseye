@@ -1,3 +1,16 @@
+/* public domain Simple, Minimalistic, Fast GEMM library
+ *	©2018 Yuichiro Nakada
+ *
+ * Basic usage:
+ *	sgemm_sse('R', 'N', 'N', m_col_a, n_row_b, k_row_a_col_b, alpha, a, col_a, b, col_b, beta, c, col_c);
+ * */
+
+#ifdef _MSC_VER
+#include <intrin.h>
+#else
+#include <x86intrin.h>
+#endif
+
 #define MC  384
 #define KC  384
 #define NC  4096
@@ -92,36 +105,6 @@ static void _pack_B(int kc, int nc, const float *B, int incRowB, int incColB, fl
 	}
 }
 
-/*void dot8x8_avx(const float *a, const float *b, float *c)
-{
-	register __m256 a0, b0, b1, b2, b3, b4, b5, b6, b7;
-	register __m256 c0, c1, c2, c3, c4, c5, c6, c7;
-	b0 = _mm256_broadcast_ss(b);
-	b1 = _mm256_broadcast_ss(b+1);
-	b2 = _mm256_broadcast_ss(b+2);
-	b3 = _mm256_broadcast_ss(b+3);
-	b4 = _mm256_broadcast_ss(b+4);
-	b5 = _mm256_broadcast_ss(b+5);
-	b6 = _mm256_broadcast_ss(b+6);
-	b7 = _mm256_broadcast_ss(b+7);
-	a0 = _mm256_loadu_ps(a);
-	c0 = _mm256_loadu_ps(c);
-	c1 = _mm256_loadu_ps(c+8);
-	c2 = _mm256_loadu_ps(c+16);
-	c3 = _mm256_loadu_ps(c+24);
-	c4 = _mm256_loadu_ps(c+32);
-	c5 = _mm256_loadu_ps(c+40);
-	c6 = _mm256_loadu_ps(c+48);
-	c7 = _mm256_loadu_ps(c+56);
-	_mm256_storeu_ps(c, _mm256_add_ps(c0, _mm256_mul_ps(a0, b0)));
-	_mm256_storeu_ps(c+8, _mm256_add_ps(c1, _mm256_mul_ps(a0, b1)));
-	_mm256_storeu_ps(c+16, _mm256_add_ps(c2, _mm256_mul_ps(a0, b2)));
-	_mm256_storeu_ps(c+24, _mm256_add_ps(c3, _mm256_mul_ps(a0, b3)));
-	_mm256_storeu_ps(c+32, _mm256_add_ps(c4, _mm256_mul_ps(a0, b4)));
-	_mm256_storeu_ps(c+40, _mm256_add_ps(c5, _mm256_mul_ps(a0, b5)));
-	_mm256_storeu_ps(c+48, _mm256_add_ps(c6, _mm256_mul_ps(a0, b6)));
-	_mm256_storeu_ps(c+56, _mm256_add_ps(c7, _mm256_mul_ps(a0, b7)));
-}*/
 void dot8x8_avx(const float *a, const float *b, float *c, const int kc)
 {
 	/*register*/ __m256 a0, b0, b1, b2, b3, b4, b5, b6, b7;
@@ -148,8 +131,11 @@ void dot8x8_avx(const float *a, const float *b, float *c, const int kc)
 		b5 = _mm256_broadcast_ss(b+5);
 		b6 = _mm256_broadcast_ss(b+6);
 		b7 = _mm256_broadcast_ss(b+7);
-//		a0 = _mm256_loadu_ps(a);
+#ifdef CATSEYS_ALIGNED
 		a0 = _mm256_load_ps(a);
+#else
+		a0 = _mm256_loadu_ps(a);
+#endif
 
 		a += 8;
 		b += 8;
@@ -166,14 +152,7 @@ void dot8x8_avx(const float *a, const float *b, float *c, const int kc)
 		c7 = _mm256_add_ps(c7, _mm256_mul_ps(a0, b7));
 	}
 
-	/*_mm256_storeu_ps(c, c0);
-	_mm256_storeu_ps(c+8, c1);
-	_mm256_storeu_ps(c+16, c2);
-	_mm256_storeu_ps(c+24, c3);
-	_mm256_storeu_ps(c+32, c4);
-	_mm256_storeu_ps(c+40, c5);
-	_mm256_storeu_ps(c+48, c6);
-	_mm256_storeu_ps(c+56, c7);*/
+#ifdef CATSEYS_ALIGNED
 	_mm256_store_ps(c, c0);
 	_mm256_store_ps(c+8, c1);
 	_mm256_store_ps(c+16, c2);
@@ -182,6 +161,16 @@ void dot8x8_avx(const float *a, const float *b, float *c, const int kc)
 	_mm256_store_ps(c+40, c5);
 	_mm256_store_ps(c+48, c6);
 	_mm256_store_ps(c+56, c7);
+#else
+	_mm256_storeu_ps(c, c0);
+	_mm256_storeu_ps(c+8, c1);
+	_mm256_storeu_ps(c+16, c2);
+	_mm256_storeu_ps(c+24, c3);
+	_mm256_storeu_ps(c+32, c4);
+	_mm256_storeu_ps(c+40, c5);
+	_mm256_storeu_ps(c+48, c6);
+	_mm256_storeu_ps(c+56, c7);
+#endif
 }
 //  Micro kernel for multiplying panels from A and B.
 static void _sgemm_micro_kernel(
