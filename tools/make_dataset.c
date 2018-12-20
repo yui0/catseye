@@ -104,8 +104,23 @@ int main(int argc, char* argv[])
 		p = strrchr(buff, '/');
 //		printf("%s\n", p+1);
 		int16_t label = atoi(p+1);*/
-		char *p = strstr(ls[i].d_name, "/label_");
-		int16_t label = atoi(p+7);
+		//char *p = strstr(ls[i].d_name, "/label_");
+		//int16_t label = atoi(p+7);
+
+		char *e = findExt(ls[i].d_name);
+		if (!strstr(e, "png") && !strstr(e, "jpg") && !strstr(e, "jpeg")) continue;
+
+		int16_t label = ls[i].dir;
+		//char *s = strrchr(ls[i].d_name, '/');
+		char *s = ls[i].d_name + strlen(name);
+		while (*s!='\0') {
+			if (*s>='0' && *s<='9') {
+				label = atoi(s);
+				break;
+			}
+			s++;
+		}
+
 		if (lmax[label] && lmax[label] <= l[label]) continue;
 		l[label]++;
 		fwrite(&label, sizeof(int16_t), 1, fp);
