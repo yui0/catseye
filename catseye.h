@@ -232,7 +232,6 @@ void _CatsEye_linear_update(CatsEye_layer *l)
 		_fma(w, l->dOut, a, l->outputs);
 		w += l->outputs;
 	}*/
-
 	/*real *w = l->W;
 	real *d = l->dOut;
 	for (int i=l->outputs; i>0; i--) {
@@ -243,7 +242,6 @@ void _CatsEye_linear_update(CatsEye_layer *l)
 		}
 		*w++ += a;	// bias!!
 	}*/
-
 	// slow??
 	// W = W - eta * dOut**T * x [A(m,k) B(k,n) C(m,n)]
 	gemm('R', 'T', 'N', l->outputs, l->inputs+1, 1/*batch*/, -l->eta, l->dOut, l->outputs, l->x, l->inputs+1, 1, l->W, l->inputs+1);
@@ -1065,8 +1063,8 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		n[i] = m[i] = 0;
 		switch (l->type) {
 		case CATS_CONV:
-			l->ox = l->px = (l->sx +2*l->padding -l->ksize) /l->stride +1;
-			l->oy = l->py = (l->sy +2*l->padding -l->ksize) /l->stride +1;
+			l->ox = l->px = (l->sx +2*l->padding -l->ksize +(l->stride-1)) /l->stride +1;
+			l->oy = l->py = (l->sy +2*l->padding -l->ksize +(l->stride-1)) /l->stride +1;
 			l->px -= l->padding*2;
 			l->py -= l->padding*2;
 			l->pz = l->padding +l->padding*l->ox;
@@ -1074,21 +1072,19 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			n[i] = l->ksize * l->ksize;	// kernel size
 			m[i] = l->ch * l->ich;		// channel
 			l->workspace = malloc(sizeof(real*)* l->ox*l->oy * l->ksize*l->ksize*l->ich);
-//			printf("L%02d: CONV%d-%dch i/o:%d/%d[%dx%d/%dx%d] (%d[ksize^2]x%d[ch])\n", i+1, l->ksize, l->ch, l->inputs, l->outputs, l->sx, l->sy, l->ox, l->oy, n[i], m[i]);
 			printf("%3d %-8s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
 		case CATS_AVGPOOL:
 		case CATS_MAXPOOL:
 			l->ch = l->ich;
-			l->ox = (l->sx +2*l->padding -l->ksize) /l->stride +1;
-			l->oy = (l->sy +2*l->padding -l->ksize) /l->stride +1;
+			l->ox = (l->sx +2*l->padding -l->ksize +(l->stride-1)) /l->stride +1;
+			l->oy = (l->sy +2*l->padding -l->ksize +(l->stride-1)) /l->stride +1;
 			l->outputs = l->ch * l->ox * l->oy;
 			if (l->type == CATS_MAXPOOL) {
 				n[i] = l->ox * l->oy;
 				m[i] = l->ch;
 			}
-//			printf("L%02d: POOL%d-%dch (w:%d h:%d [%d])\n", i+1, l->ksize, l->ch, l->ox, l->oy, n[i]);
 			printf("%3d %-8s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
@@ -1098,7 +1094,6 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			l->oy = l->sy * l->r;
 			l->outputs = l->ch * l->ox * l->oy;
 //			n[i] = m[i] = 0;
-//			printf("L%02d: PIXELSHUFFLER x%d ch:%d->%d (w:%d h:%d)\n", i+1, l->r, l->ich, l->ch, l->ox, l->oy);
 			printf("%3d %-8s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
@@ -1123,7 +1118,6 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 //			n[i] = l->hiddens;
 			n[i] = l->inputs;
 			m[i] = l->hiddens;
-//			printf("L%02d: RECURRENT %d %d\n", i+1, n[i], m[i]);
 			printf("%3d %-8s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
@@ -1133,7 +1127,6 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			l->ox = l->sx + l->padding*2;
 			l->oy = l->sy + l->padding*2;
 			l->outputs = l->ch * l->ox * l->oy;
-//			printf("L%02d: PADIING%d-%dch %dx%d/%dx%d\n", i+1, l->padding, l->ich, l->sx, l->sy, l->ox, l->oy);
 			printf("%3d %-8s %4d     %d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->ch, l->padding, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
@@ -1142,7 +1135,6 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			l->beta = 0;
 			l->ch = l->ich;
 			l->outputs = l->inputs;
-//			printf("L%02d: BATCH NORMALIZATION\n", i+1);
 			printf("%3d %-8s %10d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
@@ -1160,7 +1152,6 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			l->outputs = l->inputs;
 			l->ox = l->sx;
 			l->oy = l->sy;
-//			printf("L%02d: ACT\n", i+1);
 			printf("%3d %-8s %10d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
@@ -1174,7 +1165,6 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			n[i] = l->inputs;
 			m[i] = l->outputs;
 //			l->ich = 1; // FIXME (for initialize weights)
-//			if (l->type==CATS_LINEAR) printf("L%02d: LINEAR %d %d\n", i+1, n[i], m[i]);
 			printf("%3d %-8s %10d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 		}
 		wsize[i] = this->wsize;
@@ -1236,10 +1226,6 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		CatsEye_layer *l = &this->layer[i];
 		printf("L%02d in:%d out:%d (x:%ld-z:%ld-d:%ld-w:%ld)\n", i+1, l->inputs, l->outputs, l->x-this->odata, l->z-this->odata, this->d[i]-this->ddata, this->w[i]-this->wdata);
 	}
-	/*for (int i=0; i<this->layers; i++) {
-		CatsEye_layer *l = &this->layer[i];
-		printf("%3d %-8s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->padding, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
-	}*/
 
 	this->start = this->stop = 0;
 	this->end = this->layers-1;
@@ -1294,8 +1280,6 @@ void _CatsEye_forward(CatsEye *this, real *x)
 	}
 #endif
 	for (int i=this->start; i<this->end; i++) {
-//		this->o[i][this->layer[i].inputs] = 1;	// for bias
-//		this->layer[i].forward(&this->layer[i]);
 		l->x[l->inputs] = 1;	// for bias
 		l->forward(l);
 		l++;
@@ -1329,6 +1313,7 @@ int _CatsEye_accuracy(CatsEye *this, real *x, int16_t *t, int verify)
 //		int16_t p = _CatsEye_predict(this, x+this->layer[0].inputs*i);
 		int16_t p = _CatsEye_predict(this, x+i*this->slide);
 		if (p==t[i]) r++;
+		//else printf("%d/%d ",p,t[i]);
 	}
 	return r;
 }
@@ -1503,8 +1488,23 @@ real *_CatsEye_loadCifar(char *name, int size, int lsize, int sample, int16_t **
 	if (!fp) return 0;
 	fread(data, (size+lsize)*sample, 1, fp);
 	for (int n=0; n<sample; n++) {
-		t[n] = data[n*(size+lsize)];
+		if (lsize==2) {
+			int16_t *p = (int16_t*)&data[n*(size+2)];
+			t[n] = *p;
+		} else {
+			t[n] = data[n*(size+lsize)];
+		}
 		for (int i=0; i<size; i++) x[n*size+i] = data[n*(size+lsize)+lsize+i] * (1.0/255.0);
+	}
+	for (int n=0; n<sample; n++) {
+		int a = (int)(frand()*sample);
+		real d[size];
+		memcpy(d, &x[n*size], sizeof(real)*size);
+		memcpy(&x[n*size], &x[a*size], sizeof(real)*size);
+		memcpy(&x[a*size], d, sizeof(real)*size);
+		int16_t tt = t[n];
+		t[n] = t[a];
+		t[a] = tt;
 	}
 	fclose(fp);
 	free(data);

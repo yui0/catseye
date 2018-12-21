@@ -130,6 +130,8 @@ int main(int argc, char* argv[])
 	free(ls);
 	free(pix);
 
+	num = 0;
+	for (int i=0; i<1000; i++) if (l[i]) num += l[i];
 	printf("Total %d\n", num);
 	for (int i=0; i<1000; i++) if (l[i]) printf("  label#%d %d\n", i, l[i]);
 	fclose(fp);
