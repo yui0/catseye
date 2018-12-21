@@ -52,7 +52,8 @@ int main()
 		{     0, CATS_LINEAR, 0.01, .outputs=1024 },
 		{     0, _CATS_ACT_LEAKY_RELU },
 		{     0, CATS_LINEAR, 0.01, .outputs=256 },
-		{     0, _CATS_ACT_SIGMOID },
+//		{     0, _CATS_ACT_SIGMOID },
+		{     0, _CATS_ACT_SOFTMAX },
 		{   256, CATS_LOSS_0_1 },
 	};
 	CatsEye cat;
