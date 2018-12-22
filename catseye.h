@@ -771,7 +771,7 @@ void _CatsEye_dact_##type(CatsEye_layer *l)\
 
 #define sigmoid_gain			1//0.1
 #define CATS_ACT_sigmoid(x, l)		(1.0 / (1.0 + exp(-(x) * sigmoid_gain)))
-#define CATS_DACT_sigmoid(x, l)		((1.0-(x))*(x) * sigmoid_gain)
+#define CATS_DACT_sigmoid(y, l)		((1.0-(y))*(y) * sigmoid_gain)
 CATS_ACT_ARRAY(sigmoid);
 CATS_DACT_ARRAY(sigmoid);
 
@@ -792,7 +792,7 @@ void _CatsEye_act_softmax(CatsEye_layer *l)
 		*z++ = (numer / denom);
 	}
 }
-#define CATS_DACT_softmax(x, l)		((x) * (1.0 - (x)))
+#define CATS_DACT_softmax(y, l)		((y) * (1.0 - (y)))
 CATS_DACT_ARRAY(softmax);
 
 // tanh function
@@ -820,30 +820,30 @@ void _CatsEye_act_tanh(CatsEye_layer *l)
 	}
 }
 #endif
-#define CATS_DACT_tanh(x, l)		(1.0-(x)*(x))	// (1.0-tanh(x)*tanh(x))
+#define CATS_DACT_tanh(y, l)		(1.0-(y)*(y))	// (1.0-tanh(x)*tanh(x))
 CATS_DACT_ARRAY(tanh);
 
 // rectified linear unit function
 #define CATS_ACT_ReLU(x, l)		((x)>0 ? (x) : 0.0)
-#define CATS_DACT_ReLU(x, l)		((x)>0 ? 1.0 : 0.0)
+#define CATS_DACT_ReLU(y, l)		((y)>0 ? 1.0 : 0.0)
 CATS_ACT_ARRAY(ReLU);
 CATS_DACT_ARRAY(ReLU);
 // leaky rectified linear unit function
 //#define leaky_alpha	0.01		// 0 - 1
 #define CATS_ACT_LeakyReLU(x, l)	((x)>0 ? (x) : (x)*l->alpha)
-#define CATS_DACT_LeakyReLU(x, l)	((x)>0 ? 1.0 : l->alpha)
+#define CATS_DACT_LeakyReLU(y, l)	((y)>0 ? 1.0 : l->alpha)
 CATS_ACT_ARRAY(LeakyReLU);
 CATS_DACT_ARRAY(LeakyReLU);
 // exponential rectified linear unit function
 // http://docs.chainer.org/en/stable/_modules/chainer/functions/activation/elu.html
 #define CATS_ACT_ELU(x, l)		((x)>0 ? (x) : exp(x)-1.0)
-#define CATS_DACT_ELU(x, l)		((x)>0 ? 1.0 : 1.0+x)
+#define CATS_DACT_ELU(y, l)		((y)>0 ? 1.0 : 1.0+y)
 CATS_ACT_ARRAY(ELU);
 CATS_DACT_ARRAY(ELU);
 // Randomized ReLU
 // https://qiita.com/Nezura/items/f52fdc483e5e7eceb6b9
 #define CATS_ACT_RReLU(x, l)		((x)>0 ? (x) : (x)*l->alpha)
-#define CATS_DACT_RReLU(x, l)		((x)>0 ? 1.0 : l->alpha)
+#define CATS_DACT_RReLU(y, l)		((y)>0 ? 1.0 : l->alpha)
 void _CatsEye_act_RReLU(CatsEye_layer *l)
 {
 	l->alpha = random(l->min, l->max);
@@ -1063,8 +1063,10 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		n[i] = m[i] = 0;
 		switch (l->type) {
 		case CATS_CONV:
-			l->ox = l->px = (l->sx +2*l->padding -l->ksize +(l->stride-1)) /l->stride +1;
-			l->oy = l->py = (l->sy +2*l->padding -l->ksize +(l->stride-1)) /l->stride +1;
+			l->ox = l->px = (l->sx +2*l->padding -l->ksize) /l->stride +1;
+			l->oy = l->py = (l->sy +2*l->padding -l->ksize) /l->stride +1;
+//			l->ox = l->px = (l->sx +2*l->padding -l->ksize +(l->stride-1)) /l->stride +1;
+//			l->oy = l->py = (l->sy +2*l->padding -l->ksize +(l->stride-1)) /l->stride +1;
 			l->px -= l->padding*2;
 			l->py -= l->padding*2;
 			l->pz = l->padding +l->padding*l->ox;
@@ -1078,8 +1080,10 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		case CATS_AVGPOOL:
 		case CATS_MAXPOOL:
 			l->ch = l->ich;
-			l->ox = (l->sx +2*l->padding -l->ksize +(l->stride-1)) /l->stride +1;
-			l->oy = (l->sy +2*l->padding -l->ksize +(l->stride-1)) /l->stride +1;
+			l->ox = (l->sx +2*l->padding -l->ksize) /l->stride +1;
+			l->oy = (l->sy +2*l->padding -l->ksize) /l->stride +1;
+//			l->ox = (l->sx +2*l->padding -l->ksize +(l->stride-1)) /l->stride +1;
+//			l->oy = (l->sy +2*l->padding -l->ksize +(l->stride-1)) /l->stride +1;
 			l->outputs = l->ch * l->ox * l->oy;
 			if (l->type == CATS_MAXPOOL) {
 				n[i] = l->ox * l->oy;
@@ -1496,7 +1500,8 @@ real *_CatsEye_loadCifar(char *name, int size, int lsize, int sample, int16_t **
 		}
 		for (int i=0; i<size; i++) x[n*size+i] = data[n*(size+lsize)+lsize+i] * (1.0/255.0);
 	}
-	for (int n=0; n<sample; n++) {
+	// shuffle
+	/*for (int n=0; n<sample; n++) {
 		int a = (int)(frand()*sample);
 		real d[size];
 		memcpy(d, &x[n*size], sizeof(real)*size);
@@ -1505,7 +1510,7 @@ real *_CatsEye_loadCifar(char *name, int size, int lsize, int sample, int16_t **
 		int16_t tt = t[n];
 		t[n] = t[a];
 		t[a] = tt;
-	}
+	}*/
 	fclose(fp);
 	free(data);
 

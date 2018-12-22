@@ -52,6 +52,7 @@ int main(int argc, char* argv[])
 	char *p;
 	char *dir = ".";
 	char *target = "datasets.bin";
+	int flag = LS_RECURSIVE;
 	int size = 12;
 	int max = 0;
 	static int32_t l[1000], lmax[1000];
@@ -76,8 +77,8 @@ int main(int argc, char* argv[])
 				max = atoi(argv[i+1]);
 				i++;
 				break;
-//			case 'd': // dir
-//				dir = ++p;
+			case 'r': // random
+				flag |= LS_RANDOM;
 			}
 		} else {
 			dir = p;
@@ -92,7 +93,7 @@ int main(int argc, char* argv[])
 	int num;
 
 	pix = malloc(size*size*3 *2);
-	LS_LIST *ls = ls_dir(name, 1, &num);
+	LS_LIST *ls = ls_dir(name, flag, &num);
 //	fwrite(&num, sizeof(int32_t), 1, fp);
 	if (max) num = max;
 	for (int i=0; i<num; i++) {
