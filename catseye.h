@@ -126,8 +126,8 @@ typedef struct layer {
 	int outputs;		// output size
 	real *x;		// input
 	real *z;		// output
-	real *W;		// weight
-	real *dw, *dOut, *dIn;	// gradient
+	real *W, *dw;		// weight
+	real *dOut, *dIn;	// gradient
 	real *workspace;	// for im2col, col2im
 	real *Wi, *dOuti;	// RNN [hidden * time](input -> hidden) = W, dOut
 	real *Wr, *dOutr;	// RNN [hidden * hidden]
@@ -142,6 +142,7 @@ typedef struct layer {
 //	real (*act2)(real x);	// RNN
 //	real (*dact2)(real x);	// RNN
 
+	real momentum;		// SGD with momentum
 	real mu, var;		// Batch Normalization [average, variance]
 	real gamma, beta;	// Batch Normalization
 	real alpha, min, max;	// Leaky ReLU, RReLU
@@ -244,20 +245,36 @@ void _CatsEye_linear_update(CatsEye_layer *l)
 	}*/
 	// slow??
 	// W = W - eta * dOut**T * x [A(m,k) B(k,n) C(m,n)]
-	gemm('R', 'T', 'N', l->outputs, l->inputs+1, 1/*batch*/, -l->eta, l->dOut, l->outputs, l->x, l->inputs+1, 1, l->W, l->inputs+1);
+//	gemm('R', 'T', 'N', l->outputs, l->inputs+1, 1/*batch*/, -l->eta, l->dOut, l->outputs, l->x, l->inputs+1, 1, l->W, l->inputs+1);
 	// W = W - eta * x * dOut**T [A(m,k) B(k,n) C(m,n)]
 //	gemm('C', 'N', 'T', l->inputs+1, l->outputs, 1/*batch*/, -l->eta, l->x, l->inputs+1, l->dOut, l->outputs, 1, l->W, l->inputs+1);
 
-	// MomentumSGD
-/*	real *d = l->dOut;
-	real *dw = l->dw;
-	for (int i=0; i<l->outputs; i++) {
-		real g = *d;
-		*d++ = 0.9 * *dw - l->eta * g;
-		*dw++ = g;
+	// MomentumSGD [ dw = u * dw - n * g ]
+	// dW = u * dW - eta * dOut**T * x [A(m,k) B(k,n) C(m,n)]
+	real a = -l->eta * (1 - l->momentum);
+	gemm('R', 'T', 'N', l->outputs, l->inputs+1, 1, a, l->dOut, l->outputs, l->x, l->inputs+1, l->momentum, l->dw, l->inputs+1);
+	for (int n=0; n<l->outputs*l->inputs+1; n++) {
+		l->W[n] += l->dw[n];
+	}
+	/*gemm('R', 'T', 'N', l->outputs, l->inputs+1, 1, 0.1, l->dOut, l->outputs, l->x, l->inputs+1, 0.9, l->dw, l->inputs+1);
+	for (int n=0; n<l->outputs*l->inputs+1; n++) {
+		l->W[n] -= l->eta * l->dw[n];
 	}*/
-	// W = W - eta * dOut**T * x [A(m,k) B(k,n) C(m,n)]
-//	gemm('R', 'T', 'N', l->outputs, l->inputs+1, 1/*batch*/, 1, l->dOut, l->outputs, l->x, l->inputs+1, 1, l->W, l->inputs+1);
+
+	// adagrad
+/*	real *w = l->W;
+	real *dw = l->dw;
+	real *d = l->dOut;
+	for (int i=l->outputs; i>0; i--) {
+		real *x = l->x;
+		register real d2 = *d * *d;
+		register real a = l->eta * (*d++);
+		for (int n=0; n<l->inputs; n++) {
+			*dw += d2 * *x * *x;
+			*w++ -= a * (*x++) / sqrt(*dw++ +1e-8);
+		}
+		*w++ -= a;	// bias!!
+	}*/
 }
 // RNN
 void CatsEye_rnn_forward(CatsEye_layer *l)
@@ -413,6 +430,14 @@ void _CatsEye_convolutional_update(CatsEye_layer *l)
 	}*/
 	// W = W - eta * dOut * x**T [A(m,k) B(k,n) C(m,n)]
 	gemm('R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1/*batch*/, -l->eta, l->dOut, l->ox*l->oy, workspace, l->ox*l->oy, 1, l->W, l->ksize*l->ksize*l->ich);
+
+	// MomentumSGD [ dw = u * dw - n * g ]
+	// dW = u * dW - eta * dOut**T * x [A(m,k) B(k,n) C(m,n)]
+	/*real a = -l->eta * (1 - l->momentum);
+	gemm('R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, a, l->dOut, l->ox*l->oy, workspace, l->ox*l->oy, l->momentum, l->dw, l->ksize*l->ksize*l->ich);
+	for (int n=0; n<l->ksize*l->ksize*l->ich*l->ch; n++) {
+		l->W[n] += l->dw[n];
+	}*/
 }
 
 // calculate forward propagation
@@ -1037,6 +1062,8 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		CatsEye_layer *l = &this->layer[i];
 		l->p = (void*)this;
 
+		if (l->momentum==0.0) l->momentum = 0.9;
+
 		l->forward = _CatsEye_layer_forward[l->type];
 		l->backward = _CatsEye_layer_backward[l->type];
 		if (!i && l->type!=CATS_RECURRENT) l->backward = CatsEye_none;
@@ -1175,7 +1202,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		this->ws[i] = (n[i]+1)*m[i];
 		this->wsize += this->ws[i];
 
-		if (!osize[i]) {
+		if (!osize[i]) { // ! select the layer
 			osize[i] = this->osize;
 			this->osize += l->inputs+1;	// bias
 		}
@@ -1187,17 +1214,17 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 	this->odata = calloc(this->osize, sizeof(real));
 //	this->dsize--;
 	this->ddata = calloc(this->dsize, sizeof(real));
-	this->wdata = calloc(this->wsize, sizeof(real));
+	this->wdata = calloc(this->wsize*2, sizeof(real));	// w and dw
 	for (int i=0; i<this->layers; i++) {
 		CatsEye_layer *l = &this->layer[i];
 
 		l->x = this->odata + osize[i];
-		if (i<this->layers-1) l->z = this->odata + osize[i+1];	// output
-		else l->z = this->odata + osize[i] + l->inputs+1;		// FIXME
+		if (i<this->layers-1) l->z = this->odata + osize[i+1];// output
+		else l->z = l->x + l->inputs+1;			// FIXME
+		if (i>0) l->dIn = (l-1)->dOut;
 		l->dOut = this->ddata + dsize[i];
 		l->W = this->wdata + wsize[i];
-		//if (i>0) l->dIn = this->ddata + dsize[i-1];
-		if (i>0) l->dIn = (l-1)->dOut;
+		l->dw = this->wdata + this->wsize + wsize[i];
 
 		this->o[i] = this->odata + osize[i];	// input
 		this->d[i] = this->ddata + dsize[i];
