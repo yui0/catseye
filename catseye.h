@@ -49,7 +49,7 @@ void xor128_init(unsigned int s)
 		seed[i-1] = s = 1812433253U * ( s ^ ( s >> 30 ) ) + i;
 	}
 }
-uint64_t xor128()
+static inline uint64_t xor128()
 {
 	uint64_t s1 = seed[0];
 	const uint64_t s0 = seed[1];
@@ -61,12 +61,12 @@ uint64_t xor128()
 #define _rand(max)		(int)( xor128() / (XOR128_MAX +1.0) * max)
 #define random(min, max)	( xor128() / (XOR128_MAX +1.0) * (max -min) +min )
 // http://www.sat.t.u-tokyo.ac.jp/~omi/random_variables_generation.html
-real rand_normal(real mu, real sigma)
+static inline real rand_normal(real mu, real sigma)
 {
 	real z = sqrt(-2.0*log(frand())) * sin(2.0*M_PI*frand());
 	return mu + sigma*z;
 }
-int binomial(/*int n, */real p)
+static inline int binomial(/*int n, */real p)
 {
 //	if (p<0 || p>1) return 0;
 	int c = 0;
@@ -126,7 +126,7 @@ typedef struct layer {
 	int outputs;		// output size
 	real *x;		// input
 	real *z;		// output
-	real *W, *dw;		// weight
+	real *W, *dw, *g;	// weight
 	real *dOut, *dIn;	// gradient
 	real *workspace;	// for im2col, col2im
 	real *Wi, *dOuti;	// RNN [hidden * time](input -> hidden) = W, dOut
@@ -181,6 +181,26 @@ typedef struct {
 	int in;
 	real *o3;
 } CatsEye;
+
+static inline void CatsEye_solver_SGD(CatsEye_layer *l, char ta, char tb, int m, int n, int k, real alpha, int lda, real *b, int ldb, real beta, int ldc)
+{
+	gemm('R', ta, tb, m, n, k, alpha, l->dOut, lda, b, ldb, beta, l->W, ldc);
+}
+static inline void CatsEye_solver_MomentumSGD(CatsEye_layer *l, char ta, char tb, int m, int n, int k, real alpha, int lda, real *b, int ldb, real beta, int ldc)
+{
+	gemm('R', ta, tb, m, n, k, alpha, l->dOut, lda, b, ldb, beta, l->dw, ldc);
+	for (int i=0; i<m*n; i++) {
+		l->W[i] += l->dw[i];
+	}
+}
+static inline void CatsEye_solver_AdaGrad(CatsEye_layer *l, char ta, char tb, int m, int n, int k, real alpha, int lda, real *b, int ldb, real beta, int ldc)
+{
+	gemm('R', ta, tb, m, n, k, alpha, l->dOut, lda, b, ldb, beta, l->dw, ldc);
+	for (int i=0; i<m*n; i++) {
+		l->g[i] += l->dw[i] * l->dw[i];
+		l->W[i] -= l->eta * l->dw[i] / (sqrt(l->g[i] +1e-8));
+	}
+}
 
 // Fully connected
 void _CatsEye_linear_forward(CatsEye_layer *l)
@@ -251,30 +271,28 @@ void _CatsEye_linear_update(CatsEye_layer *l)
 
 	// MomentumSGD [ dw = u * dw - n * g ]
 	// dW = u * dW - eta * dOut**T * x [A(m,k) B(k,n) C(m,n)]
-	real a = -l->eta * (1 - l->momentum);
+/*	real a = -l->eta * (1 - l->momentum);
 	gemm('R', 'T', 'N', l->outputs, l->inputs+1, 1, a, l->dOut, l->outputs, l->x, l->inputs+1, l->momentum, l->dw, l->inputs+1);
 	for (int n=0; n<l->outputs*l->inputs+1; n++) {
 		l->W[n] += l->dw[n];
-	}
-	/*gemm('R', 'T', 'N', l->outputs, l->inputs+1, 1, 0.1, l->dOut, l->outputs, l->x, l->inputs+1, 0.9, l->dw, l->inputs+1);
-	for (int n=0; n<l->outputs*l->inputs+1; n++) {
-		l->W[n] -= l->eta * l->dw[n];
 	}*/
 
-	// adagrad
-/*	real *w = l->W;
+	// adagrad [ g2[i] += g * g; w[i] -= eta * g / sqrt(g2[i]); ]
+	/*real *w = l->W;
 	real *dw = l->dw;
 	real *d = l->dOut;
 	for (int i=l->outputs; i>0; i--) {
 		real *x = l->x;
 		register real d2 = *d * *d;
-		register real a = l->eta * (*d++);
+		register real a = l->eta*10 * (*d++);
 		for (int n=0; n<l->inputs; n++) {
 			*dw += d2 * *x * *x;
 			*w++ -= a * (*x++) / sqrt(*dw++ +1e-8);
 		}
 		*w++ -= a;	// bias!!
 	}*/
+	CatsEye_solver_SGD(l, 'T', 'N', l->outputs, l->inputs+1, 1/*batch*/, -l->eta, l->outputs, l->x, l->inputs+1, 1, l->inputs+1);
+//	CatsEye_solver_AdaGrad(l, 'T', 'N', l->outputs, l->inputs+1, 1, 1, l->outputs, l->x, l->inputs+1, 0, l->inputs+1);
 }
 // RNN
 void CatsEye_rnn_forward(CatsEye_layer *l)
@@ -348,7 +366,7 @@ void CatsEye_rnn_update(CatsEye_layer *l)
 }
 
 // convolution
-void im2col(const real *im, const int channels,
+static inline void im2col(const real *im, const int channels,
 	const int height, const int width, const int kernel_h, const int kernel_w,
 	const int pad_h, const int pad_w, const int stride_h, const int stride_w, real *col)
 {
@@ -373,7 +391,7 @@ void im2col(const real *im, const int channels,
 		}
 	}
 }
-void col2im(const real *col, const int channels,
+static inline void col2im(const real *col, const int channels,
 	const int height, const int width, const int patch_h, const int patch_w,
 	const int pad_h, const int pad_w, const int stride_h, const int stride_w, real *im)
 {
@@ -400,7 +418,6 @@ void col2im(const real *col, const int channels,
 static real col[32*32*1024*30];
 void _CatsEye_convolutional_forward(CatsEye_layer *l)
 {
-	//real *workspace = col;
 	real *workspace = l->workspace;
 	if (l->ksize==1) {
 		workspace = l->x;
@@ -422,22 +439,25 @@ void _CatsEye_convolutional_backward(CatsEye_layer *l)
 void _CatsEye_convolutional_update(CatsEye_layer *l)
 {
 	real *workspace = l->ksize!=1 ? l->workspace : l->x;
-	/*real *workspace = col;
-	if (l->ksize==1) {
-		workspace = l->x;
-	} else {
-		im2col(l->x, l->ich, l->sy, l->sx, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, workspace);
-	}*/
 	// W = W - eta * dOut * x**T [A(m,k) B(k,n) C(m,n)]
-	gemm('R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1/*batch*/, -l->eta, l->dOut, l->ox*l->oy, workspace, l->ox*l->oy, 1, l->W, l->ksize*l->ksize*l->ich);
+//	gemm('R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1/*batch*/, -l->eta, l->dOut, l->ox*l->oy, workspace, l->ox*l->oy, 1, l->W, l->ksize*l->ksize*l->ich);
 
 	// MomentumSGD [ dw = u * dw - n * g ]
 	// dW = u * dW - eta * dOut**T * x [A(m,k) B(k,n) C(m,n)]
-	/*real a = -l->eta * (1 - l->momentum);
+/*	real a = -l->eta * (1 - l->momentum);
 	gemm('R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, a, l->dOut, l->ox*l->oy, workspace, l->ox*l->oy, l->momentum, l->dw, l->ksize*l->ksize*l->ich);
 	for (int n=0; n<l->ksize*l->ksize*l->ich*l->ch; n++) {
 		l->W[n] += l->dw[n];
 	}*/
+
+	// adagrad [ g2[i] += g * g; w[i] -= eta * g / sqrt(g2[i]); ]
+	/*gemm('R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, 1, l->dOut, l->ox*l->oy, workspace, l->ox*l->oy, 0, l->dw, l->ksize*l->ksize*l->ich);
+	for (int n=0; n<l->ksize*l->ksize*l->ich*l->ch; n++) {
+		l->g[n] += l->dw[n] * l->dw[n];
+		l->W[n] -= l->eta * l->dw[n] / (sqrt(l->g[n] +1e-8));
+	}*/
+	CatsEye_solver_SGD(l, 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, -l->eta, l->ox*l->oy, workspace, l->ox*l->oy, 1, l->ksize*l->ksize*l->ich);
+//	CatsEye_solver_AdaGrad(l, 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, 1, l->ox*l->oy, workspace, l->ox*l->oy, 0, l->ksize*l->ksize*l->ich);
 }
 
 // calculate forward propagation
@@ -887,19 +907,9 @@ void CatsEye_loss_delivative_0_1(CatsEye_layer *l)
 	CatsEye *p = (CatsEye *)l->p;
 	int a = p->clasify[p->sel];
 
-	/*real *d = l->dIn;
-	real *o = l->x;
-	for (int i=0; i<l->inputs; i++) {
-		// 0-1 loss function
-		*d++ = a==i ? o[i]-1 : o[i];	// 1-of-K / one hot
-	}*/
-
-	// y - t
+	// y - t [ t <- one hot ]
 	memcpy(l->dIn, l->x, sizeof(real)*l->inputs);
 	l->dIn[a] -= 1;
-
-	// http://d.hatena.ne.jp/echizen_tm/20110606/1307378609
-	// E = max(0, -twx), ∂E / ∂w = max(0, -tx)
 }
 // loss function for mse with identity and cross entropy with sigmoid
 void CatsEye_loss_delivative_mse(CatsEye_layer *l)
@@ -1214,7 +1224,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 	this->odata = calloc(this->osize, sizeof(real));
 //	this->dsize--;
 	this->ddata = calloc(this->dsize, sizeof(real));
-	this->wdata = calloc(this->wsize*2, sizeof(real));	// w and dw
+	this->wdata = calloc(this->wsize*3, sizeof(real));	// w, dw and g
 	for (int i=0; i<this->layers; i++) {
 		CatsEye_layer *l = &this->layer[i];
 
@@ -1225,6 +1235,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		l->dOut = this->ddata + dsize[i];
 		l->W = this->wdata + wsize[i];
 		l->dw = this->wdata + this->wsize + wsize[i];
+		l->g = this->wdata + this->wsize*2 + wsize[i];
 
 		this->o[i] = this->odata + osize[i];	// input
 		this->d[i] = this->ddata + dsize[i];
@@ -1303,7 +1314,6 @@ void _CatsEye_forward(CatsEye *this, real *x)
 	memcpy(l->x, x, l->inputs*sizeof(real));
 
 //	this->layer[0].x = x; // FIXME
-//	memcpy(this->o[0], x, this->layer[0].inputs*sizeof(real));
 #ifdef CATS_DENOISING_AUTOENCODER // FIXME
 	// Denoising Autoencoder (http://kiyukuta.github.io/2013/08/20/hello_autoencoder.html)
 	for (int i=0; i<this->layer[0].inputs; i++) {
