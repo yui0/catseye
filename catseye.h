@@ -188,6 +188,7 @@ static inline void CatsEye_solver_SGD(CatsEye_layer *l, char ta, char tb, int m,
 }
 static inline void CatsEye_solver_MomentumSGD(CatsEye_layer *l, char ta, char tb, int m, int n, int k, real alpha, int lda, real *b, int ldb, real beta, int ldc)
 {
+	// MomentumSGD [ dw = u * dw - n * g ]
 	gemm('R', ta, tb, m, n, k, alpha, l->dOut, lda, b, ldb, beta, l->dw, ldc);
 	for (int i=0; i<m*n; i++) {
 		l->W[i] += l->dw[i];
@@ -195,6 +196,7 @@ static inline void CatsEye_solver_MomentumSGD(CatsEye_layer *l, char ta, char tb
 }
 static inline void CatsEye_solver_AdaGrad(CatsEye_layer *l, char ta, char tb, int m, int n, int k, real alpha, int lda, real *b, int ldb, real beta, int ldc)
 {
+	// adagrad [ g2[i] += g * g; w[i] -= eta * g / sqrt(g2[i]); ]
 	gemm('R', ta, tb, m, n, k, alpha, l->dOut, lda, b, ldb, beta, l->dw, ldc);
 	for (int i=0; i<m*n; i++) {
 		l->g[i] += l->dw[i] * l->dw[i];
@@ -269,28 +271,6 @@ void _CatsEye_linear_update(CatsEye_layer *l)
 	// W = W - eta * x * dOut**T [A(m,k) B(k,n) C(m,n)]
 //	gemm('C', 'N', 'T', l->inputs+1, l->outputs, 1/*batch*/, -l->eta, l->x, l->inputs+1, l->dOut, l->outputs, 1, l->W, l->inputs+1);
 
-	// MomentumSGD [ dw = u * dw - n * g ]
-	// dW = u * dW - eta * dOut**T * x [A(m,k) B(k,n) C(m,n)]
-/*	real a = -l->eta * (1 - l->momentum);
-	gemm('R', 'T', 'N', l->outputs, l->inputs+1, 1, a, l->dOut, l->outputs, l->x, l->inputs+1, l->momentum, l->dw, l->inputs+1);
-	for (int n=0; n<l->outputs*l->inputs+1; n++) {
-		l->W[n] += l->dw[n];
-	}*/
-
-	// adagrad [ g2[i] += g * g; w[i] -= eta * g / sqrt(g2[i]); ]
-	/*real *w = l->W;
-	real *dw = l->dw;
-	real *d = l->dOut;
-	for (int i=l->outputs; i>0; i--) {
-		real *x = l->x;
-		register real d2 = *d * *d;
-		register real a = l->eta*10 * (*d++);
-		for (int n=0; n<l->inputs; n++) {
-			*dw += d2 * *x * *x;
-			*w++ -= a * (*x++) / sqrt(*dw++ +1e-8);
-		}
-		*w++ -= a;	// bias!!
-	}*/
 	CatsEye_solver_SGD(l, 'T', 'N', l->outputs, l->inputs+1, 1/*batch*/, -l->eta, l->outputs, l->x, l->inputs+1, 1, l->inputs+1);
 //	CatsEye_solver_AdaGrad(l, 'T', 'N', l->outputs, l->inputs+1, 1, 1, l->outputs, l->x, l->inputs+1, 0, l->inputs+1);
 }
@@ -442,20 +422,6 @@ void _CatsEye_convolutional_update(CatsEye_layer *l)
 	// W = W - eta * dOut * x**T [A(m,k) B(k,n) C(m,n)]
 //	gemm('R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1/*batch*/, -l->eta, l->dOut, l->ox*l->oy, workspace, l->ox*l->oy, 1, l->W, l->ksize*l->ksize*l->ich);
 
-	// MomentumSGD [ dw = u * dw - n * g ]
-	// dW = u * dW - eta * dOut**T * x [A(m,k) B(k,n) C(m,n)]
-/*	real a = -l->eta * (1 - l->momentum);
-	gemm('R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, a, l->dOut, l->ox*l->oy, workspace, l->ox*l->oy, l->momentum, l->dw, l->ksize*l->ksize*l->ich);
-	for (int n=0; n<l->ksize*l->ksize*l->ich*l->ch; n++) {
-		l->W[n] += l->dw[n];
-	}*/
-
-	// adagrad [ g2[i] += g * g; w[i] -= eta * g / sqrt(g2[i]); ]
-	/*gemm('R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, 1, l->dOut, l->ox*l->oy, workspace, l->ox*l->oy, 0, l->dw, l->ksize*l->ksize*l->ich);
-	for (int n=0; n<l->ksize*l->ksize*l->ich*l->ch; n++) {
-		l->g[n] += l->dw[n] * l->dw[n];
-		l->W[n] -= l->eta * l->dw[n] / (sqrt(l->g[n] +1e-8));
-	}*/
 	CatsEye_solver_SGD(l, 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, -l->eta, l->ox*l->oy, workspace, l->ox*l->oy, 1, l->ksize*l->ksize*l->ich);
 //	CatsEye_solver_AdaGrad(l, 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, 1, l->ox*l->oy, workspace, l->ox*l->oy, 0, l->ksize*l->ksize*l->ich);
 }
@@ -1251,17 +1217,18 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 
 		this->o[i][l->outputs] = 1;	// bias
 
-		// initialize weights (http://aidiary.hatenablog.com/entry/20150618/1434628272)
-		// range depends on the research of Y. Bengio et al. (2010)
+		// initialize weights, range depends on the research of Y. Bengio et al. (2010)
 		// http://jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf
 		xor128_init(time(0));
 		real range = sqrt(6)/sqrt(n[i]+m[i]+2);
-//		real range = sqrt(6)/sqrt(n[i]+(float)m[i]/l->ich+2); // FIXME
+		if (l->type == CATS_LINEAR) {
+			range = sqrt(2)/sqrt(n[i]+m[i]);
+		}
 		for (int j=0; j<this->ws[i]; j++) {
-			this->w[i][j] = 2.0*range*frand()-range;
+			//this->w[i][j] = 2.0*range*frand()-range; // uniform
+			this->w[i][j] = rand_normal(0, range); // normal
 		}
 //		memcpy(&this->wdata[this->wsize], this->wdata, this->wsize*sizeof(real));	// for debug
-//		rand_normal(0, sqrt(2.0/l->inputs));
 	}
 
 	for (int i=0; i<this->layers; i++) {
