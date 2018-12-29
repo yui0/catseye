@@ -28,6 +28,7 @@ Neural network library written in C and Javascript
     - cross-entropy, mean-squared-error
   - Optimization algorithms
     - stochastic gradient descent (with/without L2 normalization and momentum)
+    - AdaGrad
   - Layer types
     - convolution
     - max pooling

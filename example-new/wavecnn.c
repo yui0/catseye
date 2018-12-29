@@ -71,7 +71,7 @@ int main()
 	// 訓練
 	printf("Starting training using (stochastic) gradient descent\n");
 	cat.slide = 1;
-	_CatsEye_train(&cat, x, t, sample/TIME, 10/*repeat*/, 1000/*random batch*/, 0);
+	_CatsEye_train(&cat, x, t, sample/TIME, 20/*repeat*/, 1000/*random batch*/, 0);
 	printf("Training complete\n");
 
 	// 結果の表示

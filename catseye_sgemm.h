@@ -131,7 +131,7 @@ static inline void dot8x8_avx(const float *a, const float *b, float *c, const in
 		b5 = _mm256_broadcast_ss(b+5);
 		b6 = _mm256_broadcast_ss(b+6);
 		b7 = _mm256_broadcast_ss(b+7);
-#ifdef CATSEYS_ALIGNED
+#ifdef CATS_ALIGNED
 		a0 = _mm256_load_ps(a);
 #else
 		a0 = _mm256_loadu_ps(a);
@@ -152,7 +152,7 @@ static inline void dot8x8_avx(const float *a, const float *b, float *c, const in
 		c7 = _mm256_add_ps(c7, _mm256_mul_ps(a0, b7));
 	}
 
-#ifdef CATSEYS_ALIGNED
+#ifdef CATS_ALIGNED
 	_mm256_store_ps(c, c0);
 	_mm256_store_ps(c+8, c1);
 	_mm256_store_ps(c+16, c2);
