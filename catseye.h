@@ -194,12 +194,21 @@ static inline void CatsEye_solver_MomentumSGD(CatsEye_layer *l, char ta, char tb
 		l->W[i] += l->dw[i];
 	}
 }
-static inline void CatsEye_solver_AdaGrad(CatsEye_layer *l, char ta, char tb, int m, int n, int k, int lda, real *b, int ldb, int ldc)
+static inline void CatsEye_solver_adagrad(CatsEye_layer *l, char ta, char tb, int m, int n, int k, int lda, real *b, int ldb, int ldc)
 {
 	// adagrad [ g2[i] += g * g; w[i] -= eta * g / sqrt(g2[i]); ]
 	gemm('R', ta, tb, m, n, k, 1, l->dOut, lda, b, ldb, 0, l->dw, ldc);
 	for (int i=0; i<m*n; i++) {
 		l->g[i] += l->dw[i] * l->dw[i];
+		l->W[i] -= l->eta * l->dw[i] / (sqrt(l->g[i] +1e-8));
+	}
+}
+static inline void CatsEye_solver_RMSProp(CatsEye_layer *l, char ta, char tb, int m, int n, int k, int lda, real *b, int ldb, int ldc)
+{
+	// RMSprop [mu: 0-1 -> 0.9]
+	gemm('R', ta, tb, m, n, k, 1, l->dOut, lda, b, ldb, 0, l->dw, ldc);
+	for (int i=0; i<m*n; i++) {
+		l->g[i] = /*l->mu*/0.9 * l->g[i] + (1 - /*l->mu*/0.9) * l->dw[i] * l->dw[i];
 		l->W[i] -= l->eta * l->dw[i] / (sqrt(l->g[i] +1e-8));
 	}
 }
@@ -274,7 +283,9 @@ static void _CatsEye_linear_update(CatsEye_layer *l)
 #ifdef CATS_USE_MOMENTUM_SGD
 	CatsEye_solver_MomentumSGD(l, 'T', 'N', l->outputs, l->inputs+1, 1/*batch*/, l->outputs, l->x, l->inputs+1, l->inputs+1);
 #elif CATS_USE_ADAGRAD
-	CatsEye_solver_AdaGrad(l, 'T', 'N', l->outputs, l->inputs+1, 1, l->outputs, l->x, l->inputs+1, l->inputs+1);
+	CatsEye_solver_adagrad(l, 'T', 'N', l->outputs, l->inputs+1, 1, l->outputs, l->x, l->inputs+1, l->inputs+1);
+#elif CATS_USE_RMSPROP
+	CatsEye_solver_RMSProp(l, 'T', 'N', l->outputs, l->inputs+1, 1, l->outputs, l->x, l->inputs+1, l->inputs+1);
 #else
 	CatsEye_solver_SGD(l, 'T', 'N', l->outputs, l->inputs+1, 1/*batch*/, l->outputs, l->x, l->inputs+1, l->inputs+1);
 #endif
@@ -430,7 +441,9 @@ static void _CatsEye_convolutional_update(CatsEye_layer *l)
 #ifdef CATS_USE_MOMENTUM_SGD
 	CatsEye_solver_MomentumSGD(l, 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, 1, l->ox*l->oy, workspace, l->ox*l->oy, 0, l->ksize*l->ksize*l->ich);
 #elif CATS_USE_ADAGRAD
-	CatsEye_solver_AdaGrad(l, 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, 1, l->ox*l->oy, workspace, l->ox*l->oy, 0, l->ksize*l->ksize*l->ich);
+	CatsEye_solver_adagrad(l, 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, 1, l->ox*l->oy, workspace, l->ox*l->oy, 0, l->ksize*l->ksize*l->ich);
+#elif CATS_USE_RMSPROP
+	CatsEye_solver_RMSProp(l, 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, 1, l->ox*l->oy, workspace, l->ox*l->oy, 0, l->ksize*l->ksize*l->ich);
 #else
 	CatsEye_solver_SGD(l, 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, l->ox*l->oy, workspace, l->ox*l->oy, l->ksize*l->ksize*l->ich);
 #endif

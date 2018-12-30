@@ -29,6 +29,7 @@ Neural network library written in C and Javascript
   - Optimization algorithms
     - stochastic gradient descent (with/without L2 normalization and momentum)
     - AdaGrad
+    - RMSProp
   - Layer types
     - convolution
     - max pooling
