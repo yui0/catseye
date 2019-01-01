@@ -219,8 +219,6 @@ static void _CatsEye_linear_forward(CatsEye_layer *l)
 	/*real *o = l->z;
 	real *w = l->W;
 	for (int i=l->outputs; i>0; i--) {
-//		*o++ = dotTv(w++, l->x, l->inputs+1, l->outputs);	// bias!!
-
 		real *x = l->x;
 		register real a = 0;
 		for (int n=0; n<l->inputs; n++) {
@@ -239,8 +237,6 @@ static void _CatsEye_linear_backward(CatsEye_layer *l)
 	/*real *d = l->dIn;
 	real *w = l->W;
 	for (int i=0; i<=l->inputs; i++) {	// bias!!
-///		*d++ = dot(&l->W[i*l->outputs], l->dOut, l->outputs);
-
 		real *dw = l->dOut;
 		real *ww = w++;
 		register real a = 0;
@@ -257,13 +253,6 @@ static void _CatsEye_linear_backward(CatsEye_layer *l)
 }
 static void _CatsEye_linear_update(CatsEye_layer *l)
 {
-	/*real *x = l->x;
-	real *w = l->W;
-	for (int i=0; i<=l->inputs; i++) {	// bias!!
-		real a = -l->eta * (*x++);
-		_fma(w, l->dOut, a, l->outputs);
-		w += l->outputs;
-	}*/
 	/*real *w = l->W;
 	real *d = l->dOut;
 	for (int i=l->outputs; i>0; i--) {
@@ -1089,10 +1078,9 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		n[i] = m[i] = 0;
 		switch (l->type) {
 		case CATS_CONV:
+			if ((l->sx +2*l->padding -l->ksize) % l->stride > 0) printf("\twarning: stride is strange!\n");
 			l->ox = l->px = (l->sx +2*l->padding -l->ksize) /l->stride +1;
 			l->oy = l->py = (l->sy +2*l->padding -l->ksize) /l->stride +1;
-//			l->ox = l->px = (l->sx +2*l->padding -l->ksize +(l->stride-1)) /l->stride +1;
-//			l->oy = l->py = (l->sy +2*l->padding -l->ksize +(l->stride-1)) /l->stride +1;
 			l->px -= l->padding*2;
 			l->py -= l->padding*2;
 			l->pz = l->padding +l->padding*l->ox;
@@ -1105,6 +1093,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 
 		case CATS_AVGPOOL:
 		case CATS_MAXPOOL:
+			if ((l->sx +2*l->padding -l->ksize) % l->stride > 0) printf("\twarning: stride is strange!\n");
 			l->ch = l->ich;
 			l->ox = (l->sx +2*l->padding -l->ksize) /l->stride +1;
 			l->oy = (l->sy +2*l->padding -l->ksize) /l->stride +1;
@@ -1152,7 +1141,6 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			break;
 
 		case CATS_PADDING:
-//			n[i] = m[i] = 0;
 			l->ch = l->ich;
 			l->ox = l->sx + l->padding*2;
 			l->oy = l->sy + l->padding*2;
@@ -1165,6 +1153,8 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			l->beta = 0;
 			l->ch = l->ich;
 			l->outputs = l->inputs;
+			l->ox = l->sx;
+			l->oy = l->sy;
 			printf("%3d %-8s %10d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
@@ -1177,7 +1167,6 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		case _CATS_ACT_SOFTMAX:
 		case _CATS_ACT_TANH:
 		case _CATS_ACT_RELU:
-//			n[i] = m[i] = 0;
 			l->ch = l->ich;
 			l->outputs = l->inputs;
 			l->ox = l->sx;
@@ -1190,7 +1179,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		default: // LINEAR
 			if (i<this->layers-1 && !l->outputs) {
 				if ((l+1)->inputs>0) l->outputs = (l+1)->inputs;
-				else { l->outputs = l->inputs; printf("warning: out:%d\n", l->outputs); }
+				else { l->outputs = l->inputs; printf("\twarning: out:%d\n", l->outputs); }
 			}
 			n[i] = l->inputs;
 			m[i] = l->outputs;

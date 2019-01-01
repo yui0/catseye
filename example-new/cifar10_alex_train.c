@@ -13,6 +13,9 @@
 #include "../stb_image_write.h"
 
 #define NAME	"cifar10_alex_train"
+
+//#define CATS_USE_MOMENTUM_SGD
+#define CATS_USE_RMSPROP
 //#define ETA	0.0001
 //#define ETA	0.001
 #define ETA	0.01
@@ -41,8 +44,9 @@ int main()
 #if SIZE != 32
 		{  size, CATS_CONV, ETA, .ksize=11, .stride=4, .ch=96, .ich=3, .sx=k, .sy=k },
 #else
-//		{  size, CATS_CONV, ETA, .ksize=11, .stride=1, .ch=96, .ich=3, .sx=k, .sy=k },
-		{  size, CATS_CONV, ETA, .ksize=11, .stride=4, .ch=96, .ich=3, .sx=k, .sy=k },
+//		{  size, CATS_CONV, ETA, .ksize=11, .stride=1, .ch=96, .ich=3, .sx=k, .sy=k }, // very slow
+//		{  size, CATS_CONV, ETA, .ksize=11, .stride=4, .ch=96, .ich=3, .sx=k, .sy=k },
+		{  size, CATS_CONV, ETA, .ksize=5, .stride=1, .ch=96, .ich=3, .sx=k, .sy=k },
 #endif
 		{     0, _CATS_ACT_RELU },
 		//{     0, CATS_MAXPOOL, .ksize=3, .stride=2 },
