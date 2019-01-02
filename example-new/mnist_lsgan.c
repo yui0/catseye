@@ -1,7 +1,7 @@
 //---------------------------------------------------------
 //	Cat's eye
 //
-//		©2018 Yuichiro Nakada
+//		©2019 Yuichiro Nakada
 //---------------------------------------------------------
 
 // gcc mnist_lsgan.c -o mnist_lsgan -lm -Ofast -fopenmp -lgomp
@@ -13,10 +13,10 @@
 #include "../stb_image_write.h"
 
 #define NAME	"mnist_lsgan"
-#define ZDIM	100
+//#define ZDIM	100
 //#define ZDIM	62
 //#define NAME	"_mnist_lsgan"
-//#define ZDIM	10
+#define ZDIM	10
 
 #define SAMPLE	60000
 #define BATCH	100
@@ -25,7 +25,8 @@
 //#define OUTPUT	10
 
 #define CATS_USE_MOMENTUM_SGD
-#define ETA	0.001
+//#define ETA	0.001
+#define ETA	0.01
 
 int main()
 {
@@ -103,9 +104,10 @@ int main()
 //		{       2, CATS_LOSS_0_1 },
 	};
 #endif
+	// https://sonaeru-blog.com/dcgan/
 	CatsEye_layer u[] = {
 		// generator
-/*		{    ZDIM, CATS_LINEAR, ETA, .outputs=1024 },
+		{    ZDIM, CATS_LINEAR, ETA, .outputs=1024 },
 		{       0, CATS_BATCHNORMAL, .gamma=0.8 },
 		{       0, _CATS_ACT_LEAKY_RELU },
 
@@ -115,9 +117,8 @@ int main()
 
 		{       0, CATS_CONV, ETA, .ksize=1, .stride=1, .ch=16, .ich=128, .sx=7, .sy=7 },
 		{       0, CATS_PIXELSHUFFLER, .r=4, .ch=1 },	// 1 28x28
-*/
-// https://sonaeru-blog.com/dcgan/
-		{    ZDIM, CATS_LINEAR, ETA, .outputs=128*7*7 },
+
+		/*{    ZDIM, CATS_LINEAR, ETA, .outputs=128*7*7 },
 		{       0, CATS_BATCHNORMAL, .gamma=0.8, .ich=128, .sx=7, .sy=7 },
 		{       0, _CATS_ACT_RELU },	// 128 7x7
 
@@ -131,7 +132,7 @@ int main()
 		{       0, CATS_BATCHNORMAL, .gamma=0.8 },
 		{       0, _CATS_ACT_RELU },	// 64 28x28
 
-		{       0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=1 },
+		{       0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=1 },*/
 		{    size, _CATS_ACT_TANH },	// [-1,1]
 
 

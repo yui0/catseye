@@ -1,7 +1,7 @@
 //---------------------------------------------------------
 //	Cat's eye
 //
-//		©2016-2018 Yuichiro Nakada
+//		©2016-2019 Yuichiro Nakada
 //---------------------------------------------------------
 
 // gcc cifar10_nin_train.c -o cifar10_nin_train -lm -Ofast -march=native -funroll-loops -fopenmp -lgomp
@@ -13,16 +13,15 @@
 #include "../stb_image_write.h"
 
 #define NAME	"cifar10_alex_train"
+#define SIZE	32	// 71.2%(10)
+//#define SIZE	96	// 92.0%(10)
+//#define SIZE	227
 
 //#define CATS_USE_MOMENTUM_SGD
 #define CATS_USE_RMSPROP
 //#define ETA	0.0001
 //#define ETA	0.001
 #define ETA	0.01
-
-#define SIZE	32	// 69.7%(10)
-//#define SIZE	96	// 92.0%(10)
-//#define SIZE	227
 
 int main()
 {
@@ -45,8 +44,7 @@ int main()
 		{  size, CATS_CONV, ETA, .ksize=11, .stride=4, .ch=96, .ich=3, .sx=k, .sy=k },
 #else
 //		{  size, CATS_CONV, ETA, .ksize=11, .stride=1, .ch=96, .ich=3, .sx=k, .sy=k }, // very slow
-//		{  size, CATS_CONV, ETA, .ksize=11, .stride=4, .ch=96, .ich=3, .sx=k, .sy=k },
-		{  size, CATS_CONV, ETA, .ksize=5, .stride=1, .ch=96, .ich=3, .sx=k, .sy=k },
+		{  size, CATS_CONV, ETA, .ksize=11, .stride=3, .ch=96, .ich=3, .sx=k, .sy=k },
 #endif
 		{     0, _CATS_ACT_RELU },
 		//{     0, CATS_MAXPOOL, .ksize=3, .stride=2 },
@@ -54,8 +52,10 @@ int main()
 
 		{     0, CATS_CONV, ETA, .ksize=5, .stride=1, .ch=256, .padding=2 },
 		{     0, _CATS_ACT_RELU },
+#if SIZE != 32
 		//{     0, CATS_MAXPOOL, .ksize=3, .stride=2 },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
+#endif
 
 		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .ch=384, .padding=1 },
 		{     0, _CATS_ACT_RELU },
@@ -121,7 +121,7 @@ int main()
 	printf("Prediction accuracy on training data = %f%%\n", (float)r/sample*100.0);
 	stbi_write_png(NAME"_wrong.png", k*10, k*10, 3/*bpp*/, pixels, 0);
 
-	int n[10]; // 10 classes 
+	int n[10]; // 10 classes
 	memset(n, 0, sizeof(int)*10);
 	memset(pixels, 0, size*100);
 	for (int i=0; i<10*10; i++) {
