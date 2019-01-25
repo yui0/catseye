@@ -16,6 +16,7 @@ Neural network library written in C and Javascript
   - Deep Neural Networks (DNN)
   - Convolutional Neural Networks (CNN)
   - Generative Adversarial Network (GAN)
+  - Network in Network (NIN)
 - Supported networks:
   - Activation functions
     - sigmoid

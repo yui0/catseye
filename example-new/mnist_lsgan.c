@@ -25,8 +25,8 @@
 //#define OUTPUT	10
 
 #define CATS_USE_MOMENTUM_SGD
-//#define ETA	0.001
-#define ETA	0.01
+#define ETA	0.001
+//#define ETA	0.01
 
 int main()
 {
@@ -133,6 +133,19 @@ int main()
 		{       0, _CATS_ACT_RELU },	// 64 28x28
 
 		{       0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=1 },*/
+
+		/*{    ZDIM, CATS_LINEAR, ETA, .outputs=1024 },
+		{       0, CATS_BATCHNORMAL, .gamma=0.8 },
+		{       0, _CATS_ACT_LEAKY_RELU },
+
+		{       0, CATS_LINEAR, ETA, .outputs=128*7*7 },
+		{       0, CATS_BATCHNORMAL, .gamma=0.8 },
+		{       0, _CATS_ACT_LEAKY_RELU }, // 128 7x7
+
+		{       0, CATS_PIXELSHUFFLER, .r=2, .ch=32, .ich=128, .sx=7, .sy=7 }, // 32 14x14
+		{       0, CATS_CONV, ETA, .ksize=1, .stride=1, .ch=4 },
+		{       0, CATS_PIXELSHUFFLER, .r=2, .ch=1 },	// 1 28x28
+		{       0, CATS_BATCHNORMAL, .gamma=0.8 },*/
 		{    size, _CATS_ACT_TANH },	// [-1,1]
 
 
