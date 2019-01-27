@@ -1,13 +1,14 @@
 //---------------------------------------------------------
 //	Cat's eye
 //
-//		©2019 Yuichiro Nakada
+//		©2018-2019 Yuichiro Nakada
 //---------------------------------------------------------
 
 // gcc mnist_lsgan.c -o mnist_lsgan -lm -Ofast -fopenmp -lgomp
 // clang mnist_lsgan.c -o mnist_lsgan -lm -Ofast
 
 #define CATS_USE_FLOAT
+#define CATS_USE_MOMENTUM_SGD
 #include "../catseye.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "../stb_image_write.h"
@@ -24,7 +25,6 @@
 #define OUTPUT	9
 //#define OUTPUT	10
 
-#define CATS_USE_MOMENTUM_SGD
 #define ETA	0.001
 //#define ETA	0.01
 
