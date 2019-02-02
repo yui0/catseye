@@ -14,15 +14,15 @@
 #include "../stb_image_write.h"
 
 #define NAME	"mnist_lsgan"
-//#define ZDIM	100
+#define ZDIM	100
 //#define ZDIM	62
 //#define NAME	"_mnist_lsgan"
-#define ZDIM	10
+//#define ZDIM	10
 
 #define SAMPLE	60000
 #define BATCH	100
 #define BATCH_G	200
-#define OUTPUT	9
+//#define OUTPUT	9
 //#define OUTPUT	10
 
 #define ETA	0.001
@@ -104,6 +104,7 @@ int main()
 //		{       2, CATS_LOSS_0_1 },
 	};
 #endif
+#if 0
 	// https://sonaeru-blog.com/dcgan/
 	CatsEye_layer u[] = {
 		// generator
@@ -166,6 +167,52 @@ int main()
 
 		{       0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=256 },
 		//{       0, CATS_AVGPOOL, .ksize=2, .stride=2 },
+		{       0, CATS_BATCHNORMAL, .gamma=0.8 },
+		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+
+		{       0, CATS_LINEAR, ETA, .outputs=1 },
+		{       1, _CATS_ACT_SIGMOID },
+		{       1, CATS_LOSS_MSE },
+	};
+#endif
+#define OUTPUT	8
+	// https://cntk.ai/pythondocs/CNTK_206B_DCGAN.html
+	CatsEye_layer u[] = {
+		// generator
+		{    ZDIM, CATS_LINEAR, ETA, .outputs=1024 },
+		{       0, CATS_BATCHNORMAL, .gamma=0.8 },
+		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+//		{       0, _CATS_ACT_RELU },
+
+		{       0, CATS_LINEAR, ETA, .outputs=64*2*7*7 },
+		{       0, CATS_BATCHNORMAL, .gamma=0.8 },
+		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+//		{       0, _CATS_ACT_RELU },	// 128 7x7
+
+/*		{       0, CATS_PIXELSHUFFLER, .r=2, .ch=32, .ich=128, .sx=7, .sy=7 },	// 32 14x14
+		{       0, CATS_BATCHNORMAL, .gamma=0.8 },
+		{       0, _CATS_ACT_RELU },	// 32 14x14
+
+		{       0, CATS_CONV, ETA, .ksize=1, .stride=1, .ch=4 },
+		{       0, CATS_PIXELSHUFFLER, .r=2, .ch=1 },	// 1 28x28*/
+
+		{       0, CATS_CONV, ETA, .ksize=1, .stride=1, .ch=16, .ich=128, .sx=7, .sy=7 },
+		{       0, CATS_PIXELSHUFFLER, .r=4, .ch=1 },	// 1 28x28
+		{    size, _CATS_ACT_TANH },	// [-1,1]
+
+
+		// discriminator
+		{    size, CATS_CONV, ETA, .ksize=5, .stride=1, .padding=0, .ch=32 },
+		{       0, CATS_AVGPOOL, .ksize=2, .stride=2 },
+		{       0, CATS_BATCHNORMAL, .gamma=0.8 },
+		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+
+		{       0, CATS_CONV, ETA, .ksize=5, .stride=1, .padding=0, .ch=64 },
+		{       0, CATS_AVGPOOL, .ksize=2, .stride=2 },
+		{       0, CATS_BATCHNORMAL, .gamma=0.8 },
+		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+
+		{       0, CATS_LINEAR, ETA, .outputs=1024 },
 		{       0, CATS_BATCHNORMAL, .gamma=0.8 },
 		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 

@@ -182,6 +182,15 @@ typedef struct {
 	real *o3;
 } CatsEye;
 
+#ifdef CATS_USE_MOMENTUM_SGD
+ #define CatsEye_solver	CatsEye_solver_MomentumSGD
+#elif CATS_USE_ADAGRAD
+ #define CatsEye_solver	CatsEye_solver_adagrad
+#elif CATS_USE_RMSPROP
+ #define CatsEye_solver	CatsEye_solver_RMSProp
+#else
+ #define CatsEye_solver	CatsEye_solver_SGD
+#endif
 static inline void CatsEye_solver_SGD(CatsEye_layer *l, char mj, char ta, char tb, int m, int n, int k, real *a, int lda, real *b, int ldb, int ldc)
 {
 	gemm(mj, ta, tb, m, n, k, -l->eta, a, lda, b, ldb, 1, l->W, ldc);
@@ -270,25 +279,9 @@ static void _CatsEye_linear_update(CatsEye_layer *l)
 //	gemm('C', 'N', 'T', l->inputs+1, l->outputs, 1/*batch*/, -l->eta, l->x, l->inputs+1, l->dOut, l->outputs, 1, l->W, l->inputs+1);
 
 #if CATS_WITH_ROWMAJOR
-#ifdef CATS_USE_MOMENTUM_SGD
-	CatsEye_solver_MomentumSGD(l, 'R', 'T', 'N', l->outputs, l->inputs+1, 1/*batch*/, l->outputs, l->x, l->inputs+1, l->inputs+1);
-#elif CATS_USE_ADAGRAD
-	CatsEye_solver_adagrad(l, 'R', 'T', 'N', l->outputs, l->inputs+1, 1, l->outputs, l->x, l->inputs+1, l->inputs+1);
-#elif CATS_USE_RMSPROP
-	CatsEye_solver_RMSProp(l, 'R', 'T', 'N', l->outputs, l->inputs+1, 1, l->outputs, l->x, l->inputs+1, l->inputs+1);
+	CatsEye_solver(l, 'R', 'T', 'N', l->outputs, l->inputs+1, 1/*batch*/, l->outputs, l->x, l->inputs+1, l->inputs+1);
 #else
-	CatsEye_solver_SGD(l, 'R', 'T', 'N', l->outputs, l->inputs+1, 1/*batch*/, l->dOut, l->outputs, l->x, l->inputs+1, l->inputs+1);
-#endif
-#else
-#ifdef CATS_USE_MOMENTUM_SGD
-	CatsEye_solver_MomentumSGD(l, 'C', 'N', 'T', l->inputs+1, l->outputs, 1/*batch*/, l->x, l->inputs+1, l->dOut, l->outputs, l->inputs+1);
-#elif CATS_USE_ADAGRAD
-	CatsEye_solver_adagrad(l, 'C', 'N', 'T', l->inputs+1, l->outputs, 1/*batch*/, l->x, l->inputs+1, l->dOut, l->outputs, l->inputs+1);
-#elif CATS_USE_RMSPROP
-	CatsEye_solver_RMSProp(l, 'C', 'N', 'T', l->inputs+1, l->outputs, 1/*batch*/, l->x, l->inputs+1, l->dOut, l->outputs, l->inputs+1);
-#else
-	CatsEye_solver_SGD(l, 'C', 'N', 'T', l->inputs+1, l->outputs, 1/*batch*/, l->x, l->inputs+1, l->dOut, l->outputs, l->inputs+1);
-#endif
+	CatsEye_solver(l, 'C', 'N', 'T', l->inputs+1, l->outputs, 1/*batch*/, l->x, l->inputs+1, l->dOut, l->outputs, l->inputs+1);
 #endif
 }
 // RNN
@@ -446,25 +439,9 @@ static void _CatsEye_convolutional_update(CatsEye_layer *l)
 //	gemm('C', 'T', 'N', l->ksize*l->ksize*l->ich, l->ch, l->ox*l->oy*1/*batch*/, -l->eta, workspace, l->ox*l->oy, l->dOut, l->ox*l->oy, 1, l->W, l->ksize*l->ksize*l->ich);
 
 #if CATS_WITH_ROWMAJOR
-#ifdef CATS_USE_MOMENTUM_SGD
-	CatsEye_solver_MomentumSGD(l, 'R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, 1, l->ox*l->oy, workspace, l->ox*l->oy, 0, l->ksize*l->ksize*l->ich);
-#elif CATS_USE_ADAGRAD
-	CatsEye_solver_adagrad(l, 'R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, 1, l->ox*l->oy, workspace, l->ox*l->oy, 0, l->ksize*l->ksize*l->ich);
-#elif CATS_USE_RMSPROP
-	CatsEye_solver_RMSProp(l, 'R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, 1, l->ox*l->oy, workspace, l->ox*l->oy, 0, l->ksize*l->ksize*l->ich);
+	CatsEye_solver(l, 'R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, 1, l->ox*l->oy, workspace, l->ox*l->oy, 0, l->ksize*l->ksize*l->ich);
 #else
-	CatsEye_solver_SGD(l, 'R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, l->ox*l->oy, workspace, l->ox*l->oy, l->ksize*l->ksize*l->ich);
-#endif
-#else
-#ifdef CATS_USE_MOMENTUM_SGD
-	CatsEye_solver_MomentumSGD(l, 'C', 'T', 'N', l->ksize*l->ksize*l->ich, l->ch, l->ox*l->oy*1, workspace, l->ox*l->oy, l->dOut, l->ox*l->oy, l->ksize*l->ksize*l->ich);
-#elif CATS_USE_ADAGRAD
-	CatsEye_solver_adagrad(l, 'C', 'T', 'N', l->ksize*l->ksize*l->ich, l->ch, l->ox*l->oy*1, workspace, l->ox*l->oy, l->dOut, l->ox*l->oy, l->ksize*l->ksize*l->ich);
-#elif CATS_USE_RMSPROP
-	CatsEye_solver_RMSProp(l, 'C', 'T', 'N', l->ksize*l->ksize*l->ich, l->ch, l->ox*l->oy*1, workspace, l->ox*l->oy, l->dOut, l->ox*l->oy, l->ksize*l->ksize*l->ich);
-#else
-	CatsEye_solver_SGD(l, 'C', 'T', 'N', l->ksize*l->ksize*l->ich, l->ch, l->ox*l->oy*1, workspace, l->ox*l->oy, l->dOut, l->ox*l->oy, l->ksize*l->ksize*l->ich);
-#endif
+	CatsEye_solver(l, 'C', 'T', 'N', l->ksize*l->ksize*l->ich, l->ch, l->ox*l->oy*1, workspace, l->ox*l->oy, l->dOut, l->ox*l->oy, l->ksize*l->ksize*l->ich);
 #endif
 }
 
