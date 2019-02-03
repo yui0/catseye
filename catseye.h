@@ -151,6 +151,8 @@ typedef struct layer {
 	void (*backward)(struct layer*);
 	void (*update)(struct layer*);
 	void *p;		// for loss function
+
+	char *name;
 } CatsEye_layer;
 
 typedef struct {
@@ -1295,6 +1297,16 @@ void CatsEye__destruct(CatsEye *this)
 	free(this->wdata);
 	free(this->w);
 	if (this->u) free(this->u);
+}
+
+int CatsEye_getLayer(CatsEye *this, char *name)
+{
+	CatsEye_layer *l = this->layer;
+	for (int i=0; i<this->layers; i++) {
+		if (l->name && !strcmp(l->name, name)) return i;
+		l++;
+	}
+	return -1;
 }
 
 static void _CatsEye_forward(CatsEye *this, real *x)

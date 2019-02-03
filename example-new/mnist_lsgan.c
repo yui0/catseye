@@ -22,8 +22,6 @@
 #define SAMPLE	60000
 #define BATCH	100
 #define BATCH_G	200
-//#define OUTPUT	9
-//#define OUTPUT	10
 
 #define ETA	0.001
 //#define ETA	0.01
@@ -175,7 +173,6 @@ int main()
 		{       1, CATS_LOSS_MSE },
 	};
 #endif
-#define OUTPUT	8
 	// https://cntk.ai/pythondocs/CNTK_206B_DCGAN.html
 	CatsEye_layer u[] = {
 		// generator
@@ -198,7 +195,7 @@ int main()
 
 		{       0, CATS_CONV, ETA, .ksize=1, .stride=1, .ch=16, .ich=128, .sx=7, .sy=7 },
 		{       0, CATS_PIXELSHUFFLER, .r=4, .ch=1 },	// 1 28x28
-		{    size, _CATS_ACT_TANH },	// [-1,1]
+		{    size, _CATS_ACT_TANH, .name="Generator" },	// [-1,1]
 
 
 		// discriminator
@@ -223,6 +220,8 @@ int main()
 	CatsEye cat;
 	_CatsEye__construct(&cat, u);
 	cat.epoch = 0;
+	int generator = CatsEye_getLayer(&cat, "Generator");
+	printf("Gen: %d\n", generator);
 	if (!CatsEye_loadCats(&cat, NAME".cats")) {
 		printf("Loading success!!\n");
 	}
@@ -256,7 +255,7 @@ int main()
 	printf("Starting training using (stochastic) gradient descent\n");
 	for (int n=cat.epoch; n<10000; n++) {
 		// Training Discriminator
-		cat.start = OUTPUT;
+		cat.start = generator;
 		cat.slide = size;
 		printf("Training Discriminator #%d: phase 1 [real]\n", n);
 		_CatsEye_train(&cat, x, lreal, SAMPLE, 1/*repeat*/, BATCH/*random batch*/, 0);
@@ -267,12 +266,12 @@ int main()
 			noise[i] = rand_normal(0, 1);
 		}
 		cat.start = 0;
-		cat.stop = OUTPUT+1;
+		cat.stop = generator+1;
 		cat.slide = ZDIM;
-		for (int i=0; i<OUTPUT; i++) cat.layer[i].fix = 1;
+		for (int i=0; i<generator; i++) cat.layer[i].fix = 1;
 		printf("Training Discriminator #%d: phase 2 [fake]\n", n);
 		_CatsEye_train(&cat, noise, lfake, SAMPLE, 1/*repeat*/, BATCH/*random batch*/, 0);
-		for (int i=0; i<OUTPUT; i++) cat.layer[i].fix = 0;
+		for (int i=0; i<generator; i++) cat.layer[i].fix = 0;
 		cat.stop = 0;
 
 		// Training Generater [ D(G(z)) = 1 ]
@@ -282,10 +281,10 @@ int main()
 		}
 		cat.start = 0;
 		cat.slide = ZDIM;
-		for (int i=OUTPUT; i<cat.layers; i++) cat.layer[i].fix = 1;
+		for (int i=generator; i<cat.layers; i++) cat.layer[i].fix = 1;
 		printf("Training Generater #%d\n", n);
 		_CatsEye_train(&cat, noise, lreal, SAMPLE, 1/*repeat*/, BATCH_G/*random batch*/, 0);
-		for (int i=OUTPUT; i<cat.layers; i++) cat.layer[i].fix = 0;
+		for (int i=generator; i<cat.layers; i++) cat.layer[i].fix = 0;
 
 
 		// 結果の表示
@@ -295,7 +294,7 @@ int main()
 			_CatsEye_forward(&cat, noise+ZDIM*i);
 //			int p = _CatsEye_predict(&cat, noise+ZDIM*i);
 //			printf("%d ", p);
-			CatsEye_visualize(cat.layer[OUTPUT].x, size, 28, &pixels[(i/10)*size*10+(i%10)*28], 28*10);
+			CatsEye_visualize(cat.layer[generator].x, size, 28, &pixels[(i/10)*size*10+(i%10)*28], 28*10);
 
 //			cat.start = 9;
 //			_CatsEye_forward(&cat, x+size*i);
