@@ -1,13 +1,14 @@
 //---------------------------------------------------------
 //	Cat's eye
 //
-//		©2018 Yuichiro Nakada
+//		©2018-2019 Yuichiro Nakada
 //---------------------------------------------------------
 
 // gcc mnist_gan.c -o mnist_gan -lm -Ofast -fopenmp -lgomp
 // clang mnist_gan.c -o mnist_gan -lm -Ofast
 
 #define CATS_USE_FLOAT
+#define CATS_USE_MOMENTUM_SGD
 #include "../catseye.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "../stb_image_write.h"
@@ -20,12 +21,11 @@
 #define SAMPLE	60000
 #define BATCH	10240
 #define BATCH_G	20480
-#define OUTPUT	4
 //#define ETA	0.00005
-#define ETA	0.00003
+//#define ETA	0.00003
+#define ETA	0.00001
 //#define BATCH	640
 //#define BATCH_G	1280
-//#define OUTPUT	11
 
 int main()
 {
@@ -91,7 +91,7 @@ int main()
 		{    size, _CATS_ACT_TANH },	// [-1,1]
 
 		// discriminator
-		{    size, CATS_LINEAR, ETA, .outputs=128 },
+		{    size, CATS_LINEAR, ETA, .outputs=128, .name="Discriminator" },
 		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 
 		{       0, CATS_LINEAR, ETA },
@@ -102,6 +102,8 @@ int main()
 	CatsEye cat;
 	_CatsEye__construct(&cat, u);
 	cat.epoch = 0;
+	int discriminator = CatsEye_getLayer(&cat, "Discriminator");
+	printf("Discriminator: #%d\n", discriminator);
 	if (!CatsEye_loadCats(&cat, NAME".cats")) {
 		printf("Loading success!!\n");
 	}
@@ -135,7 +137,7 @@ int main()
 	printf("Starting training using (stochastic) gradient descent\n");
 	for (int n=cat.epoch; n<10000; n++) {
 		// Training Discriminator
-		cat.start = OUTPUT;
+		cat.start = discriminator;
 		cat.slide = size;
 		printf("Training Discriminator #%d: phase 1 [real]\n", n);
 		_CatsEye_train(&cat, x, lreal, SAMPLE, 1/*repeat*/, BATCH/*random batch*/, 0);
@@ -147,12 +149,12 @@ int main()
 			noise[i] = rand_normal(0, 1);
 		}
 		cat.start = 0;
-		cat.stop = OUTPUT+1;
+		cat.stop = discriminator+1;
 		cat.slide = ZDIM;
-		for (int i=0; i<OUTPUT; i++) cat.layer[i].fix = 1;
+		for (int i=0; i<discriminator; i++) cat.layer[i].fix = 1;
 		printf("Training Discriminator #%d: phase 2 [fake]\n", n);
 		_CatsEye_train(&cat, noise, lfake, SAMPLE, 1/*repeat*/, BATCH/*random batch*/, 0);
-		for (int i=0; i<OUTPUT; i++) cat.layer[i].fix = 0;
+		for (int i=0; i<discriminator; i++) cat.layer[i].fix = 0;
 		cat.stop = 0;
 
 		// Training Generater [ D(G(z)) = 1 ]
@@ -163,10 +165,10 @@ int main()
 		}
 		cat.start = 0;
 		cat.slide = ZDIM;
-		for (int i=OUTPUT; i<cat.layers; i++) cat.layer[i].fix = 1;
+		for (int i=discriminator; i<cat.layers; i++) cat.layer[i].fix = 1;
 		printf("Training Generater #%d\n", n);
 		_CatsEye_train(&cat, noise, lreal, SAMPLE, 1/*repeat*/, BATCH_G/*random batch*/, 0);
-		for (int i=OUTPUT; i<cat.layers; i++) cat.layer[i].fix = 0;
+		for (int i=discriminator; i<cat.layers; i++) cat.layer[i].fix = 0;
 
 
 		// 結果の表示
@@ -176,7 +178,7 @@ int main()
 			_CatsEye_forward(&cat, noise+ZDIM*i);
 //			int p = _CatsEye_predict(&cat, noise+ZDIM*i);
 //			printf("%d ", p);
-			CatsEye_visualize(cat.layer[OUTPUT].x, size, 28, &pixels[(i/10)*size*10+(i%10)*28], 28*10);
+			CatsEye_visualize(cat.layer[discriminator].x, size, 28, &pixels[(i/10)*size*10+(i%10)*28], 28*10);
 
 //			cat.start = 9;
 //			_CatsEye_forward(&cat, x+size*i);
