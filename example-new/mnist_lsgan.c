@@ -9,6 +9,8 @@
 
 #define CATS_USE_FLOAT
 #define CATS_USE_MOMENTUM_SGD
+//#define CATS_USE_ADAGRAD
+//#define CATS_USE_RMSPROP
 #include "../catseye.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "../stb_image_write.h"
@@ -187,13 +189,13 @@ int main()
 		// generator
 		{    ZDIM, CATS_LINEAR, ETA, .outputs=1024 },
 		{       0, CATS_BATCHNORMAL, .gamma=0.8 },
-		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
-//		{       0, _CATS_ACT_RELU },
+//		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+		{       0, _CATS_ACT_RELU },
 
 		{       0, CATS_LINEAR, ETA, .outputs=64*2*7*7 },
 		{       0, CATS_BATCHNORMAL, .gamma=0.8 },
-		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
-//		{       0, _CATS_ACT_RELU },	// 128 7x7
+//		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+		{       0, _CATS_ACT_RELU },	// 128 7x7
 
 /*		{       0, CATS_PIXELSHUFFLER, .r=2, .ch=32, .ich=128, .sx=7, .sy=7 },	// 32 14x14
 		{       0, CATS_BATCHNORMAL, .gamma=0.8 },
@@ -210,7 +212,7 @@ int main()
 		// discriminator
 		{    size, CATS_CONV, ETA, .ksize=5, .stride=1, .padding=0, .ch=32, .name="Discriminator" },
 		{       0, CATS_AVGPOOL, .ksize=2, .stride=2 },
-		{       0, CATS_BATCHNORMAL, .gamma=0.8 },
+//		{       0, CATS_BATCHNORMAL, .gamma=0.8 },
 		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 
 		{       0, CATS_CONV, ETA, .ksize=5, .stride=1, .padding=0, .ch=64 },
@@ -218,9 +220,9 @@ int main()
 		{       0, CATS_BATCHNORMAL, .gamma=0.8 },
 		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 
-		{       0, CATS_LINEAR, ETA, .outputs=1024 },
-		{       0, CATS_BATCHNORMAL, .gamma=0.8 },
-		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+/*		{       0, CATS_LINEAR, ETA, .outputs=1024 },
+//		{       0, CATS_BATCHNORMAL, .gamma=0.8 },
+		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },*/
 
 		{       0, CATS_LINEAR, ETA, .outputs=1 },
 		{       1, _CATS_ACT_SIGMOID },
@@ -319,7 +321,7 @@ int main()
 			noise[i] = rand_normal(0, 1);
 		}
 		cat.start = 0;
-		cat.stop = discriminator+1;
+		cat.stop = discriminator/*+1*/;
 		cat.slide = ZDIM;
 		for (int i=0; i<discriminator; i++) cat.layer[i].fix = 1;
 		printf("Training Discriminator #%d: phase 2 [fake]\n", n);
@@ -348,6 +350,7 @@ int main()
 //			int p = _CatsEye_predict(&cat, noise+ZDIM*i);
 //			printf("%d ", p);
 			//CatsEye_visualize(cat.layer[discriminator].x, size, SIZE, &pixels[(i/10)*size*10+(i%10)*SIZE], SIZE*10);
+//			CatsEye_visualize(cat.layer[discriminator].x, size, SIZE*BPP, &pixels[(i/10)*size*10+(i%10)*SIZE*BPP], SIZE*BPP*10);
 			_CatsEye_visualize(cat.layer[discriminator].x, SIZE*SIZE, SIZE, &pixels[(i/10)*size*10+(i%10)*SIZE*BPP], SIZE*10, BPP);
 
 //			cat.start = 9;
@@ -367,7 +370,7 @@ int main()
 		printf("\n");
 		char buff[256];
 		sprintf(buff, "/tmp/"NAME"_%05d.png", n);
-		stbi_write_png(buff, SIZE*10, SIZE*10, BPP, pixels, SIZE*10);
+		stbi_write_png(buff, SIZE*10, SIZE*10, BPP, pixels, 0);
 		free(pixels);
 
 		cat.epoch = n;

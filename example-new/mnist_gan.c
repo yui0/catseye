@@ -9,21 +9,24 @@
 
 #define CATS_USE_FLOAT
 #define CATS_USE_MOMENTUM_SGD
+//#define CATS_USE_ADAGRAD
+//#define CATS_USE_RMSPROP
 #include "../catseye.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "../stb_image_write.h"
 
 #define NAME	"mnist_gan"
 //#define ZDIM	100
+#define ZDIM	62
 //#define NAME	"_mnist_gan"
-#define ZDIM	10
+//#define ZDIM	10
 
 #define SAMPLE	60000
 #define BATCH	10240
 #define BATCH_G	20480
-//#define ETA	0.00005
+#define ETA	0.00005
 //#define ETA	0.00003
-#define ETA	0.00001
+//#define ETA	0.00001
 //#define BATCH	640
 //#define BATCH_G	1280
 
@@ -149,7 +152,7 @@ int main()
 			noise[i] = rand_normal(0, 1);
 		}
 		cat.start = 0;
-		cat.stop = discriminator+1;
+		cat.stop = discriminator/*+1*/;
 		cat.slide = ZDIM;
 		for (int i=0; i<discriminator; i++) cat.layer[i].fix = 1;
 		printf("Training Discriminator #%d: phase 2 [fake]\n", n);

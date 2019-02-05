@@ -186,9 +186,9 @@ typedef struct {
 
 #ifdef CATS_USE_MOMENTUM_SGD
  #define CatsEye_solver	CatsEye_solver_MomentumSGD
-#elif CATS_USE_ADAGRAD
+#elif defined CATS_USE_ADAGRAD
  #define CatsEye_solver	CatsEye_solver_adagrad
-#elif CATS_USE_RMSPROP
+#elif defined CATS_USE_RMSPROP
  #define CatsEye_solver	CatsEye_solver_RMSProp
 #else
  #define CatsEye_solver	CatsEye_solver_SGD
@@ -1274,7 +1274,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 	this->end = this->layers-1;
 	this->slide = this->layer[0].inputs;
 #ifdef CATS_OPENCL
-	CatsEye_clSetup(this);
+	sgemm_ocl_init(max_buffer_size);
 #endif
 }
 
@@ -1282,7 +1282,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 void CatsEye__destruct(CatsEye *this)
 {
 #ifdef CATS_OPENCL
-	CatsEye_clFinish();
+	sgemm_ocl_finish();
 #endif
 	// delete arrays
 //	printf("%x %x %x %x %x %x %x %x %x\n",this->z,this->odata,this->o,this->ddata,this->d,this->ws,this->wdata,this->w,this->u);
@@ -1398,7 +1398,7 @@ static int _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, in
 			}
 
 			// update the weights
-			for (int i=this->end-1; i>=this->start; i--) {
+			for (int i=this->end-1; i>=this->stop/*start???*/; i--) {
 				if (!this->layer[i].fix) this->layer[i].update(&this->layer[i]);
 			}
 		}
@@ -1850,8 +1850,8 @@ enum CATS_LP {
 #define RANDOM		this->u[STRIDE]
 
 #define CATS_MBATCH	8
-//#define CATS_OPENCL
-#ifdef CATS_OPENCL
+//#define _CATS_OPENCL
+#ifdef _CATS_OPENCL
 //#define CL_DEBUG
 #include "catseye_cl.h"
 #endif
@@ -2005,7 +2005,7 @@ void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, void *par
 		}
 		fclose(fp);
 	}
-#ifdef CATS_OPENCL
+#ifdef _CATS_OPENCL
 	CatsEye_clSetup(this);
 #endif
 	/*for (int i=0; i<this->layers; i++) {
@@ -2496,7 +2496,7 @@ void CatsEye_forward(CatsEye *this, real *x)
 	}
 }
 
-#ifndef CATS_OPENCL
+#ifndef _CATS_OPENCL
 /* train: multi layer perceptron
  * x: train data (number of elements is in*N)
  * t: correct label (number of elements is N)
