@@ -224,7 +224,7 @@ static inline void CatsEye_solver_RMSProp(CatsEye_layer *l, char mj, char ta, ch
 	}
 }
 
-// Fully connected
+// Fully connected [ z^l = ( w^l * a^l-1 + b^l ) ]
 static void _CatsEye_linear_forward(CatsEye_layer *l)
 {
 	/*real *o = l->z;
@@ -244,6 +244,8 @@ static void _CatsEye_linear_forward(CatsEye_layer *l)
 	// https://github.com/hiroyam/dnn-im2col
 	// z = W**T * x [A(m,k) B(k,n) C(m,n)]
 	gemm('C', 'T', 'N', l->outputs, 1/*batch*/, l->inputs+1, 1, l->W, l->inputs+1, l->x, l->inputs+1, 0, l->z, l->outputs);
+//	gemm('C', 'T', 'N', l->outputs, 1/*batch*/, l->inputs, 1, l->W, l->inputs, l->x, l->inputs, 0, l->z, l->outputs);
+//	gemm('C', 'N', 'N', l->outputs, 1/*batch*/, 1, 1, l->bias, l->outputs, onevec/*batch size*/, 1, 1, l->z, l->outputs);
 #endif
 }
 static void _CatsEye_linear_backward(CatsEye_layer *l)
@@ -266,6 +268,7 @@ static void _CatsEye_linear_backward(CatsEye_layer *l)
 #else
 	// dIn = W * dOut [A(m,k) B(k,n) C(m,n)]
 	gemm('C', 'N', 'N', l->inputs+1, 1/*batch*/, l->outputs, 1, l->W, l->inputs+1, l->dOut, l->outputs, 0, l->dIn, l->inputs+1);
+//	gemm('C', 'N', 'N', l->inputs, 1/*batch*/, l->outputs, 1, l->W, l->inputs, l->dOut, l->outputs, 0, l->dIn, l->inputs);
 #endif
 }
 static void _CatsEye_linear_update(CatsEye_layer *l)
@@ -1069,7 +1072,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		CatsEye_layer *l = &this->layer[i];
 		l->p = (void*)this;
 
-		if (l->momentum==0.0) l->momentum = 0.9;
+		if (l->momentum==0.0) l->momentum = 0.9; // MomentumSGD
 
 		l->forward = _CatsEye_layer_forward[l->type];
 		l->backward = _CatsEye_layer_backward[l->type];
@@ -1080,7 +1083,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		}
 
 		osize[i] = 0;
-		if (i>0) {
+		if (i>0) { // NOT first layer
 			if (!l->ich) l->ich = (l-1)->ch;
 			if (!l->inputs) l->inputs = (l-1)->outputs;
 			else if (l->inputs<0) { // select the layer
@@ -1193,6 +1196,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			printf("%3d %-8s %10d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
+		//case CATS_LINEAR:
 		case CATS_LOSS_0_1:
 		case CATS_LOSS_MSE:
 		default: // LINEAR
@@ -1202,7 +1206,6 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			}
 			n[i] = l->inputs;
 			m[i] = l->outputs;
-//			l->ich = 1; // FIXME (for initialize weights)
 			printf("%3d %-8s %10d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 		}
 		wsize[i] = this->wsize;
@@ -1398,7 +1401,7 @@ static int _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, in
 			}
 
 			// update the weights
-			for (int i=this->end-1; i>=this->stop/*start???*/; i--) {
+			for (int i=this->end-1; i>=this->start/*stop*/; i--) {
 				if (!this->layer[i].fix) this->layer[i].update(&this->layer[i]);
 			}
 		}

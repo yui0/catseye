@@ -217,12 +217,12 @@ int main()
 
 		{       0, CATS_CONV, ETA, .ksize=5, .stride=1, .padding=0, .ch=64 },
 		{       0, CATS_AVGPOOL, .ksize=2, .stride=2 },
-		{       0, CATS_BATCHNORMAL, .gamma=0.8 },
+//		{       0, CATS_BATCHNORMAL, .gamma=0.8 },
 		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 
-/*		{       0, CATS_LINEAR, ETA, .outputs=1024 },
+		{       0, CATS_LINEAR, ETA, .outputs=1024 },
 //		{       0, CATS_BATCHNORMAL, .gamma=0.8 },
-		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },*/
+		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 
 		{       0, CATS_LINEAR, ETA, .outputs=1 },
 		{       1, _CATS_ACT_SIGMOID },
@@ -321,7 +321,7 @@ int main()
 			noise[i] = rand_normal(0, 1);
 		}
 		cat.start = 0;
-		cat.stop = discriminator/*+1*/;
+		cat.stop = discriminator+1;
 		cat.slide = ZDIM;
 		for (int i=0; i<discriminator; i++) cat.layer[i].fix = 1;
 		printf("Training Discriminator #%d: phase 2 [fake]\n", n);

@@ -1,7 +1,9 @@
 # Cat's Eye
+
 Neural network library written in C and Javascript
 
 ## Features
+
 - Lightweight and minimalistic:
   - Header only
   - Just include catseye.h and write your model in c. There is nothing to install.
@@ -46,15 +48,20 @@ Neural network library written in C and Javascript
   - MNIST
 
 ## Usage
+
 Just include header files in your project.
 
 for more information, see example/
 
-	$ cd example
-	$ make
-	$ ./sin
+```bash
+$ dnf install ghostscript ocl-icd-devel
+$ cd example
+$ make
+$ ./sin
+```
 
 ## Demo
+
 - Recognizing handwritten digits by MNIST training ([example/mnist_train.c](example/mnist_train.c))
   - http://yui0.github.io/catseye/example/html/mnist.html
 
@@ -125,7 +132,8 @@ for more information, see example/
 
   ![99.2%](example/mnist_cnn_train_32ch_k7.png "Convolutional")
 
-## Refrence
+## Refrences
+
 - Documents
   - Neural Networks and Deep Learning [http://nnadl-ja.github.io/nnadl_site_ja/chap1.html]
   - Machine learning [http://hokuts.com/category/%E3%83%97%E3%83%AD%E3%82%B0%E3%83%A9%E3%83%A0/%E6%A9%9F%E6%A2%B0%E5%AD%A6%E7%BF%92/]
