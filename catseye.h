@@ -126,6 +126,7 @@ typedef struct layer {
 	int outputs;		// output size
 	real *x;		// input
 	real *z;		// output
+	real *bias;		// bias
 	real *W, *dw, *g;	// weight
 	real *dOut, *dIn;	// gradient
 	real *workspace;	// for im2col, col2im
@@ -243,8 +244,9 @@ static void _CatsEye_linear_forward(CatsEye_layer *l)
 #else
 	// https://github.com/hiroyam/dnn-im2col
 	// z = W**T * x [A(m,k) B(k,n) C(m,n)]
-	gemm('C', 'T', 'N', l->outputs, 1/*batch*/, l->inputs+1, 1, l->W, l->inputs+1, l->x, l->inputs+1, 0, l->z, l->outputs);
-//	gemm('C', 'T', 'N', l->outputs, 1/*batch*/, l->inputs, 1, l->W, l->inputs, l->x, l->inputs, 0, l->z, l->outputs);
+	//gemm('C', 'T', 'N', l->outputs, 1/*batch*/, l->inputs+1, 1, l->W, l->inputs+1, l->x, l->inputs+1, 0, l->z, l->outputs);
+	memcpy(l->z, l->bias, l->outputs*sizeof(real));
+	gemm('C', 'T', 'N', l->outputs, 1/*batch*/, l->inputs, 1, l->W, l->inputs, l->x, l->inputs, 1, l->z, l->outputs);
 //	gemm('C', 'N', 'N', l->outputs, 1/*batch*/, 1, 1, l->bias, l->outputs, onevec/*batch size*/, 1, 1, l->z, l->outputs);
 #endif
 }
@@ -267,8 +269,8 @@ static void _CatsEye_linear_backward(CatsEye_layer *l)
 	gemm('R', 'N', 'N', 1/*batch*/, l->inputs+1, l->outputs, 1, l->dOut, l->outputs, l->W, l->inputs+1, 0, l->dIn, l->inputs+1);
 #else
 	// dIn = W * dOut [A(m,k) B(k,n) C(m,n)]
-	gemm('C', 'N', 'N', l->inputs+1, 1/*batch*/, l->outputs, 1, l->W, l->inputs+1, l->dOut, l->outputs, 0, l->dIn, l->inputs+1);
-//	gemm('C', 'N', 'N', l->inputs, 1/*batch*/, l->outputs, 1, l->W, l->inputs, l->dOut, l->outputs, 0, l->dIn, l->inputs);
+	//gemm('C', 'N', 'N', l->inputs+1, 1/*batch*/, l->outputs, 1, l->W, l->inputs+1, l->dOut, l->outputs, 0, l->dIn, l->inputs+1);
+	gemm('C', 'N', 'N', l->inputs, 1/*batch*/, l->outputs, 1, l->W, l->inputs, l->dOut, l->outputs, 0, l->dIn, l->inputs);
 #endif
 }
 static void _CatsEye_linear_update(CatsEye_layer *l)
@@ -291,7 +293,14 @@ static void _CatsEye_linear_update(CatsEye_layer *l)
 #else
 	// W = W - eta * x * dOut**T [A(m,k) B(k,n) C(m,n)]
 //	gemm('C', 'N', 'T', l->inputs+1, l->outputs, 1/*batch*/, -l->eta, l->x, l->inputs+1, l->dOut, l->outputs, 1, l->W, l->inputs+1);
-	CatsEye_solver(l, 'C', 'N', 'T', l->inputs+1, l->outputs, 1/*batch*/, l->x, l->inputs+1, l->dOut, l->outputs, l->inputs+1);
+	//CatsEye_solver(l, 'C', 'N', 'T', l->inputs+1, l->outputs, 1/*batch*/, l->x, l->inputs+1, l->dOut, l->outputs, l->inputs+1);
+
+	real *b = l->bias;
+	real *d = l->dOut;
+	for (int i=l->outputs; i>0; i--) {
+		*b++ -= l->eta * (*d++);
+	}
+	CatsEye_solver(l, 'C', 'N', 'T', l->inputs, l->outputs, 1/*batch*/, l->x, l->inputs, l->dOut, l->outputs, l->inputs);
 #endif
 }
 // RNN
@@ -1233,6 +1242,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		else l->z = l->x + l->inputs+1;			// FIXME
 		if (i>0) l->dIn = (l-1)->dOut;
 		l->dOut = this->ddata + dsize[i];
+		l->bias = this->wdata + wsize[i] +n[i]*m[i]; // FIXME: for bias
 		l->W = this->wdata + wsize[i];
 		l->dw = this->wdata + this->wsize + wsize[i];
 		l->g = this->wdata + this->wsize*2 + wsize[i];
