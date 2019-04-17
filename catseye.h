@@ -103,9 +103,10 @@ static inline int binomial(/*int n, */real p)
 //#define gemm		gemm_cpu
 #endif
 
-typedef struct layer {
+struct __CatsEye;
+typedef struct __CatsEye_layer {
 	int inputs;		// input size
-	int type;
+	int type;		// layer type
 	real eta;		// learning rate
 
 	int ksize;		// CNN
@@ -148,15 +149,15 @@ typedef struct layer {
 	real gamma, beta;	// Batch Normalization
 	real alpha, min, max;	// Leaky ReLU, RReLU
 
-	void (*forward)(struct layer*);
-	void (*backward)(struct layer*);
-	void (*update)(struct layer*);
-	void *p;		// for loss function
+	void (*forward)(struct __CatsEye_layer*);
+	void (*backward)(struct __CatsEye_layer*);
+	void (*update)(struct __CatsEye_layer*);
+	struct __CatsEye *p;		// point to struct CatsEye for loss function
 
 	char *name;		// layer name
 } CatsEye_layer;
 
-typedef struct {
+typedef struct __CatsEye {
 	// number of each layer
 	int layers, *u;
 	CatsEye_layer *layer;
@@ -164,6 +165,7 @@ typedef struct {
 
 	// train parameter
 	int epoch;
+	int batch;
 	int slide;
 	// label
 	int sel;
@@ -240,14 +242,13 @@ static void _CatsEye_linear_forward(CatsEye_layer *l)
 	}*/
 #if CATS_WITH_ROWMAJOR
 	// z = x * W**T [A(m,k) B(k,n) C(m,n)]
-	gemm('R', 'N', 'T', 1/*batch*/, l->outputs, l->inputs+1, 1, l->x, l->inputs+1, l->W, l->inputs+1, 0, l->z, l->outputs);
+	gemm('R', 'N', 'T', l->p->batch, l->outputs, l->inputs+1, 1, l->x, l->inputs+1, l->W, l->inputs+1, 0, l->z, l->outputs);
 #else
 	// https://github.com/hiroyam/dnn-im2col
 	// z = W**T * x [A(m,k) B(k,n) C(m,n)]
-	//gemm('C', 'T', 'N', l->outputs, 1/*batch*/, l->inputs+1, 1, l->W, l->inputs+1, l->x, l->inputs+1, 0, l->z, l->outputs);
+	//gemm('C', 'T', 'N', l->outputs, l->p->batch, l->inputs+1, 1, l->W, l->inputs+1, l->x, l->inputs+1, 0, l->z, l->outputs);
 	memcpy(l->z, l->bias, l->outputs*sizeof(real));
-	gemm('C', 'T', 'N', l->outputs, 1/*batch*/, l->inputs, 1, l->W, l->inputs, l->x, l->inputs, 1, l->z, l->outputs);
-//	gemm('C', 'N', 'N', l->outputs, 1/*batch*/, 1, 1, l->bias, l->outputs, onevec/*batch size*/, 1, 1, l->z, l->outputs);
+	gemm('C', 'T', 'N', l->outputs, l->p->batch, l->inputs, 1, l->W, l->inputs, l->x, l->inputs, 1, l->z, l->outputs);
 #endif
 }
 static void _CatsEye_linear_backward(CatsEye_layer *l)
@@ -266,11 +267,11 @@ static void _CatsEye_linear_backward(CatsEye_layer *l)
 	}*/
 #if CATS_WITH_ROWMAJOR
 	// dIn = dOut * W [A(m,k) B(k,n) C(m,n)]
-	gemm('R', 'N', 'N', 1/*batch*/, l->inputs+1, l->outputs, 1, l->dOut, l->outputs, l->W, l->inputs+1, 0, l->dIn, l->inputs+1);
+	gemm('R', 'N', 'N', l->p->batch, l->inputs+1, l->outputs, 1, l->dOut, l->outputs, l->W, l->inputs+1, 0, l->dIn, l->inputs+1);
 #else
 	// dIn = W * dOut [A(m,k) B(k,n) C(m,n)]
-	//gemm('C', 'N', 'N', l->inputs+1, 1/*batch*/, l->outputs, 1, l->W, l->inputs+1, l->dOut, l->outputs, 0, l->dIn, l->inputs+1);
-	gemm('C', 'N', 'N', l->inputs, 1/*batch*/, l->outputs, 1, l->W, l->inputs, l->dOut, l->outputs, 0, l->dIn, l->inputs);
+	//gemm('C', 'N', 'N', l->inputs+1, l->p->batch, l->outputs, 1, l->W, l->inputs+1, l->dOut, l->outputs, 0, l->dIn, l->inputs+1);
+	gemm('C', 'N', 'N', l->inputs, l->p->batch, l->outputs, 1, l->W, l->inputs, l->dOut, l->outputs, 0, l->dIn, l->inputs);
 #endif
 }
 static void _CatsEye_linear_update(CatsEye_layer *l)
@@ -288,19 +289,19 @@ static void _CatsEye_linear_update(CatsEye_layer *l)
 #if CATS_WITH_ROWMAJOR
 	// slow??
 	// W = W - eta * dOut**T * x [A(m,k) B(k,n) C(m,n)]
-//	gemm('R', 'T', 'N', l->outputs, l->inputs+1, 1/*batch*/, -l->eta, l->dOut, l->outputs, l->x, l->inputs+1, 1, l->W, l->inputs+1);
-	CatsEye_solver(l, 'R', 'T', 'N', l->outputs, l->inputs+1, 1/*batch*/, l->dOut, l->outputs, l->x, l->inputs+1, l->inputs+1);
+//	gemm('R', 'T', 'N', l->outputs, l->inputs+1, l->p->batch, -l->eta, l->dOut, l->outputs, l->x, l->inputs+1, 1, l->W, l->inputs+1);
+	CatsEye_solver(l, 'R', 'T', 'N', l->outputs, l->inputs+1, l->p->batch, l->dOut, l->outputs, l->x, l->inputs+1, l->inputs+1);
 #else
 	// W = W - eta * x * dOut**T [A(m,k) B(k,n) C(m,n)]
-//	gemm('C', 'N', 'T', l->inputs+1, l->outputs, 1/*batch*/, -l->eta, l->x, l->inputs+1, l->dOut, l->outputs, 1, l->W, l->inputs+1);
-	//CatsEye_solver(l, 'C', 'N', 'T', l->inputs+1, l->outputs, 1/*batch*/, l->x, l->inputs+1, l->dOut, l->outputs, l->inputs+1);
+//	gemm('C', 'N', 'T', l->inputs+1, l->outputs, l->p->batch, -l->eta, l->x, l->inputs+1, l->dOut, l->outputs, 1, l->W, l->inputs+1);
+	//CatsEye_solver(l, 'C', 'N', 'T', l->inputs+1, l->outputs, l->p->batch, l->x, l->inputs+1, l->dOut, l->outputs, l->inputs+1);
 
 	real *b = l->bias;
 	real *d = l->dOut;
 	for (int i=l->outputs; i>0; i--) {
 		*b++ -= l->eta * (*d++);
 	}
-	CatsEye_solver(l, 'C', 'N', 'T', l->inputs, l->outputs, 1/*batch*/, l->x, l->inputs, l->dOut, l->outputs, l->inputs);
+	CatsEye_solver(l, 'C', 'N', 'T', l->inputs, l->outputs, l->p->batch, l->x, l->inputs, l->dOut, l->outputs, l->inputs);
 #endif
 }
 // RNN
@@ -434,10 +435,10 @@ static void _CatsEye_convolutional_forward(CatsEye_layer *l)
 	}
 #if CATS_WITH_ROWMAJOR
 	// z = W * x [A(m,k) B(k,n) C(m,n)]
-	gemm('R', 'N', 'N', l->ch, l->ox*l->oy*1/*batch*/, l->ksize*l->ksize*l->ich, 1, l->W, l->ksize*l->ksize*l->ich, workspace, l->ox*l->oy, 0, l->z, l->ox*l->oy);
+	gemm('R', 'N', 'N', l->ch, l->ox*l->oy*l->p->batch, l->ksize*l->ksize*l->ich, 1, l->W, l->ksize*l->ksize*l->ich, workspace, l->ox*l->oy, 0, l->z, l->ox*l->oy);
 #else
 	// z = x * W [A(m,k) B(k,n) C(m,n)]
-	gemm('C', 'N', 'N', l->ox*l->oy*1/*batch*/, l->ch, l->ksize*l->ksize*l->ich, 1, workspace, l->ox*l->oy, l->W, l->ksize*l->ksize*l->ich, 0, l->z, l->ox*l->oy);
+	gemm('C', 'N', 'N', l->ox*l->oy*l->p->batch, l->ch, l->ksize*l->ksize*l->ich, 1, workspace, l->ox*l->oy, l->W, l->ksize*l->ksize*l->ich, 0, l->z, l->ox*l->oy);
 #endif
 }
 static real col[32*32*1024*30];
@@ -446,10 +447,10 @@ static void _CatsEye_convolutional_backward(CatsEye_layer *l)
 	real *workspace = l->ksize!=1 ? col : l->dIn;
 #if CATS_WITH_ROWMAJOR
 	// dIn = W**T * dOut [A(m,k) B(k,n) C(m,n)]
-	gemm('R', 'T', 'N', l->ksize*l->ksize*l->ich, l->ox*l->oy*1/*batch*/, l->ch, 1, l->W, l->ksize*l->ksize*l->ich, l->dOut, l->ox*l->oy, 0, workspace, l->ox*l->oy);
+	gemm('R', 'T', 'N', l->ksize*l->ksize*l->ich, l->ox*l->oy*l->p->batch, l->ch, 1, l->W, l->ksize*l->ksize*l->ich, l->dOut, l->ox*l->oy, 0, workspace, l->ox*l->oy);
 #else
 	// dIn = dOut * W**T [A(m,k) B(k,n) C(m,n)]
-	gemm('C', 'N', 'T', l->ox*l->oy*1/*batch*/, l->ksize*l->ksize*l->ich, l->ch, 1, l->dOut, l->ox*l->oy, l->W, l->ksize*l->ksize*l->ich, 0, workspace, l->ox*l->oy);
+	gemm('C', 'N', 'T', l->ox*l->oy*l->p->batch, l->ksize*l->ksize*l->ich, l->ch, 1, l->dOut, l->ox*l->oy, l->W, l->ksize*l->ksize*l->ich, 0, workspace, l->ox*l->oy);
 #endif
 	if (l->ksize!=1) {
 		col2im(workspace, l->ich, l->sy, l->sx, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, l->dIn);
@@ -460,11 +461,11 @@ static void _CatsEye_convolutional_update(CatsEye_layer *l)
 	real *workspace = l->ksize!=1 ? l->workspace : l->x;
 #if CATS_WITH_ROWMAJOR
 	// W = W - eta * dOut * x**T [A(m,k) B(k,n) C(m,n)]
-//	gemm('R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1/*batch*/, -l->eta, l->dOut, l->ox*l->oy, workspace, l->ox*l->oy, 1, l->W, l->ksize*l->ksize*l->ich);
+//	gemm('R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*l->p->batch, -l->eta, l->dOut, l->ox*l->oy, workspace, l->ox*l->oy, 1, l->W, l->ksize*l->ksize*l->ich);
 	CatsEye_solver(l, 'R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, l->dOut, l->ox*l->oy, workspace, l->ox*l->oy, l->ksize*l->ksize*l->ich);
 #else
 	// W = W - eta * x**T * dOut [A(m,k) B(k,n) C(m,n)]
-//	gemm('C', 'T', 'N', l->ksize*l->ksize*l->ich, l->ch, l->ox*l->oy*1/*batch*/, -l->eta, workspace, l->ox*l->oy, l->dOut, l->ox*l->oy, 1, l->W, l->ksize*l->ksize*l->ich);
+//	gemm('C', 'T', 'N', l->ksize*l->ksize*l->ich, l->ch, l->ox*l->oy*l->p->batch, -l->eta, workspace, l->ox*l->oy, l->dOut, l->ox*l->oy, 1, l->W, l->ksize*l->ksize*l->ich);
 	CatsEye_solver(l, 'C', 'T', 'N', l->ksize*l->ksize*l->ich, l->ch, l->ox*l->oy*1, workspace, l->ox*l->oy, l->dOut, l->ox*l->oy, l->ksize*l->ksize*l->ich);
 #endif
 }
@@ -583,7 +584,7 @@ static void _CatsEye_convolutional_update(CatsEye_layer *l)
 // calculate forward propagation
 static void _CatsEye_maxpooling_forward(CatsEye_layer *l)
 {
-	int step = l->sx-l->ksize;
+	int step = l->sx -l->ksize;
 	int *max = (int*)l->W; // temp
 	real *o = l->z;
 
@@ -627,7 +628,7 @@ static void _CatsEye_maxpooling_backward(CatsEye_layer *l)
 
 static void CatsEye_avgpooling_forward(CatsEye_layer *l)
 {
-	int step = l->sx-l->ksize;
+	int step = l->sx -l->ksize;
 	real n = l->ksize * l->ksize;
 	real *o = l->z;
 
@@ -650,7 +651,7 @@ static void CatsEye_avgpooling_forward(CatsEye_layer *l)
 }
 static void CatsEye_avgpooling_backward(CatsEye_layer *l)
 {
-	int step = l->sx-l->ksize;
+	int step = l->sx -l->ksize;
 	real n = l->ksize * l->ksize;
 	real *delta = l->dOut;
 
@@ -1060,6 +1061,7 @@ char CatsEye_string[][16] = {
 #define _CatsEye__construct(t, p)	__CatsEye__construct(t, p, sizeof(p)/sizeof(CatsEye_layer))
 void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 {
+	this->batch = 1;
 	this->u = 0;
 	this->z = 0;
 	this->layers = layers;
