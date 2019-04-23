@@ -242,7 +242,9 @@ static void _CatsEye_linear_forward(CatsEye_layer *l)
 	}*/
 #if CATS_WITH_ROWMAJOR
 	// z = x * W**T [A(m,k) B(k,n) C(m,n)]
-	gemm('R', 'N', 'T', l->p->batch, l->outputs, l->inputs+1, 1, l->x, l->inputs+1, l->W, l->inputs+1, 0, l->z, l->outputs);
+	//gemm('R', 'N', 'T', l->p->batch, l->outputs, l->inputs+1, 1, l->x, l->inputs+1, l->W, l->inputs+1, 0, l->z, l->outputs);
+	memcpy(l->z, l->bias, l->outputs*sizeof(real));
+	gemm('R', 'N', 'T', l->p->batch, l->outputs, l->inputs, 1, l->x, l->inputs, l->W, l->inputs+1, 1, l->z, l->outputs);
 #else
 	// https://github.com/hiroyam/dnn-im2col
 	// z = W**T * x [A(m,k) B(k,n) C(m,n)]
@@ -267,7 +269,8 @@ static void _CatsEye_linear_backward(CatsEye_layer *l)
 	}*/
 #if CATS_WITH_ROWMAJOR
 	// dIn = dOut * W [A(m,k) B(k,n) C(m,n)]
-	gemm('R', 'N', 'N', l->p->batch, l->inputs+1, l->outputs, 1, l->dOut, l->outputs, l->W, l->inputs+1, 0, l->dIn, l->inputs+1);
+	//gemm('R', 'N', 'N', l->p->batch, l->inputs+1, l->outputs, 1, l->dOut, l->outputs, l->W, l->inputs+1, 0, l->dIn, l->inputs+1);
+	gemm('R', 'N', 'N', l->p->batch, l->inputs, l->outputs, 1, l->dOut, l->outputs, l->W, l->inputs, 0, l->dIn, l->inputs);
 #else
 	// dIn = W * dOut [A(m,k) B(k,n) C(m,n)]
 	//gemm('C', 'N', 'N', l->inputs+1, l->p->batch, l->outputs, 1, l->W, l->inputs+1, l->dOut, l->outputs, 0, l->dIn, l->inputs+1);
@@ -290,7 +293,14 @@ static void _CatsEye_linear_update(CatsEye_layer *l)
 	// slow??
 	// W = W - eta * dOut**T * x [A(m,k) B(k,n) C(m,n)]
 //	gemm('R', 'T', 'N', l->outputs, l->inputs+1, l->p->batch, -l->eta, l->dOut, l->outputs, l->x, l->inputs+1, 1, l->W, l->inputs+1);
-	CatsEye_solver(l, 'R', 'T', 'N', l->outputs, l->inputs+1, l->p->batch, l->dOut, l->outputs, l->x, l->inputs+1, l->inputs+1);
+	//CatsEye_solver(l, 'R', 'T', 'N', l->outputs, l->inputs+1, l->p->batch, l->dOut, l->outputs, l->x, l->inputs+1, l->inputs+1);
+
+	real *b = l->bias;
+	real *d = l->dOut;
+	for (int i=l->outputs; i>0; i--) {
+		*b++ -= l->eta * (*d++);
+	}
+	CatsEye_solver(l, 'R', 'T', 'N', l->outputs, l->inputs, l->p->batch, l->dOut, l->outputs, l->x, l->inputs, l->inputs);
 #else
 	// W = W - eta * x * dOut**T [A(m,k) B(k,n) C(m,n)]
 //	gemm('C', 'N', 'T', l->inputs+1, l->outputs, l->p->batch, -l->eta, l->x, l->inputs+1, l->dOut, l->outputs, 1, l->W, l->inputs+1);
@@ -375,7 +385,7 @@ static void CatsEye_rnn_update(CatsEye_layer *l)
 	_fma(l->Wr, l->dOutr, -l->eta, l->outputs * l->hiddens);*/
 }
 
-// convolution
+// convolution [https://github.com/hiroyam/dnn-im2col]
 static inline void im2col(const real *im, const int channels,
 	const int height, const int width, const int kernel_h, const int kernel_w,
 	const int pad_h, const int pad_w, const int stride_h, const int stride_w, real *col)
@@ -462,11 +472,11 @@ static void _CatsEye_convolutional_update(CatsEye_layer *l)
 #if CATS_WITH_ROWMAJOR
 	// W = W - eta * dOut * x**T [A(m,k) B(k,n) C(m,n)]
 //	gemm('R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*l->p->batch, -l->eta, l->dOut, l->ox*l->oy, workspace, l->ox*l->oy, 1, l->W, l->ksize*l->ksize*l->ich);
-	CatsEye_solver(l, 'R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, l->dOut, l->ox*l->oy, workspace, l->ox*l->oy, l->ksize*l->ksize*l->ich);
+	CatsEye_solver(l, 'R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*l->p->batch, l->dOut, l->ox*l->oy, workspace, l->ox*l->oy, l->ksize*l->ksize*l->ich);
 #else
 	// W = W - eta * x**T * dOut [A(m,k) B(k,n) C(m,n)]
 //	gemm('C', 'T', 'N', l->ksize*l->ksize*l->ich, l->ch, l->ox*l->oy*l->p->batch, -l->eta, workspace, l->ox*l->oy, l->dOut, l->ox*l->oy, 1, l->W, l->ksize*l->ksize*l->ich);
-	CatsEye_solver(l, 'C', 'T', 'N', l->ksize*l->ksize*l->ich, l->ch, l->ox*l->oy*1, workspace, l->ox*l->oy, l->dOut, l->ox*l->oy, l->ksize*l->ksize*l->ich);
+	CatsEye_solver(l, 'C', 'T', 'N', l->ksize*l->ksize*l->ich, l->ch, l->ox*l->oy*l->p->batch, workspace, l->ox*l->oy, l->dOut, l->ox*l->oy, l->ksize*l->ksize*l->ich);
 #endif
 }
 
@@ -1404,9 +1414,8 @@ static int _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, in
 			this->sel = sample;
 
 			// forward propagation
-//			_CatsEye_forward(this, x+sample*this->layer[0].inputs);
 			_CatsEye_forward(this, x+sample*this->slide);
-
+#if 0
 			// calculate the error of output and hidden layer
 			for (int i=this->end; i>=this->stop/*start*/; i--) { // i=0 -> RNN
 				this->layer[i].backward(&this->layer[i]);
@@ -1415,6 +1424,17 @@ static int _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, in
 			// update the weights
 			for (int i=this->end-1; i>=this->start/*stop*/; i--) {
 				if (!this->layer[i].fix) this->layer[i].update(&this->layer[i]);
+			}
+#endif
+			// calculate the error and update the weights
+			int i = this->end;
+			CatsEye_layer *l = &this->layer[i--];
+			l->backward(l);
+			l--;
+			for (; i>=this->start; i--) {
+				if (/*!(l->fix&2)*/i>=this->stop) l->backward(l);
+				if (!(l->fix&1)) l->update(l);
+				l--;
 			}
 		}
 
