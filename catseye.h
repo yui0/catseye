@@ -152,7 +152,7 @@ typedef struct __CatsEye_layer {
 	void (*forward)(struct __CatsEye_layer*);
 	void (*backward)(struct __CatsEye_layer*);
 	void (*update)(struct __CatsEye_layer*);
-	struct __CatsEye *p;		// point to struct CatsEye for loss function
+	struct __CatsEye *p;	// point to struct CatsEye for loss function
 
 	char *name;		// layer name
 } CatsEye_layer;
@@ -385,7 +385,7 @@ static void CatsEye_rnn_update(CatsEye_layer *l)
 	_fma(l->Wr, l->dOutr, -l->eta, l->outputs * l->hiddens);*/
 }
 
-// convolution [https://github.com/hiroyam/dnn-im2col]
+// convolution [https://github.com/hiroyam/dnn-im2col, https://github.com/pjreddie/darknet]
 static inline void im2col(const real *im, const int channels,
 	const int height, const int width, const int kernel_h, const int kernel_w,
 	const int pad_h, const int pad_w, const int stride_h, const int stride_w, real *col)
@@ -437,188 +437,83 @@ static inline void col2im(const real *col, const int channels,
 }
 static void _CatsEye_convolutional_forward(CatsEye_layer *l)
 {
-	real *workspace = l->workspace;
-	if (l->ksize==1) {
-		workspace = l->x;
-	} else {
-		im2col(l->x, l->ich, l->sy, l->sx, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, workspace);
-	}
+	for (int i=0; i<l->p->batch; i++) {
+		real *workspace = l->workspace +l->ox*l->oy*l->ich*i;
+		if (l->ksize==1) {
+			workspace = l->x +l->inputs*i;
+		} else {
+			im2col(l->x +l->inputs*i, l->ich, l->sy, l->sx, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, workspace);
+		}
 #if CATS_WITH_ROWMAJOR
-	// z = W * x [A(m,k) B(k,n) C(m,n)]
-	gemm('R', 'N', 'N', l->ch, l->ox*l->oy*l->p->batch, l->ksize*l->ksize*l->ich, 1, l->W, l->ksize*l->ksize*l->ich, workspace, l->ox*l->oy, 0, l->z, l->ox*l->oy);
+		// z = W * x [A(m,k) B(k,n) C(m,n)], cnhw
+		gemm('R', 'N', 'N', l->ch, l->ox*l->oy*1, l->ksize*l->ksize*l->ich, 1, l->W, l->ksize*l->ksize*l->ich, workspace, l->ox*l->oy, 0, l->z +l->outputs*i, l->ox*l->oy);
 #else
-	// z = x * W [A(m,k) B(k,n) C(m,n)]
-	gemm('C', 'N', 'N', l->ox*l->oy*l->p->batch, l->ch, l->ksize*l->ksize*l->ich, 1, workspace, l->ox*l->oy, l->W, l->ksize*l->ksize*l->ich, 0, l->z, l->ox*l->oy);
+		// z = x * W [A(m,k) B(k,n) C(m,n)], cnhw
+		gemm('C', 'N', 'N', l->ox*l->oy*1, l->ch, l->ksize*l->ksize*l->ich, 1, workspace, l->ox*l->oy, l->W, l->ksize*l->ksize*l->ich, 0, l->z +l->outputs*i, l->ox*l->oy);
 #endif
+	}
 }
 static real col[32*32*1024*30];
 static void _CatsEye_convolutional_backward(CatsEye_layer *l)
 {
-	real *workspace = l->ksize!=1 ? col : l->dIn;
+	for (int i=0; i<l->p->batch; i++) {
+		real *workspace = l->ksize!=1 ? col : l->dIn +l->inputs*i;
 #if CATS_WITH_ROWMAJOR
-	// dIn = W**T * dOut [A(m,k) B(k,n) C(m,n)]
-	gemm('R', 'T', 'N', l->ksize*l->ksize*l->ich, l->ox*l->oy*l->p->batch, l->ch, 1, l->W, l->ksize*l->ksize*l->ich, l->dOut, l->ox*l->oy, 0, workspace, l->ox*l->oy);
+		// dIn = W**T * dOut [A(m,k) B(k,n) C(m,n)]
+		gemm('R', 'T', 'N', l->ksize*l->ksize*l->ich, l->ox*l->oy*1, l->ch, 1, l->W, l->ksize*l->ksize*l->ich, l->dOut +l->outputs*i, l->ox*l->oy, 0, workspace, l->ox*l->oy);
 #else
-	// dIn = dOut * W**T [A(m,k) B(k,n) C(m,n)]
-	gemm('C', 'N', 'T', l->ox*l->oy*l->p->batch, l->ksize*l->ksize*l->ich, l->ch, 1, l->dOut, l->ox*l->oy, l->W, l->ksize*l->ksize*l->ich, 0, workspace, l->ox*l->oy);
+		// dIn = dOut * W**T [A(m,k) B(k,n) C(m,n)]
+		gemm('C', 'N', 'T', l->ox*l->oy*1, l->ksize*l->ksize*l->ich, l->ch, 1, l->dOut +l->outputs*i, l->ox*l->oy, l->W, l->ksize*l->ksize*l->ich, 0, workspace, l->ox*l->oy);
 #endif
-	if (l->ksize!=1) {
-		col2im(workspace, l->ich, l->sy, l->sx, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, l->dIn);
+		if (l->ksize!=1) {
+			col2im(workspace, l->ich, l->sy, l->sx, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, l->dIn +l->inputs*i);
+		}
 	}
 }
 static void _CatsEye_convolutional_update(CatsEye_layer *l)
 {
-	real *workspace = l->ksize!=1 ? l->workspace : l->x;
+	for (int i=0; i<l->p->batch; i++) {
+		real *workspace = l->ksize!=1 ? l->workspace +l->ox*l->oy*l->ich*i : l->x +l->inputs*i;
 #if CATS_WITH_ROWMAJOR
-	// W = W - eta * dOut * x**T [A(m,k) B(k,n) C(m,n)]
-//	gemm('R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*l->p->batch, -l->eta, l->dOut, l->ox*l->oy, workspace, l->ox*l->oy, 1, l->W, l->ksize*l->ksize*l->ich);
-	CatsEye_solver(l, 'R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*l->p->batch, l->dOut, l->ox*l->oy, workspace, l->ox*l->oy, l->ksize*l->ksize*l->ich);
+		// W = W - eta * dOut * x**T [A(m,k) B(k,n) C(m,n)]
+//		gemm('R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*l->p->batch, -l->eta/l->p->batch, l->dOut, l->ox*l->oy, workspace, l->ox*l->oy, 1, l->W, l->ksize*l->ksize*l->ich);
+		CatsEye_solver(l, 'R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy, l->dOut +l->outputs*i, l->ox*l->oy, workspace, l->ox*l->oy, l->ksize*l->ksize*l->ich);
 #else
-	// W = W - eta * x**T * dOut [A(m,k) B(k,n) C(m,n)]
-//	gemm('C', 'T', 'N', l->ksize*l->ksize*l->ich, l->ch, l->ox*l->oy*l->p->batch, -l->eta, workspace, l->ox*l->oy, l->dOut, l->ox*l->oy, 1, l->W, l->ksize*l->ksize*l->ich);
-	CatsEye_solver(l, 'C', 'T', 'N', l->ksize*l->ksize*l->ich, l->ch, l->ox*l->oy*l->p->batch, workspace, l->ox*l->oy, l->dOut, l->ox*l->oy, l->ksize*l->ksize*l->ich);
+		// W = W - eta * x**T * dOut [A(m,k) B(k,n) C(m,n)]
+//		gemm('C', 'T', 'N', l->ksize*l->ksize*l->ich, l->ch, l->ox*l->oy*l->p->batch, -l->eta/l->p->batch, workspace, l->ox*l->oy, l->dOut, l->ox*l->oy, 1, l->W, l->ksize*l->ksize*l->ich);
+		CatsEye_solver(l, 'C', 'T', 'N', l->ksize*l->ksize*l->ich, l->ch, l->ox*l->oy, workspace, l->ox*l->oy, l->dOut +l->outputs*i, l->ox*l->oy, l->ksize*l->ksize*l->ich);
 #endif
+	}
 }
-
-// calculate forward propagation
-/*void _CatsEye_convolutional_forward(CatsEye_layer *l)
-{
-	int step = l->sx - l->ksize;
-///	int ks = l->ksize * l->ksize;
-
-	// c[out], c[in], ksize, h, w
-	real *s, *z, *o;
-	real *w = l->W;
-	memset(l->z, 0, sizeof(real)*l->ch*l->ox*l->oy);
-	for (int c=0; c<l->ch; c++) {	// out
-		real *r = s = l->x;
-		o = l->z + c*l->ox*l->oy;
-		for (int cc=l->ich; cc>0; cc--) {	// in
-//			s = l->x + (l->ich-cc)*l->sx*l->sy;
-			for (int wy=0; wy<l->ksize; wy++) {
-				for (int wx=0; wx<l->ksize; wx++) {
-					real *p = s++;	// in
-					z = o;		// out
-///					real W = w[wx*l->ksize+wy];
-					for (int y=l->py; y>0; y--) {
-						_fma(z, p, *w, l->px);	// *z++ += (*p++) * (*w); p += m;
-///						_fma(z, p, W, l->px);	// *z++ += (*p++) * (*w); p += m;
-						p += l->sx;
-						z += l->ox;
-					}
-					w++;
-				}
-				s += step;
-////				s += l->sx;
-			}
-			r += l->sx * l->sy;
-			s = r;
-///			w += ks;
-		}
-	}
-}*/
-// calculate back propagation
-/*void _CatsEye_convolutional_backward(CatsEye_layer *l)
-{
-	int step = l->sx - l->ksize;
-///	int ks = l->ksize * l->ksize;
-
-	// c[out], c[in], ksize, h, w
-	real *d, *prev_delta;
-	real *w = l->W;
-	real *delta = l->dOut;
-	memset(l->dIn, 0, sizeof(real)*l->ich*l->sx*l->sy);
-	for (int c=l->ch; c>0; c--) {	// out
-		real *r = prev_delta = l->dIn;
-		for (int cc=l->ich; cc>0; cc--) {	// in
-			for (int wy=0; wy<l->ksize; wy++) {
-				for (int wx=0; wx<l->ksize; wx++) {
-					real *p = prev_delta++;	// in
-					d = delta;		// out
-///					real W = w[wx*l->ksize+wy];
-					for (int y=l->oy; y>0; y--) {
-						_fma(p, d, *w, l->ox);	// *p++ += (*d++) * (*w);
-///						_fma(p, d, W, l->ox);	// *p++ += (*d++) * (*w);
-						p += l->sx;
-						d += l->ox;
-					}
-					w++;
-				}
-				prev_delta += step;
-			}
-			r += l->sx * l->sy;
-			prev_delta = r;
-///			w += ks;
-		}
-		delta = d;
-//		prev_delta = l->dIn;
-	}
-}*/
-// update the weights
-/*void _CatsEye_convolutional_update(CatsEye_layer *l)
-{
-	int step = l->sx - l->ksize;
-///	int ks = l->ksize * l->ksize;
-
-	// c[out], c[in], ksize, h, w
-	real *w = l->W;
-	real *d, *prev_out;
-	real *delta = l->dOut;
-	for (int c=l->ch; c>0; c--) {	// out
-		real *r = prev_out = l->x;
-		for (int cc=l->ich; cc>0; cc--) {	// in
-			for (int wy=0; wy<l->ksize; wy++) {
-				for (int wx=0; wx<l->ksize; wx++) {
-					real *p = prev_out++;	// in
-					d = delta;		// out
-///					real dOut = delta[wx*l->ksize+wy];
-					register real a = 0;
-					for (int y=l->oy; y>0; y--) {
-						a += dot(d, p, l->ox);	// a += d * p;
-///						a += dot(dOut, p, l->ox);	// a += d * p;
-						p += l->sx;
-						d += l->ox;
-					}
-					*w++ += -l->eta * a;
-				}
-				prev_out += step;
-			}
-			r += l->sx * l->sy;
-			prev_out = r;
-		}
-		delta = d;
-//		prev_out = l->x;
-	}
-}*/
 
 // calculate forward propagation
 static void _CatsEye_maxpooling_forward(CatsEye_layer *l)
 {
 	int step = l->sx -l->ksize;
-	int *max = (int*)l->W; // temp
-	real *o = l->z;
+	for (int i=0; i<l->p->batch; i++) {
+		int *max = (int*)l->W +l->outputs*i; // temp
+		real *o = l->z +l->outputs*i;
 
-	for (int c=0; c<l->ch; c++) { // in/out
-		for (int y=0; y<l->oy; y++) {
-			int i = c*l->sx*l->sy + y*l->stride*l->sx;
-			for (int x=0; x<l->ox; x++) {
-				int n = i+x*l->stride;
-				real a = l->x[n];
-				*max = n;
-				for (int wy=l->ksize; wy>0; wy--) {
-//					int m = n;
-					for (int wx=l->ksize; wx>0; wx--) {
-						if (a<l->x[n]) {
-							a = l->x[n];
-							*max = n;
+		for (int c=0; c<l->ch; c++) { // in/out
+			for (int y=0; y<l->oy; y++) {
+				int ix = c*l->sx*l->sy + y*l->stride*l->sx +l->inputs*i;
+				for (int x=0; x<l->ox; x++) {
+					int n = ix+x*l->stride;
+					real a = l->x[n];
+					*max = n;
+					for (int wy=l->ksize; wy>0; wy--) {
+						for (int wx=l->ksize; wx>0; wx--) {
+							if (a<l->x[n]) {
+								a = l->x[n];
+								*max = n;
+							}
+							n++;
 						}
-						n++;
+						n += step;
 					}
-					n += step;
-//					n = m + l->sx;
+					max++;
+					*o++ = a;
 				}
-				max++;
-				*o++ = a;
 			}
 		}
 	}
@@ -629,8 +524,8 @@ static void _CatsEye_maxpooling_backward(CatsEye_layer *l)
 	int *max = (int*)l->W; // temp
 	real *delta = l->dOut;
 	real *d = l->dIn;
-	memset(d, 0, sizeof(real)*l->inputs);
-	for (int i=0; i<l->outputs; i++) {
+	memset(d, 0, sizeof(real)*l->inputs*l->p->batch);
+	for (int i=0; i<l->outputs*l->p->batch; i++) {
 		d[*max] = *delta++;
 		max++;
 	}
@@ -640,21 +535,23 @@ static void CatsEye_avgpooling_forward(CatsEye_layer *l)
 {
 	int step = l->sx -l->ksize;
 	real n = l->ksize * l->ksize;
-	real *o = l->z;
+	for (int i=0; i<l->p->batch; i++) {
+		real *o = l->z +l->outputs*i;
 
-	for (int c=0; c<l->ch; c++) { // in/out
-		for (int y=0; y<l->oy; y++) {
-			int i = c*l->sx*l->sy + y*l->stride*l->sx;
-			for (int x=0; x<l->ox; x++) {
-				real *u = l->x + i+x*l->stride;
-				real a = 0;
-				for (int wy=l->ksize; wy>0; wy--) {
-					for (int wx=l->ksize; wx>0; wx--) {
-						a += *u++;
+		for (int c=0; c<l->ch; c++) { // in/out
+			for (int y=0; y<l->oy; y++) {
+				int ix = c*l->sx*l->sy + y*l->stride*l->sx +l->inputs*i;
+				for (int x=0; x<l->ox; x++) {
+					real *u = l->x + ix+x*l->stride;
+					real a = 0;
+					for (int wy=l->ksize; wy>0; wy--) {
+						for (int wx=l->ksize; wx>0; wx--) {
+							a += *u++;
+						}
+						u += step;
 					}
-					u += step;
+					*o++ = a / n;
 				}
-				*o++ = a / n;
 			}
 		}
 	}
@@ -663,19 +560,21 @@ static void CatsEye_avgpooling_backward(CatsEye_layer *l)
 {
 	int step = l->sx -l->ksize;
 	real n = l->ksize * l->ksize;
-	real *delta = l->dOut;
+	for (int i=0; i<l->p->batch; i++) {
+		real *delta = l->dOut +l->outputs*i;
 
-	for (int c=0; c<l->ch; c++) { // in/out
-		for (int y=0; y<l->oy; y++) {
-			int i = c*l->sx*l->sy + y*l->stride*l->sx;
-			for (int x=0; x<l->ox; x++) {
-				real *d = l->dIn + i+x*l->stride;
-				real a = *delta++ / n;
-				for (int wy=l->ksize; wy>0; wy--) {
-					for (int wx=l->ksize; wx>0; wx--) {
-						*d++ = a;
+		for (int c=0; c<l->ch; c++) { // in/out
+			for (int y=0; y<l->oy; y++) {
+				int ix = c*l->sx*l->sy + y*l->stride*l->sx +l->inputs*i;
+				for (int x=0; x<l->ox; x++) {
+					real *d = l->dIn + ix+x*l->stride;
+					real a = *delta++ / n;
+					for (int wy=l->ksize; wy>0; wy--) {
+						for (int wx=l->ksize; wx>0; wx--) {
+							*d++ = a;
+						}
+						d += step;
 					}
-					d += step;
 				}
 			}
 		}
@@ -686,17 +585,19 @@ static void CatsEye_avgpooling_backward(CatsEye_layer *l)
 static void CatsEye_PixelShuffler_forward(CatsEye_layer *l)
 {
 	int ch = l->ich / l->ch;
-	for (int c=0; c<l->ch; c++) { // out
-		real *xx = l->x + c*ch*l->sx*l->sy;
-		real *o = l->z + c*l->ox*l->oy;
+	for (int i=0; i<l->p->batch; i++) {
+		for (int c=0; c<l->ch; c++) { // out
+			real *xx = l->x + c*ch*l->sx*l->sy +l->inputs*i;
+			real *o = l->z + c*l->ox*l->oy +l->outputs*i;
 
-		for (int cc=0; cc<ch; cc++) { // in
-			real *x = xx + cc*l->sx*l->sy;
-			int px = cc%l->r;
-			int py = cc/l->r;
-			for (int n=0; n<l->sy; n++) {
-				for (int m=0; m<l->sx; m++) {
-					o[m*l->r+px +(n*l->r+py)*l->ox] = *x++;
+			for (int cc=0; cc<ch; cc++) { // in
+				real *x = xx + cc*l->sx*l->sy;
+				int px = cc%l->r;
+				int py = cc/l->r;
+				for (int n=0; n<l->sy; n++) {
+					for (int m=0; m<l->sx; m++) {
+						o[m*l->r+px +(n*l->r+py)*l->ox] = *x++;
+					}
 				}
 			}
 		}
@@ -705,47 +606,51 @@ static void CatsEye_PixelShuffler_forward(CatsEye_layer *l)
 static void CatsEye_PixelShuffler_backward(CatsEye_layer *l)
 {
 	int ch = l->ich / l->ch;
-	for (int c=0; c<l->ch; c++) { // out
-		real *d = l->dIn + c*ch*l->sx*l->sy;
-		real *delta = l->dOut + c*l->ox*l->oy;
+	for (int i=0; i<l->p->batch; i++) {
+		for (int c=0; c<l->ch; c++) { // out
+			real *d = l->dIn + c*ch*l->sx*l->sy +l->inputs*i;
+			real *delta = l->dOut + c*l->ox*l->oy +l->outputs*i;
 
-		for (int cc=0; cc<ch; cc++) { // in
-			real *x = d + cc*l->sx*l->sy;
-			int px = cc%l->r;
-			int py = cc/l->r;
-			for (int n=0; n<l->sy; n++) {
-				for (int m=0; m<l->sx; m++) {
-					*x++ = delta[m*l->r+px +(n*l->r+py)*l->ox];
+			for (int cc=0; cc<ch; cc++) { // in
+				real *x = d + cc*l->sx*l->sy;
+				int px = cc%l->r;
+				int py = cc/l->r;
+				for (int n=0; n<l->sy; n++) {
+					for (int m=0; m<l->sx; m++) {
+						*x++ = delta[m*l->r+px +(n*l->r+py)*l->ox];
+					}
 				}
 			}
 		}
 	}
 }
 
+// obsolete
 static void CatsEye_padding_forward(CatsEye_layer *l)
 {
-	//real *x = l->x;
-//	memset(l->z, 0, sizeof(real)*l->outputs); // FIXME
-	for (int c=0; c<l->ch; c++) { // in/out
-		real *x = l->x +c*l->sx*l->sy;
-		real *o = l->z +c*l->ox*l->oy +l->ox*l->padding +l->padding;
-		for (int n=0; n<l->sy; n++) {
-			memcpy(o, x, sizeof(real)*l->sx);
-			x += l->sx;
-			o += l->ox;
+	for (int i=0; i<l->p->batch; i++) {
+		for (int c=0; c<l->ch; c++) { // in/out
+			real *x = l->x +c*l->sx*l->sy +l->inputs*i;
+			real *o = l->z +c*l->ox*l->oy +l->ox*l->padding +l->padding +l->outputs*i;
+			for (int n=0; n<l->sy; n++) {
+				memcpy(o, x, sizeof(real)*l->sx);
+				x += l->sx;
+				o += l->ox;
+			}
 		}
 	}
 }
 static void CatsEye_padding_backward(CatsEye_layer *l)
 {
-	//real *d = l->dIn;
-	for (int c=0; c<l->ch; c++) { // in/out
-		real *d = l->dIn +c*l->sx*l->sy;
-		real *delta = l->dOut +c*l->ox*l->oy +l->ox*l->padding +l->padding;
-		for (int n=0; n<l->sy; n++) {
-			memcpy(d, delta, sizeof(real)*l->sx);
-			d += l->sx;
-			delta += l->ox;
+	for (int i=0; i<l->p->batch; i++) {
+		for (int c=0; c<l->ch; c++) { // in/out
+			real *d = l->dIn +c*l->sx*l->sy +l->inputs*i;
+			real *delta = l->dOut +c*l->ox*l->oy +l->ox*l->padding +l->padding +l->outputs*i;
+			for (int n=0; n<l->sy; n++) {
+				memcpy(d, delta, sizeof(real)*l->sx);
+				d += l->sx;
+				delta += l->ox;
+			}
 		}
 	}
 }
@@ -753,26 +658,28 @@ static void CatsEye_padding_backward(CatsEye_layer *l)
 // https://deepnotes.io/batchnorm
 static void CatsEye_BatchNormalization_forward(CatsEye_layer *l)
 {
+	int len = l->inputs *l->p->batch;
+
 	// average
 	real *x = l->x;
 	real avg = 0;
-	for (int i=0; i<l->inputs; i++) avg += *x++;
-	avg /= l->inputs;
+	for (int i=0; i<len; i++) avg += *x++;
+	avg /= len;
 
 	// variance
 	x = l->x;
 	real var = 0;
 	real *z = l->z;
-	for (int i=0; i<l->inputs; i++) {
+	for (int i=0; i<len; i++) {
 		*z = *x++ -avg;
 		var += (*z) * (*z);
 		z++;
 	}
-	var /= l->inputs;
+	var /= len;
 	real sigma = sqrt(var + 1e-8);
 
 	z = l->z;
-	for (int i=0; i<l->inputs/*out*/; i++) {
+	for (int i=0; i<len; i++) {
 		*z = (*z / sigma) * l->gamma + l->beta;
 		z++;
 	}
@@ -782,6 +689,7 @@ static void CatsEye_BatchNormalization_forward(CatsEye_layer *l)
 }
 static void CatsEye_BatchNormalization_backward(CatsEye_layer *l)
 {
+	int len = l->inputs *l->p->batch;
 	real *x = l->x;
 	real *delta = l->dOut;
 	real *d = l->dIn;
@@ -790,7 +698,7 @@ static void CatsEye_BatchNormalization_backward(CatsEye_layer *l)
 	real dvar = 0;
 	real dmu = 0;
 	real dmu2 = 0;
-	for (int i=0; i<l->inputs; i++) {
+	for (int i=0; i<len; i++) {
 //		dbeta += delta[i];
 
 		real X_mu = *x++ - l->mu;
@@ -801,13 +709,13 @@ static void CatsEye_BatchNormalization_backward(CatsEye_layer *l)
 		dmu2 += -2.0 * X_mu;
 	}
 	dvar *= -0.5 * pow(l->var + 1e-8, -3.0/2.0);
-	dmu += dvar / l->inputs * dmu2;
+	dmu += dvar / len * dmu2;
 
 	x = l->x;
 	d = l->dIn;
-	real a = dmu / l->inputs;
-	real b = dvar * 2.0 / l->inputs;
-	for (int i=0; i<l->inputs; i++) {
+	real a = dmu / len;
+	real b = dvar * 2.0 / len;
+	for (int i=0; i<len; i++) {
 		*d++ += a + b * (*x++ - l->mu);
 	}
 }
@@ -817,7 +725,7 @@ static void _CatsEye_act_##type(CatsEye_layer *l)\
 {\
 	real *x = l->x;\
 	real *z = l->z;\
-	for (int i=l->outputs; i>0; i--) {\
+	for (int i=l->outputs *l->p->batch; i>0; i--) {\
 		*z++ = CATS_ACT_##type(*x, l);\
 		x++;\
 	}\
@@ -828,7 +736,7 @@ static void _CatsEye_dact_##type(CatsEye_layer *l)\
 	real *z = l->z;\
 	real *d = l->dIn;\
 	real *dOut = l->dOut;\
-	for (int i=0; i</*=*/l->inputs/*bias!!*/; i++) {\
+	for (int i=0; i<l->inputs *l->p->batch; i++) {\
 		*d++ = (*dOut++) * CATS_DACT_##type(*z, l);\
 		z++;\
 	}\
@@ -840,21 +748,22 @@ static void _CatsEye_dact_##type(CatsEye_layer *l)\
 CATS_ACT_ARRAY(sigmoid);
 CATS_DACT_ARRAY(sigmoid);
 
-// softmax function (output only)
+// softmax with loss function (output only)
 static void _CatsEye_act_softmax(CatsEye_layer *l)
 {
 	real *x = l->x;
 	real *z = l->z;
+	for (int i=0; i<l->p->batch; i++) {
+		real alpha = x[0];
+//		for (int i=1; i<l->inputs; i++) alpha = alpha>x[i] ? alpha : x[i]; // FIXME
+		for (int i=1; i<l->inputs; i++) alpha = alpha<x[i] ? alpha : x[i];
+		real denom = 0.0;
+		for (int i=0; i<l->inputs; i++) denom += exp(x[i] - alpha);
 
-	real alpha = x[0];
-//	for (int i=1; i<l->inputs; i++) alpha = alpha>x[i] ? alpha : x[i]; // FIXME
-	for (int i=1; i<l->inputs; i++) alpha = alpha<x[i] ? alpha : x[i];
-	real denom = 0.0;
-	for (int i=0; i<l->inputs; i++) denom += exp(x[i] - alpha);
-
-	for (int i=l->inputs/*out*/; i>0; i--) {
-		real numer = exp(*x++ - alpha);
-		*z++ = (numer / denom);
+		for (int i=l->inputs/*out*/; i>0; i--) {
+			real numer = exp(*x++ - alpha);
+			*z++ = (numer / denom);
+		}
 	}
 }
 #define CATS_DACT_softmax(y, l)		((y) * (1.0 - (y)))
@@ -871,7 +780,7 @@ static void _CatsEye_act_tanh(CatsEye_layer *l)
 {
 	real *x = l->x;
 	real *z = l->z;
-	for (int i=l->outputs; i>0; i--) {
+	for (int i=l->outputs *l->p->batch; i>0; i--) {
 /*		real ep = exp(x);
 		real em = exp(-x);
 		return (ep-em) / (ep+em);*/
@@ -914,7 +823,7 @@ static void _CatsEye_act_RReLU(CatsEye_layer *l)
 	l->alpha = random(l->min, l->max);
 	real *x = l->x;
 	real *z = l->z;
-	for (int i=l->outputs; i>0; i--) {
+	for (int i=l->outputs *l->p->batch; i>0; i--) {
 		*z++ = CATS_ACT_RReLU(*x, l);
 		x++;
 	}
@@ -928,7 +837,7 @@ static void CatsEye_loss_delivative_0_1(CatsEye_layer *l)
 	int a = p->clasify[p->sel];
 
 	// y - t [ t <- one hot ]
-	memcpy(l->dIn, l->x, sizeof(real)*l->inputs);
+	memcpy(l->dIn, l->x, sizeof(real)*l->inputs *l->p->batch);
 	l->dIn[a] -= 1;
 }
 // loss function for mse with identity and cross entropy with sigmoid
@@ -1399,8 +1308,8 @@ static int _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, in
 {
 	int a = this->end;	// layers-1
 	this->layer[a].z = t;	// FIXME
-	this->clasify = (int16_t*)t;
-	this->label = (real*)t;
+	if (this->layer[a].type==CATS_LOSS_0_1) this->clasify = (int16_t*)t;
+	else this->label = (real*)t;
 
 	if (verify) N -= verify;	// for test
 	int batch = N;			// for random
@@ -1413,8 +1322,21 @@ static int _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, in
 			int sample = random ? (int)(frand()*N) : n;
 			this->sel = sample;
 
+			CatsEye_layer *l = &this->layer[this->start];
+			memcpy(l->x /*+l->inputs*n*/, x+sample*this->slide, l->inputs*sizeof(real));
+			/*if (this->layer[a].type==CATS_LOSS_0_1) {
+				this->clasify[n] = (int16_t*)t[sample];
+			} else {
+				memcpy(this->label +l->inputs*n, (real*)t+l->inputs*sample, l->inputs*sizeof(real));
+			}*/
 			// forward propagation
-			_CatsEye_forward(this, x+sample*this->slide);
+			for (int i=this->start; i<this->end; i++) {
+				l->forward(l);
+				l++;
+			}
+
+			// forward propagation
+//			_CatsEye_forward(this, x+sample*this->slide);
 #if 0
 			// calculate the error of output and hidden layer
 			for (int i=this->end; i>=this->stop/*start*/; i--) { // i=0 -> RNN
@@ -1428,7 +1350,7 @@ static int _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, in
 #endif
 			// calculate the error and update the weights
 			int i = this->end;
-			CatsEye_layer *l = &this->layer[i--];
+			/*CatsEye_layer **/l = &this->layer[i--];
 			l->backward(l);
 			l--;
 			for (; i>=this->start; i--) {

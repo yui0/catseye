@@ -31,9 +31,10 @@
 #define SAMPLE	4721
 #endif
 #define BATCH	100
-#define BATCH_G	200
+#define BATCH_G	400
 
-#define ETA	0.001
+#define ETA	0.0001
+//#define ETA	0.001
 //#define ETA	0.01
 
 int main()
@@ -297,18 +298,18 @@ int main()
 #endif
 	printf("OK\n");
 
-//	int16_t lreal[SAMPLE], lfake[SAMPLE];
-	real lreal[SAMPLE], lfake[SAMPLE];
-	for (int i=0; i<SAMPLE; i++) {
-//		lreal[i] = 1;
-//		lfake[i] = 0;
-		lreal[i] = random(0.7, 1.2);
-		lfake[i] = random(0.0, 0.3);
-	}
-
 	// 訓練
 	printf("Starting training using (stochastic) gradient descent\n");
 	for (int n=cat.epoch; n<10000; n++) {
+//		int16_t lreal[SAMPLE], lfake[SAMPLE];
+		real lreal[SAMPLE], lfake[SAMPLE];
+		for (int i=0; i<SAMPLE; i++) {
+//			lreal[i] = 1;
+//			lfake[i] = 0;
+			lreal[i] = random(0.7, 1.2);
+			lfake[i] = random(0.0, 0.3);
+		}
+
 		// Training Discriminator
 		cat.start = discriminator;
 		cat.slide = size;
