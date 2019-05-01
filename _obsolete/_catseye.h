@@ -1,3 +1,9 @@
+/*void one_hot(uint8_t *a, int size, int data)
+{
+	memset(a, 0, sizeof(uint8_t)*size);
+	a[data] = 1;
+}*/
+
 // calculate forward propagation
 /*void _CatsEye_convolutional_forward(CatsEye_layer *l)
 {

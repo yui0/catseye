@@ -77,12 +77,6 @@ static inline int binomial(/*int n, */real p)
 	return c;
 }
 
-/*void one_hot(uint8_t *a, int size, int data)
-{
-	memset(a, 0, sizeof(uint8_t)*size);
-	a[data] = 1;
-}*/
-
 #define CATS_SSE
 //#define CATS_AVX
 #ifdef CATS_USE_FLOAT
@@ -997,7 +991,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 	this->ws = malloc(sizeof(int)*(this->layers/*-1*/));
 	this->wsize = 0;
 
-	int n[this->layers], m[this->layers];
+	int n[this->layers], m[this->layers], b[this->layers];
 	for (int i=0; i<this->layers; i++) {
 		CatsEye_layer *l = &this->layer[i];
 		l->p = (void*)this;
@@ -1027,7 +1021,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		}
 		if (!l->sx && l->ich) l->sx = l->sy = (int)sqrt(l->inputs/l->ich);
 
-		n[i] = m[i] = 0;
+		n[i] = m[i] = b[i] = 0;
 		switch (l->type) {
 		case CATS_CONV:
 			if ((l->sx +2*l->padding -l->ksize) % l->stride > 0) printf("\twarning: stride is strange!\n");
@@ -1064,7 +1058,6 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			l->ox = l->sx * l->r;
 			l->oy = l->sy * l->r;
 			l->outputs = l->ch * l->ox * l->oy;
-//			n[i] = m[i] = 0;
 			printf("%3d %-8s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
@@ -1126,7 +1119,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			printf("%3d %-8s %10d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
-		//case CATS_LINEAR:
+//		case CATS_LINEAR:
 		case CATS_LOSS_0_1:
 		case CATS_LOSS_MSE:
 		default: // LINEAR
@@ -1134,21 +1127,24 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 				if ((l+1)->inputs>0) l->outputs = (l+1)->inputs;
 				else { l->outputs = l->inputs; printf("\twarning: out:%d\n", l->outputs); }
 			}
-			n[i] = l->inputs;
-			m[i] = l->outputs;
+			if (l->type == CATS_LINEAR) {
+				n[i] = l->inputs;
+				m[i] = l->outputs;
+				b[i] = 1;
+			}
 			printf("%3d %-8s %10d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 		}
 		wsize[i] = this->wsize;
-		this->ws[i] = (n[i]+1)*m[i];
+		this->ws[i] = (n[i]+b[i])*m[i];
 		this->wsize += this->ws[i];
 
-		if (!osize[i]) { // ! select the layer
+		if (!osize[i]) { // NOT select the layer
 			osize[i] = this->osize;
-			this->osize += l->inputs+1;	// bias
+			this->osize += l->inputs;//+1; // FIXME: bias
 		}
 
 		dsize[i] = this->dsize;
-		this->dsize += l->outputs+1;	// bias
+		this->dsize += l->outputs;//+1; // FIXME: bias
 	}
 //	this->osize--;	// bias
 	this->odata = calloc(this->osize, sizeof(real));
@@ -1160,7 +1156,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 
 		l->x = this->odata + osize[i];
 		if (i<this->layers-1) l->z = this->odata + osize[i+1];// output
-		else l->z = l->x + l->inputs+1;			// FIXME
+		else l->z = l->x + l->inputs;//+1;			// FIXME: bias
 		if (i>0) l->dIn = (l-1)->dOut;
 		l->dOut = this->ddata + dsize[i];
 		l->bias = this->wdata + wsize[i] +n[i]*m[i]; // FIXME: for bias
@@ -1180,7 +1176,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			break;
 		}
 
-		this->o[i][l->outputs] = 1;	// bias
+//		this->o[i][l->outputs] = 1;	// FIXME: bias
 
 		// initialize weights, range depends on the research of Y. Bengio et al. (2010)
 		// http://jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf
@@ -1308,8 +1304,8 @@ static int _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, in
 {
 	int a = this->end;	// layers-1
 	this->layer[a].z = t;	// FIXME
-	if (this->layer[a].type==CATS_LOSS_0_1) this->clasify = (int16_t*)t;
-	else this->label = (real*)t;
+	this->clasify = (int16_t*)t;
+	this->label = (real*)t;
 
 	if (verify) N -= verify;	// for test
 	int batch = N;			// for random
@@ -1334,20 +1330,8 @@ static int _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, in
 				l->forward(l);
 				l++;
 			}
-
-			// forward propagation
 //			_CatsEye_forward(this, x+sample*this->slide);
-#if 0
-			// calculate the error of output and hidden layer
-			for (int i=this->end; i>=this->stop/*start*/; i--) { // i=0 -> RNN
-				this->layer[i].backward(&this->layer[i]);
-			}
 
-			// update the weights
-			for (int i=this->end-1; i>=this->start/*stop*/; i--) {
-				if (!this->layer[i].fix) this->layer[i].update(&this->layer[i]);
-			}
-#endif
 			// calculate the error and update the weights
 			int i = this->end;
 			/*CatsEye_layer **/l = &this->layer[i--];
