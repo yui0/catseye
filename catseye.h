@@ -1130,7 +1130,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			if (l->type == CATS_LINEAR) {
 				n[i] = l->inputs;
 				m[i] = l->outputs;
-				b[i] = 1;
+				b[i] = 1; // bias
 			}
 			printf("%3d %-8s %10d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 		}
@@ -1138,33 +1138,37 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		this->ws[i] = (n[i]+b[i])*m[i];
 		this->wsize += this->ws[i];
 
-		if (!osize[i]) { // NOT select the layer
+/*		if (!osize[i]) { // NOT select the layer
 			osize[i] = this->osize;
 			this->osize += l->inputs;//+1; // FIXME: bias
-		}
+		}*/
 
 		dsize[i] = this->dsize;
 		this->dsize += l->outputs;//+1; // FIXME: bias
 	}
-//	this->osize--;	// bias
-	this->odata = calloc(this->osize, sizeof(real));
-//	this->dsize--;
-	this->ddata = calloc(this->dsize, sizeof(real));
-	this->wdata = calloc(this->wsize*3, sizeof(real));	// w, dw and g
+	this->osize = this->dsize +this->layer[0].inputs +this->layer[this->layers-1].inputs;
+	this->odata = calloc(this->osize*this->batch, sizeof(real));
+	this->ddata = calloc(this->dsize*this->batch, sizeof(real));
+	this->wdata = calloc(this->wsize*3, sizeof(real)); // w, dw and g
 	for (int i=0; i<this->layers; i++) {
 		CatsEye_layer *l = &this->layer[i];
 
-		l->x = this->odata + osize[i];
-		if (i<this->layers-1) l->z = this->odata + osize[i+1];// output
-		else l->z = l->x + l->inputs;//+1;			// FIXME: bias
+//		l->x = this->odata + osize[i]*this->batch;
+//		if (i<this->layers-1) l->z = this->odata + osize[i+1]*this->batch; // output
+//		else l->z = l->x + l->inputs;//+1; // FIXME: bias
+		if (!i) l->x = this->odata;
+		else l->x = this->odata +this->layer[0].inputs +dsize[i-1]*this->batch;
+		l->z = this->odata +this->layer[0].inputs +dsize[i]*this->batch;
+
 		if (i>0) l->dIn = (l-1)->dOut;
-		l->dOut = this->ddata + dsize[i];
+		l->dOut = this->ddata + dsize[i]*this->batch;
 		l->bias = this->wdata + wsize[i] +n[i]*m[i]; // FIXME: for bias
 		l->W = this->wdata + wsize[i];
 		l->dw = this->wdata + this->wsize + wsize[i];
 		l->g = this->wdata + this->wsize*2 + wsize[i];
 
-		this->o[i] = this->odata + osize[i];	// input
+//		this->o[i] = this->odata + osize[i];	// input
+		this->o[i] = l->x;
 		this->d[i] = this->ddata + dsize[i];
 		this->w[i] = this->wdata + wsize[i];
 

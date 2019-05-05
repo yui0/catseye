@@ -17,8 +17,9 @@
 
 #define NAME	"mnist_lsgan"
 //#define ZDIM	100
-#define ZDIM	62
+//#define ZDIM	62
 //#define NAME	"_mnist_lsgan"
+#define ZDIM	20
 //#define ZDIM	10
 
 #define SIZE	28
@@ -33,8 +34,8 @@
 #define BATCH	100
 #define BATCH_G	400
 
-#define ETA	0.0001
-//#define ETA	0.001
+//#define ETA	0.0001
+#define ETA	0.001
 //#define ETA	0.01
 
 int main()
@@ -189,14 +190,14 @@ int main()
 	CatsEye_layer u[] = {
 		// generator
 		{    ZDIM, CATS_LINEAR, ETA, .outputs=1024 },
-		{       0, CATS_BATCHNORMAL, .gamma=0.8 },
-//		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
-		{       0, _CATS_ACT_RELU },
+		{       0, CATS_BATCHNORMAL, /*.gamma=0.8*/ },
+		{       0, _CATS_ACT_LEAKY_RELU, /*.alpha=0.2*/ },
+//		{       0, _CATS_ACT_RELU },
 
 		{       0, CATS_LINEAR, ETA, .outputs=64*2*7*7 },
-		{       0, CATS_BATCHNORMAL, .gamma=0.8 },
-//		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
-		{       0, _CATS_ACT_RELU },	// 128 7x7
+		{       0, CATS_BATCHNORMAL, /*.gamma=0.8*/ },
+		{       0, _CATS_ACT_LEAKY_RELU, /*.alpha=0.2*/ },
+//		{       0, _CATS_ACT_RELU },	// 128 7x7
 
 /*		{       0, CATS_PIXELSHUFFLER, .r=2, .ch=32, .ich=128, .sx=7, .sy=7 },	// 32 14x14
 		{       0, CATS_BATCHNORMAL, .gamma=0.8 },
@@ -211,17 +212,17 @@ int main()
 
 
 		// discriminator
-		{    size, CATS_CONV, ETA, .ksize=5, .stride=1, .padding=0, .ch=32, .name="Discriminator" },
+		{    size, CATS_CONV, ETA, .ksize=5, .stride=1, .padding=0, .ch=64/*32*/, .name="Discriminator" },
 		{       0, CATS_AVGPOOL, .ksize=2, .stride=2 },
 //		{       0, CATS_BATCHNORMAL, .gamma=0.8 },
 		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 
-		{       0, CATS_CONV, ETA, .ksize=5, .stride=1, .padding=0, .ch=64 },
+		{       0, CATS_CONV, ETA, .ksize=5, .stride=1, .padding=0, .ch=128/*64*/ },
 		{       0, CATS_AVGPOOL, .ksize=2, .stride=2 },
 //		{       0, CATS_BATCHNORMAL, .gamma=0.8 },
 		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 
-		{       0, CATS_LINEAR, ETA, .outputs=1024 },
+		{       0, CATS_LINEAR, ETA, .outputs=256/*1024*/ },
 //		{       0, CATS_BATCHNORMAL, .gamma=0.8 },
 		{       0, _CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 
