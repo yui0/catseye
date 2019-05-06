@@ -827,18 +827,20 @@ CATS_DACT_ARRAY(RReLU);
 // calculate the error of output layer
 static void CatsEye_loss_delivative_0_1(CatsEye_layer *l)
 {
-	CatsEye *p = (CatsEye *)l->p;
-	int a = p->clasify[p->sel];
+//	CatsEye *p = (CatsEye *)l->p;
+//	int a = p->clasify[p->sel];
 
 	// y - t [ t <- one hot ]
 	memcpy(l->dIn, l->x, sizeof(real)*l->inputs *l->p->batch);
-	l->dIn[a] -= 1;
+//	l->dIn[a] -= 1;
+	l->dIn[*(l->p->clasify)] -= 1;
 }
 // loss function for mse with identity and cross entropy with sigmoid
 static void CatsEye_loss_delivative_mse(CatsEye_layer *l)
 {
-	CatsEye *p = (CatsEye *)l->p;
-	real *t = &p->label[p->sel * l->inputs];
+//	CatsEye *p = (CatsEye *)l->p;
+//	real *t = &p->label[p->sel * l->inputs];
+	real *t = l->p->label;
 
 	real *d = l->dIn;
 	real *y = l->x;
@@ -851,8 +853,9 @@ static void CatsEye_loss_delivative_mse(CatsEye_layer *l)
 // cross-entropy loss function for (multiple independent) binary classifications
 static void CatsEye_loss_delivative_cross_entropy(CatsEye_layer *l)
 {
-	CatsEye *p = (CatsEye *)l->p;
-	real *t = &p->label[p->sel * l->inputs];
+//	CatsEye *p = (CatsEye *)l->p;
+//	real *t = &p->label[p->sel * l->inputs];
+	real *t = l->p->label;
 
 	real *d = l->dIn;
 	real *y = l->x;
@@ -864,8 +867,9 @@ static void CatsEye_loss_delivative_cross_entropy(CatsEye_layer *l)
 // cross-entropy loss function for multi-class classification
 static void CatsEye_loss_delivative_cross_entropy_multiclass(CatsEye_layer *l)
 {
-	CatsEye *p = (CatsEye *)l->p;
-	real *t = &p->label[p->sel * l->inputs];
+//	CatsEye *p = (CatsEye *)l->p;
+//	real *t = &p->label[p->sel * l->inputs];
+	real *t = l->p->label;
 
 	real *d = l->dIn;
 	real *y = l->x;
@@ -982,7 +986,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 	memcpy(this->layer, layer, this->layers*sizeof(CatsEye_layer));
 
 	// calculate parameters
-	int osize[this->layers], dsize[this->layers], wsize[this->layers];
+	int /*osize[this->layers],*/ dsize[this->layers], wsize[this->layers];
 	this->o = malloc(sizeof(real*)*(this->layers));	// outputs
 	this->osize = 0;
 	this->d = malloc(sizeof(real*)*(this->layers/*-1*/));	// errors
@@ -1006,13 +1010,13 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			if (!l->outputs) l->outputs = 1;
 		}
 
-		osize[i] = 0;
+		//osize[i] = 0;
 		if (i>0) { // NOT first layer
 			if (!l->ich) l->ich = (l-1)->ch;
 			if (!l->inputs) l->inputs = (l-1)->outputs;
 			else if (l->inputs<0) { // select the layer
 				l->inputs = (l+l->inputs)->outputs;
-				osize[i] = osize[i+l->inputs];
+				//osize[i] = osize[i+l->inputs];
 			}
 //			if (l->inputs<=0) l->inputs = (l-1+l->inputs)->outputs;
 		} else { // first layer
@@ -1075,8 +1079,8 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			l->v = calloc(l->inputs * l->outputs, sizeof(real));
 //			l->y = calloc(l->inputs * l->outputs, sizeof(real));
 //			l->y = l->z;
-			//l->act2 = CatsEye_act[CATS_ACT_IDENTITY];	//FIXME
-			//l->dact2 = CatsEye_dact[CATS_ACT_IDENTITY];	//FIXME
+			//l->act2 = CatsEye_act[CATS_ACT_IDENTITY];	// FIXME
+			//l->dact2 = CatsEye_dact[CATS_ACT_IDENTITY];	// FIXME
 //			l->act2 = CatsEye_act[CATS_ACT_SIGMOID];
 //			l->dact2 = CatsEye_dact[CATS_ACT_SIGMOID];
 //			n[i] = l->hiddens;
@@ -1146,7 +1150,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		dsize[i] = this->dsize;
 		this->dsize += l->outputs;//+1; // FIXME: bias
 	}
-	this->osize = this->dsize +this->layer[0].inputs +this->layer[this->layers-1].inputs;
+	this->osize = this->dsize +this->layer[0].inputs +this->layer[this->layers-1].inputs; // input+output
 	this->odata = calloc(this->osize*this->batch, sizeof(real));
 	this->ddata = calloc(this->dsize*this->batch, sizeof(real));
 	this->wdata = calloc(this->wsize*3, sizeof(real)); // w, dw and g
@@ -1157,8 +1161,8 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 //		if (i<this->layers-1) l->z = this->odata + osize[i+1]*this->batch; // output
 //		else l->z = l->x + l->inputs;//+1; // FIXME: bias
 		if (!i) l->x = this->odata;
-		else l->x = this->odata +this->layer[0].inputs +dsize[i-1]*this->batch;
-		l->z = this->odata +this->layer[0].inputs +dsize[i]*this->batch;
+		else l->x = this->odata +(this->layer[0].inputs +dsize[i-1])*this->batch;
+		l->z = this->odata +(this->layer[0].inputs +dsize[i])*this->batch;
 
 		if (i>0) l->dIn = (l-1)->dOut;
 		l->dOut = this->ddata + dsize[i]*this->batch;
@@ -1198,6 +1202,8 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		}
 //		memcpy(&this->wdata[this->wsize], this->wdata, this->wsize*sizeof(real));	// for debug
 	}
+	this->clasify = (int16_t*)this->layer[this->layers-1].z;
+	this->label = this->layer[this->layers-1].z;
 
 	for (int i=0; i<this->layers; i++) {
 		CatsEye_layer *l = &this->layer[i];
@@ -1308,8 +1314,12 @@ static int _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, in
 {
 	int a = this->end;	// layers-1
 	this->layer[a].z = t;	// FIXME
-	this->clasify = (int16_t*)t;
-	this->label = (real*)t;
+//	this->clasify = (int16_t*)t;
+//	this->label = (real*)t;
+	int lsize = this->layer[a].outputs *sizeof(real);
+	if (this->layer[a].type==CATS_LOSS_0_1) {
+		lsize = sizeof(int16_t);
+	}
 
 	if (verify) N -= verify;	// for test
 	int batch = N;			// for random
@@ -1320,15 +1330,11 @@ static int _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, in
 	for (int times=0; times<repeat; times++) {
 		for (int n=0; n<batch; n++) {
 			int sample = random ? (int)(frand()*N) : n;
-			this->sel = sample;
+//			this->sel = sample;
 
 			CatsEye_layer *l = &this->layer[this->start];
 			memcpy(l->x /*+l->inputs*n*/, x+sample*this->slide, l->inputs*sizeof(real));
-			/*if (this->layer[a].type==CATS_LOSS_0_1) {
-				this->clasify[n] = (int16_t*)t[sample];
-			} else {
-				memcpy(this->label +l->inputs*n, (real*)t+l->inputs*sample, l->inputs*sizeof(real));
-			}*/
+			memcpy((int8_t*)this->label /*+lsize*n*/, (int8_t*)t+lsize*sample, lsize);
 			// forward propagation
 			for (int i=this->start; i<this->end; i++) {
 				l->forward(l);
