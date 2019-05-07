@@ -162,7 +162,7 @@ typedef struct __CatsEye {
 	int batch;
 	int slide;
 	// label
-	int sel;
+//	int sel;
 	int16_t *clasify;
 	real *label;
 
@@ -175,6 +175,8 @@ typedef struct __CatsEye {
 	// weights
 	real **w, *wdata;
 	int *ws, wsize;
+	// working memory
+	real *mem;
 
 	// deprecated!
 	int in;
@@ -447,11 +449,12 @@ static void _CatsEye_convolutional_forward(CatsEye_layer *l)
 #endif
 	}
 }
-static real col[32*32*1024*30];
+//static real col[32*32*1024*30];
 static void _CatsEye_convolutional_backward(CatsEye_layer *l)
 {
 	for (int i=0; i<l->p->batch; i++) {
-		real *workspace = l->ksize!=1 ? col : l->dIn +l->inputs*i;
+//		real *workspace = l->ksize!=1 ? col : l->dIn +l->inputs*i;
+		real *workspace = l->ksize!=1 ? l->p->mem : l->dIn +l->inputs*i;
 #if CATS_WITH_ROWMAJOR
 		// dIn = W**T * dOut [A(m,k) B(k,n) C(m,n)]
 		gemm('R', 'T', 'N', l->ksize*l->ksize*l->ich, l->ox*l->oy*1, l->ch, 1, l->W, l->ksize*l->ksize*l->ich, l->dOut +l->outputs*i, l->ox*l->oy, 0, workspace, l->ox*l->oy);
@@ -1205,10 +1208,17 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 	this->clasify = (int16_t*)this->layer[this->layers-1].z;
 	this->label = this->layer[this->layers-1].z;
 
+	int max = 0;
 	for (int i=0; i<this->layers; i++) {
 		CatsEye_layer *l = &this->layer[i];
 		printf("L%02d in:%d out:%d (x:%ld-z:%ld-d:%ld-w:%ld)\n", i+1, l->inputs, l->outputs, l->x-this->odata, l->z-this->odata, this->d[i]-this->ddata, this->w[i]-this->wdata);
+
+		int s = l->ox*l->oy * l->ksize*l->ksize*l->ich;
+		if (max < s) max = s;
 	}
+	this->mem = calloc(max*this->batch, sizeof(real));
+	int wmem = this->osize*this->batch+this->dsize*this->batch+this->wsize*3;
+	printf("Memory: %d MiB [%d B], Working Memory: %d MiB [%d B]\n", this->wsize/1024/1024, this->wsize, wmem/1024/1024, wmem);
 
 	this->start = this->stop = 0;
 	this->end = this->layers-1;
@@ -1226,6 +1236,7 @@ void CatsEye__destruct(CatsEye *this)
 #endif
 	// delete arrays
 //	printf("%x %x %x %x %x %x %x %x %x\n",this->z,this->odata,this->o,this->ddata,this->d,this->ws,this->wdata,this->w,this->u);
+	free(this->mem);
 	for (int i=0; i<this->layers-1; i++) {
 		CatsEye_layer *l = &this->layer[i];
 		if (l->workspace) free(l->workspace);
@@ -1329,12 +1340,13 @@ static int _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, in
 	gettimeofday(&start, NULL);
 	for (int times=0; times<repeat; times++) {
 		for (int n=0; n<batch; n++) {
+			CatsEye_layer *l = &this->layer[this->start];
+		for (int a=0; a<this->batch; a++) {
 			int sample = random ? (int)(frand()*N) : n;
 //			this->sel = sample;
-
-			CatsEye_layer *l = &this->layer[this->start];
-			memcpy(l->x /*+l->inputs*n*/, x+sample*this->slide, l->inputs*sizeof(real));
-			memcpy((int8_t*)this->label /*+lsize*n*/, (int8_t*)t+lsize*sample, lsize);
+			memcpy(l->x +l->inputs*a, x+sample*this->slide, l->inputs*sizeof(real));
+			memcpy((int8_t*)this->label +lsize*a, (int8_t*)t+lsize*sample, lsize);
+		}
 			// forward propagation
 			for (int i=this->start; i<this->end; i++) {
 				l->forward(l);
