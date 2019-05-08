@@ -488,7 +488,8 @@ static void _CatsEye_maxpooling_forward(CatsEye_layer *l)
 {
 	int step = l->sx -l->ksize;
 	for (int i=0; i<l->p->batch; i++) {
-		int *max = (int*)l->W +l->outputs*i; // temp
+//		int *max = (int*)l->W +l->outputs*i; // temp
+		int *max = (int*)l->workspace +l->outputs*i; // temp
 		real *o = l->z +l->outputs*i;
 
 		for (int c=0; c<l->ch; c++) { // in/out
@@ -518,7 +519,8 @@ static void _CatsEye_maxpooling_forward(CatsEye_layer *l)
 // calculate back propagation
 static void _CatsEye_maxpooling_backward(CatsEye_layer *l)
 {
-	int *max = (int*)l->W; // temp
+//	int *max = (int*)l->W; // temp
+	int *max = (int*)l->workspace; // temp
 	real *delta = l->dOut;
 	real *d = l->dIn;
 	memset(d, 0, sizeof(real)*l->inputs*l->p->batch);
@@ -622,7 +624,7 @@ static void CatsEye_PixelShuffler_backward(CatsEye_layer *l)
 	}
 }
 
-// obsolete
+// FIXME: obsolete
 static void CatsEye_padding_forward(CatsEye_layer *l)
 {
 	for (int i=0; i<l->p->batch; i++) {
@@ -836,7 +838,10 @@ static void CatsEye_loss_delivative_0_1(CatsEye_layer *l)
 	// y - t [ t <- one hot ]
 	memcpy(l->dIn, l->x, sizeof(real)*l->inputs *l->p->batch);
 //	l->dIn[a] -= 1;
-	l->dIn[*(l->p->clasify)] -= 1;
+	int16_t *a = l->p->clasify;
+	for (int i=0; i<l->p->batch; i++) {
+		l->dIn[*a++] -= 1;
+	}
 }
 // loss function for mse with identity and cross entropy with sigmoid
 static void CatsEye_loss_delivative_mse(CatsEye_layer *l)
@@ -847,7 +852,7 @@ static void CatsEye_loss_delivative_mse(CatsEye_layer *l)
 
 	real *d = l->dIn;
 	real *y = l->x;
-	for (int i=0; i<l->inputs; i++) {
+	for (int i=0; i<l->inputs *l->p->batch; i++) {
 		// http://qiita.com/Ugo-Nama/items/04814a13c9ea84978a4c
 		// https://github.com/nyanp/tiny-cnn/wiki/%E5%AE%9F%E8%A3%85%E3%83%8E%E3%83%BC%E3%83%88
 		*d++ = *y++ - *t++;	// (y - t) * (y - t) / 2  ->  y - t
@@ -862,7 +867,7 @@ static void CatsEye_loss_delivative_cross_entropy(CatsEye_layer *l)
 
 	real *d = l->dIn;
 	real *y = l->x;
-	for (int i=0; i<l->inputs; i++) {
+	for (int i=0; i<l->inputs *l->p->batch; i++) {
 		*d++ = (*y - *t++) / (*y * (1 - *y));	// -t * log(y) - (1 - t) * log(1 - y);
 		y++;
 	}
@@ -876,7 +881,7 @@ static void CatsEye_loss_delivative_cross_entropy_multiclass(CatsEye_layer *l)
 
 	real *d = l->dIn;
 	real *y = l->x;
-	for (int i=0; i<l->inputs; i++) {
+	for (int i=0; i<l->inputs *l->p->batch; i++) {
 		// https://www.yukisako.xyz/entry/napier-number
 		*d++ = -(*t++) / *y++;	// -t * log(y);
 	}
@@ -1040,7 +1045,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			l->outputs = l->ch * l->ox * l->oy;
 			n[i] = l->ksize * l->ksize;	// kernel size
 			m[i] = l->ch * l->ich;		// channel
-			l->workspace = malloc(sizeof(real*)* l->ox*l->oy * l->ksize*l->ksize*l->ich);
+			l->workspace = malloc(sizeof(real)* l->ox*l->oy * l->ksize*l->ksize*l->ich *this->batch);
 			printf("%3d %-8s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
@@ -1054,8 +1059,9 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 //			l->oy = (l->sy +2*l->padding -l->ksize +(l->stride-1)) /l->stride +1;
 			l->outputs = l->ch * l->ox * l->oy;
 			if (l->type == CATS_MAXPOOL) {
-				n[i] = l->ox * l->oy;
-				m[i] = l->ch;
+//				n[i] = l->ox * l->oy;
+//				m[i] = l->ch;
+				l->workspace = malloc(sizeof(real)* l->ox*l->oy*l->ch *this->batch);
 			}
 			printf("%3d %-8s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
@@ -1160,9 +1166,6 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 	for (int i=0; i<this->layers; i++) {
 		CatsEye_layer *l = &this->layer[i];
 
-//		l->x = this->odata + osize[i]*this->batch;
-//		if (i<this->layers-1) l->z = this->odata + osize[i+1]*this->batch; // output
-//		else l->z = l->x + l->inputs;//+1; // FIXME: bias
 		if (!i) l->x = this->odata;
 		else l->x = this->odata +(this->layer[0].inputs +dsize[i-1])*this->batch;
 		l->z = this->odata +(this->layer[0].inputs +dsize[i])*this->batch;
@@ -1296,7 +1299,6 @@ static int16_t _CatsEye_predict(CatsEye *this, real *x)
 	_CatsEye_forward(this, x);
 
 	// biggest output means most probable label
-//	CatsEye_layer *l = &this->layer[this->layers-1];
 	CatsEye_layer *l = &this->layer[this->end];
 	real max = l->x[0];
 	int ans = 0;
@@ -1313,7 +1315,6 @@ static int _CatsEye_accuracy(CatsEye *this, real *x, int16_t *t, int verify)
 {
 	int r = 0;
 	for (int i=0; i<verify; i++) {
-//		int16_t p = _CatsEye_predict(this, x+this->layer[0].inputs*i);
 		int16_t p = _CatsEye_predict(this, x+i*this->slide);
 		if (p==t[i]) r++;
 		//else printf("%d/%d ",p,t[i]);
