@@ -848,6 +848,7 @@ static void CatsEye_loss_delivative_mse(CatsEye_layer *l)
 	for (int i=0; i<l->inputs *l->p->batch; i++) {
 		// http://qiita.com/Ugo-Nama/items/04814a13c9ea84978a4c
 		// https://github.com/nyanp/tiny-cnn/wiki/%E5%AE%9F%E8%A3%85%E3%83%8E%E3%83%BC%E3%83%88
+//		printf("(%f-%f=%f) ", *y, *t, *y-*t);
 		*d++ = *y++ - *t++;	// (y - t) * (y - t) / 2  ->  y - t
 	}
 }
@@ -1175,7 +1176,7 @@ void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			break;
 		}
 
-		l->eta /= this->batch;
+//		l->eta /= this->batch;
 //		this->o[i][l->outputs] = 1;	// FIXME: bias
 
 		// initialize weights, range depends on the research of Y. Bengio et al. (2010)
@@ -1324,13 +1325,19 @@ static int _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, in
 	struct timeval start, stop;
 	gettimeofday(&start, NULL);
 	for (int times=0; times<repeat; times++) {
-		for (int n=0; n<batch; n++) {
+		for (int n=0; n<batch; n++) { // FIXME: depricate!
 			CatsEye_layer *l = &this->layer[this->start];
-		for (int a=0; a<this->batch; a++) {
-			int sample = random ? (int)(frand()*N) : n;
-			memcpy(l->x +l->inputs*a, x+sample*this->slide, l->inputs*sizeof(real));
-			memcpy((int8_t*)this->label +lsize*a, (int8_t*)t+lsize*sample, lsize);
-		}
+
+			for (int b=0; b<this->batch; b++) {
+				int sample = random ? (int)(frand()*N) : n;
+				memcpy(l->x +l->inputs*b, x+sample*this->slide, l->inputs*sizeof(real));
+				memcpy((int8_t*)this->label +lsize*b, (int8_t*)t+lsize*sample, lsize);
+//				memcpy((int8_t*)this->label +lsize*b, (int8_t*)this->layer[a].z+lsize*sample, lsize);
+//printf("label%d: %x %x %x %x\n", sample, this->layer[a].z, &this->layer[a].z[sample], t, ((int8_t*)t+lsize*sample));
+//printf("label%d: %f %f\n", sample, this->layer[a].z[sample], *(real*)((int8_t*)t+lsize*sample));
+//printf("label: %f %f\n", this->label[0], (real*)t+sample);
+			}
+
 			// forward propagation
 			for (int i=this->start; i<this->end; i++) {
 				l->forward(l);
