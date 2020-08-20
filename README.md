@@ -132,6 +132,16 @@ $ ./sin
 
   ![99.2%](example/mnist_cnn_train_32ch_k7.png "Convolutional")
 
+
+## Question
+
+- Neural Network Always Produces Same/Similar Outputs for Any Input
+  - Scale down the problem to manageable size.
+  - Make sure you have enough hidden units.
+  - Change the activation function and its parameters.
+  - Change learning algorithm parameters.
+
+
 ## Refrences
 
 - Documents
