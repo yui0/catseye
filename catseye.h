@@ -1,12 +1,13 @@
 //---------------------------------------------------------
 //	Cat's eye
 //
-//		©2016-2019 Yuichiro Nakada
+//		©2016-2020 Yuichiro Nakada
 //---------------------------------------------------------
 
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <time.h>
 #include <math.h>
 #include <sys/time.h>
@@ -1334,8 +1335,8 @@ static int _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, in
 				memcpy((int8_t*)this->label +lsize*b, (int8_t*)t+lsize*sample, lsize);
 //				memcpy((int8_t*)this->label +lsize*b, (int8_t*)this->layer[a].z+lsize*sample, lsize);
 //printf("label%d: %x %x %x %x\n", sample, this->layer[a].z, &this->layer[a].z[sample], t, ((int8_t*)t+lsize*sample));
-//printf("label%d: %f %f\n", sample, this->layer[a].z[sample], *(real*)((int8_t*)t+lsize*sample));
-//printf("label: %f %f\n", this->label[0], (real*)t+sample);
+//printf("d:%f label%d: %f %f\n", l->x[3], sample, this->layer[a].z[sample], *(real*)((int8_t*)t+lsize*sample));
+//printf("d:%f label: %f %f\n", l->x[3], this->label[0], *((real*)t+sample));
 			}
 
 			// forward propagation
