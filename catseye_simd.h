@@ -19,7 +19,11 @@ void *_malloc(size_t x)
 //	void *p;
 //	posix_memalign((void**)&p, 32, x);
 	//void *p = aligned_alloc(32, x);
-	void *p = _mm_malloc(32, x);
+	void *p = _mm_malloc(x, 32);
+	if (!p) {
+		printf("error at _mm_malloc in catseye_simd.h (size:%d)\n", x);
+		return 0;
+	}
 	return p;
 }
 void *_calloc(size_t n, size_t size)
