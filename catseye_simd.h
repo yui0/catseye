@@ -16,8 +16,10 @@ _aligned_type(double, 32) _double;
 #include <immintrin.h>
 void *_malloc(size_t x)
 {
-	void *p;
-	posix_memalign((void**)&p, 32, x);
+//	void *p;
+//	posix_memalign((void**)&p, 32, x);
+	//void *p = aligned_alloc(32, x);
+	void *p = _mm_malloc(32, x);
 	return p;
 }
 void *_calloc(size_t n, size_t size)
