@@ -62,6 +62,8 @@ $ ./sin
 
 ## Demo
 
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://raw.githubusercontent.com/yui0/catseye/master/catseye.ipynb)
+
 - Recognizing handwritten digits by MNIST training ([example/mnist_train.c](example/mnist_train.c))
   - http://yui0.github.io/catseye/example/html/mnist.html
 

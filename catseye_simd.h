@@ -21,7 +21,7 @@ void *_malloc(size_t x)
 	//void *p = aligned_alloc(32, x);
 	void *p = _mm_malloc(x, 32);
 	if (!p) {
-		printf("error at _mm_malloc in catseye_simd.h (size:%d)\n", x);
+		printf("error at _mm_malloc in catseye_simd.h (size:%zu)\n", x);
 		return 0;
 	}
 	return p;
