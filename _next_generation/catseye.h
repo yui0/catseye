@@ -211,9 +211,10 @@ static inline void CatsEye_solver_RMSProp(CatsEye_layer *l, char mj, char ta, ch
 }
 
 // Fully connected [ z^l = ( w^l * a^l-1 + b^l ) ]
-static void _CatsEye_linear_forward(CatsEye_layer *l)
+static void CatsEye_linear_forward(CatsEye_layer *l)
 {
-	/*real *o = l->z;
+#ifdef CATS_TEST
+	real *o = l->z;
 	real *w = l->W;
 	for (int i=l->outputs; i>0; i--) {
 		real *x = l->x;
@@ -222,23 +223,21 @@ static void _CatsEye_linear_forward(CatsEye_layer *l)
 			a += (*x++) * (*w++);
 		}
 		*o++ = a + *w++;	// bias!!
-	}*/
-	// z = x * W**T [A(m,k) B(k,n) C(m,n)]
-	//gemm('R', 'N', 'T', l->p->batch, l->outputs, l->inputs+1, 1, l->x, l->inputs+1, l->W, l->inputs+1, 0, l->z, l->outputs);
-//	memcpy(l->z, l->bias, l->outputs*sizeof(real));
-//	gemm('R', 'N', 'T', l->p->batch, l->outputs, l->inputs, 1, l->x, l->inputs, l->W, l->inputs+1, 1, l->z, l->outputs);
-
+	}
+#else
 	// https://petewarden.com/2015/04/20/why-gemm-is-at-the-heart-of-deep-learning/
-	// output(m,n) := input(m=1,k) * weights(k,n)
-//	gemm_rnt(l->p->batch, l->outputs, l->inputs/*+1*/, 1, l->x, l->W, 0, l->z);
+	// output(m,n) := input(m=1,k) * weightsT(k,n)
+	gemm_rnt(l->p->batch, l->outputs, l->inputs/*+1*/, 1, l->x, l->W, 0, l->z);
 
 	// https://docs.nvidia.com/deeplearning/performance/dl-performance-fully-connected/index.html
 	// output := weightsT * input
-	gemm_rtn(l->outputs, l->p->batch, l->inputs/*+1*/, 1, l->W, l->x, 0, l->z);
+//	gemm_rtn(l->outputs, l->p->batch, l->inputs/*+1*/, 1, l->W, l->x, 0, l->z);
+#endif
 }
-static void _CatsEye_linear_backward(CatsEye_layer *l)
+static void CatsEye_linear_backward(CatsEye_layer *l)
 {
-	/*real *d = l->dIn;
+#ifdef CATS_TEST
+	real *d = l->dIn;
 	real *w = l->W;
 	for (int i=0; i<=l->inputs; i++) {	// bias!!
 		real *dw = l->dOut;
@@ -249,19 +248,18 @@ static void _CatsEye_linear_backward(CatsEye_layer *l)
 			ww += l->inputs+1;
 		}
 		*d++ = a;
-	}*/
-	// dIn = dOut * W [A(m,k) B(k,n) C(m,n)]
-	//gemm('R', 'N', 'N', l->p->batch, l->inputs+1, l->outputs, 1, l->dOut, l->outputs, l->W, l->inputs+1, 0, l->dIn, l->inputs+1);
-//	gemm('R', 'N', 'N', l->p->batch, l->inputs, l->outputs, 1, l->dOut, l->outputs, l->W, l->inputs, 0, l->dIn, l->inputs);
-
-	//gemm_rnn(l->p->batch, l->inputs, l->outputs, 1, l->dOut, l->W, 0, l->dIn);
+	}
+#else
+	gemm_rnn(l->p->batch, l->inputs, l->outputs, 1, l->dOut, l->W, 0, l->dIn);
 
 	// gradients(input) := weights * gradients(output)
-	gemm_rnn(l->inputs, l->p->batch, l->outputs, 1, l->W, l->dOut, 0, l->dIn);
+//	gemm_rnn(l->inputs, l->p->batch, l->outputs, 1, l->W, l->dOut, 0, l->dIn);
+#endif
 }
-static void _CatsEye_linear_update(CatsEye_layer *l)
+static void CatsEye_linear_update(CatsEye_layer *l)
 {
-	/*real *w = l->W;
+#ifdef CATS_TEST
+	real *w = l->W;
 	real *d = l->dOut;
 	for (int i=l->outputs; i>0; i--) {
 		real *x = l->x;
@@ -270,22 +268,20 @@ static void _CatsEye_linear_update(CatsEye_layer *l)
 			*w++ += (*x++) * a;
 		}
 		*w++ += a;	// bias!!
-	}*/
-	// slow??
+	}
+#else
 	// W = W - eta * dOut**T * x [A(m,k) B(k,n) C(m,n)]
-//	gemm('R', 'T', 'N', l->outputs, l->inputs+1, l->p->batch, -l->eta, l->dOut, l->outputs, l->x, l->inputs+1, 1, l->W, l->inputs+1);
-	//CatsEye_solver(l, 'R', 'T', 'N', l->outputs, l->inputs+1, l->p->batch, l->dOut, l->outputs, l->x, l->inputs+1, l->inputs+1);
-
-	// weights := input * gradientsT(output)
-	gemm_rnt(l->inputs, l->outputs, l->p->batch, -l->eta, l->x, l->dOut, 1, l->W);
-
 /*	real *b = l->bias;
 	real *d = l->dOut;
 	for (int i=l->outputs; i>0; i--) {
 		*b++ -= l->eta * (*d++);
 	}
 	CatsEye_solver(l, 'R', 'T', 'N', l->outputs, l->inputs, l->p->batch, l->dOut, l->outputs, l->x, l->inputs, l->inputs);*/
-//	gemm_rtn(l->outputs, l->inputs, l->p->batch, 1, l->dOut, l->x, 1, l->W);
+	gemm_rtn(l->outputs, l->inputs, l->p->batch, -l->eta/*1*/, l->dOut, l->x, 1, l->W);
+
+	// weights := weights - eta * input * gradientsT(output)
+//	gemm_rnt(l->inputs, l->outputs, l->p->batch, -l->eta, l->x, l->dOut, 1, l->W);
+#endif
 }
 
 // convolution [https://github.com/hiroyam/dnn-im2col, https://github.com/pjreddie/darknet]
@@ -338,7 +334,7 @@ static inline void col2im(const real *col, const int channels,
 		}
 	}
 }
-static void _CatsEye_convolutional_forward(CatsEye_layer *l)
+static void CatsEye_convolutional_forward(CatsEye_layer *l)
 {
 	for (int i=0; i<l->p->batch; i++) {
 		real *workspace;
@@ -351,10 +347,14 @@ static void _CatsEye_convolutional_forward(CatsEye_layer *l)
 		// z = W * x [A(m,k) B(k,n) C(m,n)], cnhw
 //		gemm('R', 'N', 'N', l->ch, l->ox*l->oy*1, l->ksize*l->ksize*l->ich, 1, l->W, l->ksize*l->ksize*l->ich, workspace, l->ox*l->oy, 0, l->z +l->outputs*i, l->ox*l->oy);
 		gemm_rnn(l->ch, l->ox*l->oy*1, l->ksize*l->ksize*l->ich, 1, l->W, workspace, 0, l->z +l->outputs*i);
+
+		// https://docs.nvidia.com/deeplearning/performance/dl-performance-convolutional/index.html
+		// output := workspace * weights
+//		gemm_rnn(l->ox*l->oy*1, l->ch, l->ksize*l->ksize*l->ich, 1, workspace, l->W, 0, l->z +l->outputs*i);
 	}
 }
 //static real col[32*32*1024*30];
-static void _CatsEye_convolutional_backward(CatsEye_layer *l)
+static void CatsEye_convolutional_backward(CatsEye_layer *l)
 {
 	for (int i=0; i<l->p->batch; i++) {
 //		real *workspace = l->ksize!=1 ? col : l->dIn +l->inputs*i;
@@ -362,12 +362,15 @@ static void _CatsEye_convolutional_backward(CatsEye_layer *l)
 		// dIn = W**T * dOut [A(m,k) B(k,n) C(m,n)]
 //		gemm('R', 'T', 'N', l->ksize*l->ksize*l->ich, l->ox*l->oy*1, l->ch, 1, l->W, l->ksize*l->ksize*l->ich, l->dOut +l->outputs*i, l->ox*l->oy, 0, workspace, l->ox*l->oy);
 		gemm_rtn(l->ksize*l->ksize*l->ich, l->ox*l->oy*1, l->ch, 1, l->W, l->dOut +l->outputs*i, 0, workspace);
+
+		//
+//		gemm_rtn(l->ksize*l->ksize*l->ich, l->ox*l->oy*1, l->ch, 1, l->W, l->dOut +l->outputs*i, 0, workspace);
 		if (l->ksize!=1) {
 			col2im(workspace, l->ich, l->sy, l->sx, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, l->dIn +l->inputs*i);
 		}
 	}
 }
-static void _CatsEye_convolutional_update(CatsEye_layer *l)
+static void CatsEye_convolutional_update(CatsEye_layer *l)
 {
 	for (int i=0; i<l->p->batch; i++) {
 		real *workspace = l->ksize!=1 ? l->workspace +l->ox*l->oy*l->ksize*l->ksize*l->ich *i : l->x +l->inputs*i;
@@ -379,7 +382,7 @@ static void _CatsEye_convolutional_update(CatsEye_layer *l)
 }
 
 // calculate forward propagation
-static void _CatsEye_maxpooling_forward(CatsEye_layer *l)
+static void CatsEye_maxpooling_forward(CatsEye_layer *l)
 {
 	int step = l->sx -l->ksize;
 	for (int i=0; i<l->p->batch; i++) {
@@ -411,7 +414,7 @@ static void _CatsEye_maxpooling_forward(CatsEye_layer *l)
 	}
 }
 // calculate back propagation
-static void _CatsEye_maxpooling_backward(CatsEye_layer *l)
+static void CatsEye_maxpooling_backward(CatsEye_layer *l)
 {
 	int *max = (int*)l->workspace; // temp
 	real *delta = l->dOut;
@@ -774,9 +777,9 @@ static void CatsEye_none(CatsEye_layer *l)
 {
 }
 static void (*_CatsEye_layer_forward[])(CatsEye_layer *l) = {
-	_CatsEye_linear_forward,
-	_CatsEye_convolutional_forward,
-	_CatsEye_maxpooling_forward,
+	CatsEye_linear_forward,
+	CatsEye_convolutional_forward,
+	CatsEye_maxpooling_forward,
 	CatsEye_avgpooling_forward,
 	CatsEye_PixelShuffler_forward,
 //	CatsEye_rnn_forward,
@@ -800,9 +803,9 @@ static void (*_CatsEye_layer_forward[])(CatsEye_layer *l) = {
 	CatsEye_none,	// cross-entropy multiclass loss
 };
 static void (*_CatsEye_layer_backward[])(CatsEye_layer *l) = {
-	_CatsEye_linear_backward,
-	_CatsEye_convolutional_backward,
-	_CatsEye_maxpooling_backward,
+	CatsEye_linear_backward,
+	CatsEye_convolutional_backward,
+	CatsEye_maxpooling_backward,
 	CatsEye_avgpooling_backward,
 	CatsEye_PixelShuffler_backward,
 //	CatsEye_rnn_backward,
@@ -826,8 +829,8 @@ static void (*_CatsEye_layer_backward[])(CatsEye_layer *l) = {
 	CatsEye_loss_delivative_cross_entropy_multiclass,
 };
 static void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
-	_CatsEye_linear_update,
-	_CatsEye_convolutional_update,
+	CatsEye_linear_update,
+	CatsEye_convolutional_update,
 	CatsEye_none,	// maxpool
 	CatsEye_none,	// avgpool
 	CatsEye_none,	// Pixel Shuffler
@@ -866,8 +869,8 @@ char CatsEye_string[][16] = {
 	"binary", "mse", "cross", "mcross"
 };
 
-#define _CatsEye__construct(t, p)	__CatsEye__construct(t, p, sizeof(p)/sizeof(CatsEye_layer))
-void __CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
+#define CatsEye__construct(t, p)	_CatsEye__construct(t, p, sizeof(p)/sizeof(CatsEye_layer))
+void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 {
 	this->batch = 1;
 	this->u = 0;
@@ -1155,7 +1158,7 @@ int CatsEye_getLayer(CatsEye *this, char *name)
 	return -1;
 }
 
-static void _CatsEye_forward(CatsEye *this, real *x)
+static void CatsEye_forward(CatsEye *this, real *x)
 {
 	CatsEye_layer *l = &this->layer[this->start];
 	memcpy(l->x, x, l->inputs*sizeof(real));
@@ -1175,10 +1178,10 @@ static void _CatsEye_forward(CatsEye *this, real *x)
 }
 
 // return most probable label to the input x
-static int16_t _CatsEye_predict(CatsEye *this, real *x)
+static int16_t CatsEye_predict(CatsEye *this, real *x)
 {
 	// forward propagation
-	_CatsEye_forward(this, x);
+	CatsEye_forward(this, x);
 
 	// biggest output means most probable label
 	CatsEye_layer *l = &this->layer[this->end];
@@ -1193,18 +1196,18 @@ static int16_t _CatsEye_predict(CatsEye *this, real *x)
 	return ans;
 }
 
-static int _CatsEye_accuracy(CatsEye *this, real *x, int16_t *t, int verify)
+static int CatsEye_accuracy(CatsEye *this, real *x, int16_t *t, int verify)
 {
 	int r = 0;
 	for (int i=0; i<verify; i++) {
-		int16_t p = _CatsEye_predict(this, x+i*this->slide);
+		int16_t p = CatsEye_predict(this, x+i*this->slide);
 		if (p==t[i]) r++;
 		//else printf("%d/%d ",p,t[i]);
 	}
 	return r;
 }
 
-static int _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, int random, int verify)
+static int CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, int random, int verify)
 {
 	int a = this->end;	// layers-1
 	this->layer[a].z = t;	// FIXME
@@ -1238,7 +1241,7 @@ static int _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, in
 				l->forward(l);
 				l++;
 			}
-//			_CatsEye_forward(this, x+sample*this->slide);
+//			CatsEye_forward(this, x+sample*this->slide);
 
 			// calculate the error and update the weights
 			int i = this->end;
@@ -1269,7 +1272,7 @@ static int _CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, in
 		printf("epochs %d, mse %f [%.2fs]", times, err, (stop.tv_sec - start.tv_sec) + (stop.tv_usec - start.tv_usec)*0.001*0.001);
 
 		if (verify) {
-			int r = _CatsEye_accuracy(this, x+this->layer[0].inputs*N, (int16_t*)t+N, verify);
+			int r = CatsEye_accuracy(this, x+this->layer[0].inputs*N, (int16_t*)t+N, verify);
 			printf(" %.1f%%", (float)r/verify*100.0);
 		}
 		printf("\n");
