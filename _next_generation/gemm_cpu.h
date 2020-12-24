@@ -11,7 +11,6 @@
 
 inline void gemm_rnn(int M, int N, int K, real alpha, real *A, real *B, real beta, real *C)
 {
-	#pragma omp parallel for
 	if (beta==0.0) {
 		memset(C, 0, M*N*sizeof(real));
 	} else if (beta!=1.0) {
@@ -20,6 +19,7 @@ inline void gemm_rnn(int M, int N, int K, real alpha, real *A, real *B, real bet
 /*	const int lda = K;
 	const int ldb = N;
 	const int ldc = N;*/
+	#pragma omp parallel for
 	for (int m=0; m<M; ++m) { // fast
 		for (int k=0; k<K; ++k) {
 			register real A_PART = alpha * A[m*K+k];
@@ -32,7 +32,6 @@ inline void gemm_rnn(int M, int N, int K, real alpha, real *A, real *B, real bet
 
 inline void gemm_rnt(int M, int N, int K, real alpha, real *A, real *B, real beta, real *C)
 {
-	#pragma omp parallel for
 	if (beta==0.0) {
 		memset(C, 0, M*N*sizeof(real));
 	} else if (beta!=1.0) {
@@ -41,20 +40,22 @@ inline void gemm_rnt(int M, int N, int K, real alpha, real *A, real *B, real bet
 /*	const int lda = K;
 	const int ldb = K;
 	const int ldc = N;*/
+	#pragma omp parallel for
 	for (int m=0; m<M; ++m) {
 		for (int n=0; n<N; ++n) {
 			register real sum = 0;
 			for (int k=0; k<K; ++k) {
 				sum += A[m*K+k] * B[k+K*n];
+//				sum += A[m*K+k] * (*B++);
 			}
 			C[m*N+n] += alpha * sum;
+//			(*C++) = alpha * sum;
 		}
 	}
 }
 
 inline void gemm_rtn(int M, int N, int K, real alpha, real *A, real *B, real beta, real *C)
 {
-	#pragma omp parallel for
 	if (beta==0.0) {
 		memset(C, 0, M*N*sizeof(real));
 	} else if (beta!=1.0) {
@@ -63,6 +64,7 @@ inline void gemm_rtn(int M, int N, int K, real alpha, real *A, real *B, real bet
 /*	const int lda = M;
 	const int ldb = N;
 	const int ldc = N;*/
+	#pragma omp parallel for
 	for (int m=0; m<M; ++m) {
 		for (int k=0; k<K; ++k) {
 			register real A_PART = alpha * A[m+M*k];

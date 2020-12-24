@@ -222,12 +222,14 @@ static void CatsEye_linear_forward(CatsEye_layer *l)
 		for (int n=0; n<l->inputs; n++) {
 			a += (*x++) * (*w++);
 		}
+//		*o++ = a;
 		*o++ = a + *w++;	// bias!!
 	}
 #else
 	// https://petewarden.com/2015/04/20/why-gemm-is-at-the-heart-of-deep-learning/
 	// output(m,n) := input(m=1,k) * weightsT(k,n)
 	gemm_rnt(l->p->batch, l->outputs, l->inputs/*+1*/, 1, l->x, l->W, 0, l->z);
+	for (int i=0; i<l->outputs; i++) l->z[i] += l->W[l->inputs*l->outputs +i]; // bias!!
 
 	// https://docs.nvidia.com/deeplearning/performance/dl-performance-fully-connected/index.html
 	// output := weightsT * input
@@ -239,18 +241,21 @@ static void CatsEye_linear_backward(CatsEye_layer *l)
 #ifdef CATS_TEST
 	real *d = l->dIn;
 	real *w = l->W;
+//	for (int i=0; i<l->inputs; i++) {
 	for (int i=0; i<=l->inputs; i++) {	// bias!!
 		real *dw = l->dOut;
 		real *ww = w++;
 		register real a = 0;
 		for (int n=0; n<l->outputs; n++) {
 			a += (*dw++) * (*ww);
-			ww += l->inputs+1;
+//			ww += l->inputs;
+			ww += l->inputs+1;	// bias!!
 		}
 		*d++ = a;
 	}
 #else
 	gemm_rnn(l->p->batch, l->inputs, l->outputs, 1, l->dOut, l->W, 0, l->dIn);
+	for (int i=0; i<l->outputs; i++) l->dIn[l->inputs] = l->dOut[i] * l->W[l->inputs*l->outputs +i]; // bias!!
 
 	// gradients(input) := weights * gradients(output)
 //	gemm_rnn(l->inputs, l->p->batch, l->outputs, 1, l->W, l->dOut, 0, l->dIn);
@@ -278,6 +283,7 @@ static void CatsEye_linear_update(CatsEye_layer *l)
 	}
 	CatsEye_solver(l, 'R', 'T', 'N', l->outputs, l->inputs, l->p->batch, l->dOut, l->outputs, l->x, l->inputs, l->inputs);*/
 	gemm_rtn(l->outputs, l->inputs, l->p->batch, -l->eta/*1*/, l->dOut, l->x, 1, l->W);
+	for (int i=0; i<l->outputs; i++) l->W[l->inputs*l->outputs +i] += -l->eta * l->dOut[i]; // bias!!
 
 	// weights := weights - eta * input * gradientsT(output)
 //	gemm_rnt(l->inputs, l->outputs, l->p->batch, -l->eta, l->x, l->dOut, 1, l->W);

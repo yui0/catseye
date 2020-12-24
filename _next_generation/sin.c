@@ -8,7 +8,7 @@
 // clang sin.c -o sin -lm
 // ps2pdf sin.ps (ghostscript-core)
 
-#define CATS_TEST
+//#define CATS_TEST
 //#define CATS_USE_FLOAT
 #include "./catseye.h"
 #include "./pssub.h"
