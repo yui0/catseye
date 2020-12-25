@@ -40,9 +40,26 @@
 
 #ifdef CATS_USE_GL
 #include "sgemm_gl1.h"
-#define gemm_rnn(m, n, k, alpha, a, b, beta, c)	_sgemm_gl(GEMM1_RNN, m, n, k, alpha, a, b, beta, c)
-//#define gemm_rnt(m, n, k, alpha, a, b, beta, c)	_sgemm_gl(GEMM1_RNT, m, n, k, alpha, a, b, beta, c)
-//#define gemm_rtn(m, n, k, alpha, a, b, beta, c)	_sgemm_gl(GEMM1_RTN, m, n, k, alpha, a, b, beta, c)
+#define gemm_rnn(m, n, k, alpha, a, b, beta, c)	{ sgemm_gl(GEMM1_RNN, m, n, k, alpha, a, b, beta, c); /*usleep(10);*/ }
+//#define gemm_rnt(m, n, k, alpha, a, b, beta, c)	sgemm_gl(GEMM1_RNT, m, n, k, alpha, a, b, beta, c)
+//#define gemm_rtn(m, n, k, alpha, a, b, beta, c)	sgemm_gl(GEMM1_RTN, m, n, k, alpha, a, b, beta, c)
+/*inline void gemm_rnn(int M, int N, int K, real alpha, real *A, real *B, real beta, real *C)
+{
+	if (beta==0.0) {
+		memset(C, 0, M*N*sizeof(real));
+	} else if (beta!=1.0) {
+		for (int i=0; i<M*N; i++) C[i] *= beta;
+	}
+	#pragma omp parallel for
+	for (int m=0; m<M; ++m) { // fast
+		for (int k=0; k<K; ++k) {
+			register real A_PART = alpha * A[m*K+k];
+			for (int n=0; n<N; ++n) {
+				C[m*N+n] += A_PART * B[k*N+n];
+			}
+		}
+	}
+}*/
 inline void gemm_rnt(int M, int N, int K, real alpha, real *A, real *B, real beta, real *C)
 {
 	if (beta==0.0) {
@@ -304,7 +321,18 @@ static void CatsEye_linear_backward(CatsEye_layer *l)
 	}
 #else
 	gemm_rnn(l->p->batch, l->inputs, l->outputs, 1, l->dOut, l->W, 0, l->dIn);
-	for (int i=0; i<l->outputs; i++) l->dIn[l->inputs] = l->dOut[i] * l->W[l->inputs*l->outputs +i]; // bias!!
+	for (int i=0; i<l->outputs; i++) l->dIn[l->inputs] += l->dOut[i] * l->W[l->inputs*l->outputs +i]; // bias!!
+	for (int i=l->inputs-10; i<l->inputs; i++) printf("%f ", l->dIn[i]);
+//	for (int i=0; i<10; i++) printf("%f ", l->dIn[i]);
+	printf("\n");
+
+/*	printf("gemm_rnn: ");
+	for (int i=l->inputs-10; i<l->inputs; i++) printf("%f ", l->dIn[i]);
+	printf("\n");
+	printf("GEMM1_RNN: ");
+	sgemm_gl(GEMM1_RNN, l->p->batch, l->inputs, l->outputs, 1, l->dOut, l->W, 0, l->dIn);
+	for (int i=l->inputs-10; i<l->inputs; i++) printf("%f ", l->dIn[i]);
+	printf("\n");*/
 
 	// gradients(input) := weights * gradients(output)
 //	gemm_rnn(l->inputs, l->p->batch, l->outputs, 1, l->W, l->dOut, 0, l->dIn);

@@ -244,22 +244,7 @@ void sgemm_gl_finish()
 	coDeleteProgram(sgemm_program[GEMM1_SRNN]);
 }
 
-inline void sgemm_gl(char ta, char tb, int m, int n, int k, float *a, float *b, float *c)
-{
-//	int param[16];
-	float param[16];
-	param[0] = m;
-	param[1] = n;
-	param[2] = k;
-	coWrite(0, m*k*sizeof(float), a);
-	coWrite(1, k*n*sizeof(float), b);
-//	coRun(sgemm_program[0], m/8+1, n/8+1, 1, param);//54
-	coRun(sgemm_program[1], m/8+1, n/8+1, 1, param);//31
-	coRead(2, m*n*sizeof(float), c);
-//	for (int i=0; i<100; i++) printf("%f ", c[i]);
-}
-
-/*inline*/ void _sgemm_gl(int type, int m, int n, int k, float alpha, float *a, float *b, float beta, float *c)
+/*inline*/ void sgemm_gl(int type, int m, int n, int k, float alpha, float *a, float *b, float beta, float *c)
 {
 	float param[16];
 	param[0] = m;
@@ -270,7 +255,11 @@ inline void sgemm_gl(char ta, char tb, int m, int n, int k, float *a, float *b, 
 	coWrite(0, m*k*sizeof(float), a);
 	coWrite(1, k*n*sizeof(float), b);
 	coWrite(2, m*n*sizeof(float), c);
+//	glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT); // Sync here to make writes visible
+//	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 	coRun(sgemm_program[type], m/8+1, n/8+1, 1, param);
+	glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT); // Sync here to make writes visible
+//	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 	coRead(2, m*n*sizeof(float), c);
 }
 
