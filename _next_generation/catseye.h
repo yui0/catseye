@@ -85,7 +85,6 @@ inline void gemm_rnt(int M, int N, int K, real alpha, real *A, real *B, real bet
 		}
 	}
 }
-
 inline void gemm_rtn(int M, int N, int K, real alpha, real *A, real *B, real beta, real *C)
 {
 	if (beta==0.0) {
@@ -1205,7 +1204,7 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 	this->slide = this->layer[0].inputs;
 
 //	sgemm_init(max_buffer_size);
-	sgemm_init(1024);
+	sgemm_init(1024*1024);
 }
 
 // deconstructor

@@ -128,11 +128,14 @@ void coRun(GLuint program, int x, int y, int z, /*int*/float *param)
 void coRead(int n, int size, void *data)
 {
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo[n]);
-//	glBufferData(GL_SHADER_STORAGE_BUFFER, size, data, GL_DYNAMIC_READ);
+	//glBufferData(GL_SHADER_STORAGE_BUFFER, size, data, GL_DYNAMIC_READ);
 	glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, size, data);
 //	GLvoid* p = glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
 //	memcpy(p, &shader_data, sizeof(shader_data));
-//	if (glGetError()) printf("err:%d\n", glGetError()); // https://qiita.com/_ydah/items/da56763e94ba58af3d91
+#if 0
+	int e = glGetError();
+	if (e) printf("err:%x (size:%d)\n", e, size); // https://qiita.com/_ydah/items/da56763e94ba58af3d91
+#endif
 //	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 }
 void coWrite(int n, int size, void *data)

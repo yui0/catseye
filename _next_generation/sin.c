@@ -10,6 +10,7 @@
 
 //#define CATS_TEST
 //#define CATS_USE_FLOAT
+//#define CATS_OPENGL
 #include "./catseye.h"
 #include "./pssub.h"
 
@@ -40,7 +41,9 @@ int main()
 
 	// 多層パーセプトロンの訓練
 	printf("Starting training using (stochastic) gradient descent\n");
-	CatsEye_train(&cat, x, t, sample, 2000/*repeat*/, sample, 0);
+//	CatsEye_train(&cat, x, t, sample, 2000/*repeat*/, sample, 0);
+	CatsEye_train(&cat, x, t, sample, 100/*repeat*/, sample, 0);
+//	CatsEye_train(&cat, x, t, 1, 1/*repeat*/, 1, 0);
 	printf("Training complete\n");
 //	CatsEye_save(&cat, "sin.weights");
 
