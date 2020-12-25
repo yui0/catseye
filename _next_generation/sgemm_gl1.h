@@ -254,16 +254,26 @@ void sgemm_gl_finish()
 	param[4] = beta;
 	coWrite(0, m*k*sizeof(float), a);
 	coWrite(1, k*n*sizeof(float), b);
-	coWrite(2, m*n*sizeof(float), c);
+	if (beta!=0) coWrite(2, m*n*sizeof(float), c);
 //	glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT); // Sync here to make writes visible
 //	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 	coRun(sgemm_program[type], m/8+1, n/8+1, 1, param);
 	glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT); // Sync here to make writes visible
 //	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 	coRead(2, m*n*sizeof(float), c);
+
+/*	printf("sgemm_gl: %d,%d,%d\n", m, n, k);
+	for (int i=0; i<10; i++) printf("%f ", c[i]);
+	printf("\n");
+	coRead(0, m*k*sizeof(float), a);
+	for (int i=0; i<10; i++) printf("%f ", a[i]);
+	printf("\n");
+	coRead(0, k*n*sizeof(float), b);
+	for (int i=0; i<10; i++) printf("%f ", b[i]);
+	printf("\n");*/
 }
 
-#ifndef CATS_USE_GL
+#ifndef CATS_OPENGL
 static inline void im2col(const float *im, const int channels,
 	const int height, const int width, const int kernel_h, const int kernel_w,
 	const int pad_h, const int pad_w, const int stride_h, const int stride_w, float *col)

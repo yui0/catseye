@@ -14,7 +14,7 @@
 
 #define _debug(...)	{ printf("%s(%d):", __func__, __LINE__); printf(__VA_ARGS__); }
 
-#ifdef CATS_USE_GL
+#ifdef CATS_OPENGL
 #ifndef CATS_USE_FLOAT
 #define CATS_USE_FLOAT
 #endif
@@ -38,11 +38,18 @@
 #warning "using double!!"
 #endif
 
-#ifdef CATS_USE_GL
+/*#ifdef CATS_OPENCL
+	sgemm_ocl_init(max_buffer_size);
+	sgemm_ocl_finish();
+#endif*/
+
+#ifdef CATS_OPENGL
 #include "sgemm_gl1.h"
-#define gemm_rnn(m, n, k, alpha, a, b, beta, c)	{ sgemm_gl(GEMM1_RNN, m, n, k, alpha, a, b, beta, c); /*usleep(10);*/ }
-//#define gemm_rnt(m, n, k, alpha, a, b, beta, c)	sgemm_gl(GEMM1_RNT, m, n, k, alpha, a, b, beta, c)
-//#define gemm_rtn(m, n, k, alpha, a, b, beta, c)	sgemm_gl(GEMM1_RTN, m, n, k, alpha, a, b, beta, c)
+#define sgemm_init(s)				sgemm_gl_init(s, s, s)
+#define sgemm_finish()				sgemm_gl_finish()
+#define gemm_rnn(m, n, k, alpha, a, b, beta, c)	sgemm_gl(GEMM1_RNN, m, n, k, alpha, a, b, beta, c);
+#define gemm_rnt(m, n, k, alpha, a, b, beta, c)	sgemm_gl(GEMM1_RNT, m, n, k, alpha, a, b, beta, c)
+#define gemm_rtn(m, n, k, alpha, a, b, beta, c)	sgemm_gl(GEMM1_RTN, m, n, k, alpha, a, b, beta, c)
 /*inline void gemm_rnn(int M, int N, int K, real alpha, real *A, real *B, real beta, real *C)
 {
 	if (beta==0.0) {
@@ -59,7 +66,7 @@
 			}
 		}
 	}
-}*/
+}
 inline void gemm_rnt(int M, int N, int K, real alpha, real *A, real *B, real beta, real *C)
 {
 	if (beta==0.0) {
@@ -95,9 +102,11 @@ inline void gemm_rtn(int M, int N, int K, real alpha, real *A, real *B, real bet
 			}
 		}
 	}
-}
+}*/
 #else
 #include "gemm_cpu.h"
+#define sgemm_init(s)
+#define sgemm_finish()
 #endif
 
 // http://xorshift.di.unimi.it/xorshift128plus.c
@@ -322,9 +331,9 @@ static void CatsEye_linear_backward(CatsEye_layer *l)
 #else
 	gemm_rnn(l->p->batch, l->inputs, l->outputs, 1, l->dOut, l->W, 0, l->dIn);
 	for (int i=0; i<l->outputs; i++) l->dIn[l->inputs] += l->dOut[i] * l->W[l->inputs*l->outputs +i]; // bias!!
-	for (int i=l->inputs-10; i<l->inputs; i++) printf("%f ", l->dIn[i]);
+//	for (int i=l->inputs-10; i<l->inputs; i++) printf("%f ", l->dIn[i]);
 //	for (int i=0; i<10; i++) printf("%f ", l->dIn[i]);
-	printf("\n");
+//	printf("\n");
 
 /*	printf("gemm_rnn: ");
 	for (int i=l->inputs-10; i<l->inputs; i++) printf("%f ", l->dIn[i]);
@@ -1194,17 +1203,16 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 	this->start = this->stop = 0;
 	this->end = this->layers-1;
 	this->slide = this->layer[0].inputs;
-#ifdef CATS_OPENCL
-	sgemm_ocl_init(max_buffer_size);
-#endif
+
+//	sgemm_init(max_buffer_size);
+	sgemm_init(1024);
 }
 
 // deconstructor
 void CatsEye__destruct(CatsEye *this)
 {
-#ifdef CATS_OPENCL
-	sgemm_ocl_finish();
-#endif
+	sgemm_finish();
+
 	// delete arrays
 //	printf("%x %x %x %x %x %x %x %x %x\n",this->z,this->odata,this->o,this->ddata,this->d,this->ws,this->wdata,this->w,this->u);
 	free(this->mem);

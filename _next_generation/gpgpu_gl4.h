@@ -133,13 +133,16 @@ void coRead(int n, int size, void *data)
 //	GLvoid* p = glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
 //	memcpy(p, &shader_data, sizeof(shader_data));
 //	if (glGetError()) printf("err:%d\n", glGetError()); // https://qiita.com/_ydah/items/da56763e94ba58af3d91
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+//	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 }
 void coWrite(int n, int size, void *data)
 {
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo[n]);
+//	glBufferStorage(GL_SHADER_STORAGE_BUFFER, size, data, GL_DYNAMIC_STORAGE_BIT);
+//	glBufferData(GL_SHADER_STORAGE_BUFFER, size, data, /*GL_STATIC_DRAW*//*GL_DYNAMIC_COPY*/GL_DYNAMIC_DRAW);
 	glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, size, data);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+//	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+//	if (glGetError()) printf("err:%d\n", glGetError()); // https://qiita.com/_ydah/items/da56763e94ba58af3d91
 }
 
 void coInit()
