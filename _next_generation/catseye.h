@@ -14,6 +14,12 @@
 
 #define _debug(...)	{ printf("%s(%d):", __func__, __LINE__); printf(__VA_ARGS__); }
 
+#ifdef CATS_USE_GL
+#ifndef CATS_USE_FLOAT
+#define CATS_USE_FLOAT
+#endif
+#endif
+
 #ifdef CATS_USE_FIXED
 #define real		short
 #elif defined CATS_USE_FLOAT
@@ -32,7 +38,50 @@
 #warning "using double!!"
 #endif
 
+#ifdef CATS_USE_GL
+#include "sgemm_gl1.h"
+#define gemm_rnn(m, n, k, alpha, a, b, beta, c)	_sgemm_gl(GEMM1_RNN, m, n, k, alpha, a, b, beta, c)
+//#define gemm_rnt(m, n, k, alpha, a, b, beta, c)	_sgemm_gl(GEMM1_RNT, m, n, k, alpha, a, b, beta, c)
+//#define gemm_rtn(m, n, k, alpha, a, b, beta, c)	_sgemm_gl(GEMM1_RTN, m, n, k, alpha, a, b, beta, c)
+inline void gemm_rnt(int M, int N, int K, real alpha, real *A, real *B, real beta, real *C)
+{
+	if (beta==0.0) {
+		memset(C, 0, M*N*sizeof(real));
+	} else if (beta!=1.0) {
+		for (int i=0; i<M*N; i++) C[i] *= beta;
+	}
+	#pragma omp parallel for
+	for (int m=0; m<M; ++m) {
+		for (int n=0; n<N; ++n) {
+			register real sum = 0;
+			for (int k=0; k<K; ++k) {
+				sum += A[m*K+k] * B[k+K*n];
+			}
+			C[m*N+n] += alpha * sum;
+		}
+	}
+}
+
+inline void gemm_rtn(int M, int N, int K, real alpha, real *A, real *B, real beta, real *C)
+{
+	if (beta==0.0) {
+		memset(C, 0, M*N*sizeof(real));
+	} else if (beta!=1.0) {
+		for (int i=0; i<M*N; i++) C[i] *= beta;
+	}
+	#pragma omp parallel for
+	for (int m=0; m<M; ++m) {
+		for (int k=0; k<K; ++k) {
+			register real A_PART = alpha * A[m+M*k];
+			for (int n=0; n<N; ++n) {
+				C[m*N+n] += A_PART * B[k*N+n];
+			}
+		}
+	}
+}
+#else
 #include "gemm_cpu.h"
+#endif
 
 // http://xorshift.di.unimi.it/xorshift128plus.c
 // https://github.com/AndreasMadsen/xorshift/blob/master/reference.c

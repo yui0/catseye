@@ -14,7 +14,9 @@ LDFLAGS = -lm -Wl,-s -Wl,--gc-sections
 
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Linux)
-	CFLAGS += `pkg-config --libs --cflags OpenCL`
+#	CFLAGS += `pkg-config --libs --cflags OpenCL`
+	CFLAGS += `pkg-config --libs --cflags gl egl gbm`
+	LDFLAGS +=  -lglfw
 endif
 ifeq ($(UNAME_S),Darwin)
 	CFLAGS += -framework opencl
