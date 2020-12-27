@@ -44,10 +44,11 @@
 #endif*/
 
 #ifdef CATS_OPENGL
+#define GL_DEBUG
 #include "sgemm_gl1.h"
 #define sgemm_init(s)				sgemm_gl_init(s, s, s)
 #define sgemm_finish()				sgemm_gl_finish()
-#define gemm_rnn(m, n, k, alpha, a, b, beta, c)	sgemm_gl(GEMM1_RNN, m, n, k, alpha, a, b, beta, c);
+#define gemm_rnn(m, n, k, alpha, a, b, beta, c)	sgemm_gl(GEMM1_RNN, m, n, k, alpha, a, b, beta, c)
 #define gemm_rnt(m, n, k, alpha, a, b, beta, c)	sgemm_gl(GEMM1_RNT, m, n, k, alpha, a, b, beta, c)
 #define gemm_rtn(m, n, k, alpha, a, b, beta, c)	sgemm_gl(GEMM1_RTN, m, n, k, alpha, a, b, beta, c)
 /*inline void gemm_rnn(int M, int N, int K, real alpha, real *A, real *B, real beta, real *C)
@@ -182,7 +183,7 @@ typedef struct __CatsEye_layer {
 	real *W, *dw, *g;	// weight
 	real *dOut, *dIn;	// gradient
 	real *workspace;	// for im2col, col2im
-	real *Wi, *dOuti;	// RNN [hidden * time](input -> hidden) = W, dOut
+/*	real *Wi, *dOuti;	// RNN [hidden * time](input -> hidden) = W, dOut
 	real *Wr, *dOutr;	// RNN [hidden * hidden]
 	real *Wo, *dOuto;	// RNN [output * hidden](hidden -> output)
 //	real *U, *dU;		// RNN [hidden * time](input -> hidden)
@@ -191,7 +192,7 @@ typedef struct __CatsEye_layer {
 	real *s;		// RNN [time * hidden]
 	real *u;		// RNN [time * hidden]
 //	real *y;		// RNN [time * output]
-	real *v;		// RNN [time * output]
+	real *v;		// RNN [time * output]*/
 //	real (*act2)(real x);	// RNN
 //	real (*dact2)(real x);	// RNN
 
@@ -330,9 +331,6 @@ static void CatsEye_linear_backward(CatsEye_layer *l)
 #else
 	gemm_rnn(l->p->batch, l->inputs, l->outputs, 1, l->dOut, l->W, 0, l->dIn);
 	for (int i=0; i<l->outputs; i++) l->dIn[l->inputs] += l->dOut[i] * l->W[l->inputs*l->outputs +i]; // bias!!
-//	for (int i=l->inputs-10; i<l->inputs; i++) printf("%f ", l->dIn[i]);
-//	for (int i=0; i<10; i++) printf("%f ", l->dIn[i]);
-//	printf("\n");
 
 /*	printf("gemm_rnn: ");
 	for (int i=l->inputs-10; i<l->inputs; i++) printf("%f ", l->dIn[i]);
@@ -369,6 +367,9 @@ static void CatsEye_linear_update(CatsEye_layer *l)
 	CatsEye_solver(l, 'R', 'T', 'N', l->outputs, l->inputs, l->p->batch, l->dOut, l->outputs, l->x, l->inputs, l->inputs);*/
 	gemm_rtn(l->outputs, l->inputs, l->p->batch, -l->eta/*1*/, l->dOut, l->x, 1, l->W);
 	for (int i=0; i<l->outputs; i++) l->W[l->inputs*l->outputs +i] += -l->eta * l->dOut[i]; // bias!!
+//	for (int i=0; i<10; i++) printf("%f ", l->dOut[i]);
+/*	for (int i=0; i<10; i++) printf("%f ", l->W[i]);
+	printf("\n");*/
 
 	// weights := weights - eta * input * gradientsT(output)
 //	gemm_rnt(l->inputs, l->outputs, l->p->batch, -l->eta, l->x, l->dOut, 1, l->W);
@@ -453,9 +454,9 @@ static void CatsEye_convolutional_backward(CatsEye_layer *l)
 		// dIn = W**T * dOut [A(m,k) B(k,n) C(m,n)]
 //		gemm('R', 'T', 'N', l->ksize*l->ksize*l->ich, l->ox*l->oy*1, l->ch, 1, l->W, l->ksize*l->ksize*l->ich, l->dOut +l->outputs*i, l->ox*l->oy, 0, workspace, l->ox*l->oy);
 		gemm_rtn(l->ksize*l->ksize*l->ich, l->ox*l->oy*1, l->ch, 1, l->W, l->dOut +l->outputs*i, 0, workspace);
-
-		//
-//		gemm_rtn(l->ksize*l->ksize*l->ich, l->ox*l->oy*1, l->ch, 1, l->W, l->dOut +l->outputs*i, 0, workspace);
+/*		printf("gemm_rtn: ");
+		for (int i=0; i<10; i++) printf("%f ", workspace[i]);
+		printf("\n");*/
 		if (l->ksize!=1) {
 			col2im(workspace, l->ich, l->sy, l->sx, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, l->dIn +l->inputs*i);
 		}
@@ -468,7 +469,7 @@ static void CatsEye_convolutional_update(CatsEye_layer *l)
 		// W = W - eta * dOut * x**T [A(m,k) B(k,n) C(m,n)]
 //		gemm('R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*l->p->batch, -l->eta/l->p->batch, l->dOut, l->ox*l->oy, workspace, l->ox*l->oy, 1, l->W, l->ksize*l->ksize*l->ich);
 //		CatsEye_solver(l, 'R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy, l->dOut +l->outputs*i, l->ox*l->oy, workspace, l->ox*l->oy, l->ksize*l->ksize*l->ich);
-		gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*l->p->batch, -l->eta, l->dOut, workspace, 1, l->W);
+		gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1/*l->p->batch*/, -l->eta, l->dOut, workspace, 1, l->W);
 	}
 }
 
