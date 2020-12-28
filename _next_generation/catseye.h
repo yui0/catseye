@@ -38,12 +38,7 @@
 #warning "using double!!"
 #endif
 
-/*#ifdef CATS_OPENCL
-	sgemm_ocl_init(max_buffer_size);
-	sgemm_ocl_finish();
-#endif*/
-
-#ifdef CATS_OPENGL
+#if defined(CATS_OPENGL)
 #define GL_DEBUG
 #include "sgemm_gl1.h"
 #define sgemm_init(s)				sgemm_gl_init(s, s, s)
@@ -51,7 +46,13 @@
 #define gemm_rnn(m, n, k, alpha, a, b, beta, c)	sgemm_gl(GEMM1_RNN, m, n, k, alpha, a, b, beta, c)
 #define gemm_rnt(m, n, k, alpha, a, b, beta, c)	sgemm_gl(GEMM1_RNT, m, n, k, alpha, a, b, beta, c)
 #define gemm_rtn(m, n, k, alpha, a, b, beta, c)	sgemm_gl(GEMM1_RTN, m, n, k, alpha, a, b, beta, c)
-/*inline void gemm_rnn(int M, int N, int K, real alpha, real *A, real *B, real beta, real *C)
+#elif defined(CATS_OPENCL)
+#include "sgemm_ocl.h"
+#define sgemm_init(s)				sgemm_ocl_init(s)
+#define sgemm_finish()				sgemm_ocl_finish()
+#else
+//#include "gemm_cpu.h"
+inline void gemm_rnn(int M, int N, int K, real alpha, real *A, real *B, real beta, real *C)
 {
 	if (beta==0.0) {
 		memset(C, 0, M*N*sizeof(real));
@@ -102,9 +103,7 @@ inline void gemm_rtn(int M, int N, int K, real alpha, real *A, real *B, real bet
 			}
 		}
 	}
-}*/
-#else
-#include "gemm_cpu.h"
+}
 #define sgemm_init(s)
 #define sgemm_finish()
 #endif
@@ -1205,7 +1204,7 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 	this->slide = this->layer[0].inputs;
 
 //	sgemm_init(max_buffer_size);
-	sgemm_init(1024*1024);
+	sgemm_init(1024*1024*1024);
 }
 
 // deconstructor
@@ -1469,7 +1468,7 @@ void _CatsEye_visualize(real *o, int n, int sx, unsigned char *p, int width, int
 }
 
 // https://www.cs.toronto.edu/~kriz/cifar.html
-real *_CatsEye_loadCifar(char *name, int size, int lsize, int sample, int16_t **label)
+real *CatsEye_loadCifar(char *name, int size, int lsize, int sample, int16_t **label)
 {
 	unsigned char *data = malloc((size+lsize)*sample);	// +1 for label
 	if (!data) { printf("Can't open %s\n", name); return 0; }
@@ -1480,7 +1479,7 @@ real *_CatsEye_loadCifar(char *name, int size, int lsize, int sample, int16_t **
 	if (!x) { printf("Can't open %s\n", name); return 0; }
 
 	FILE *fp = fopen(name, "rb");
-	if (!fp) return 0;
+	if (!fp) { printf("Can't open %s\n", name); return 0; }
 	fread(data, (size+lsize)*sample, 1, fp);
 	for (int n=0; n<sample; n++) {
 		if (lsize==2) {
@@ -1571,39 +1570,6 @@ real *_CatsEye_loadCifar(char *name, int size, int lsize, int sample, int16_t **
 		p[(i/size)*width + i%size] = (unsigned char)((w[i * SIZE(1)] - min) / (max - min) * 255.0);
 	}
 }*/
-
-// https://www.cs.toronto.edu/~kriz/cifar.html
-real *CatsEye_loadCifar(char *name, int sample, int **label)
-{
-	unsigned char *data = malloc((32*32*3+1)*sample);		// +1 for label
-	if (!data) return 0;
-	int *t = malloc(sizeof(int)*sample);
-	if (!t) return 0;
-	real *x = malloc(sizeof(real)*(32*32*3+1)*(sample+1));	// +1 for bias
-	if (!x) return 0;
-
-	FILE *fp = fopen(name, "rb");
-	if (!fp) return 0;
-	fread(data, (32*32*3+1)*sample, 1, fp);
-	for (int n=0; n<sample; n++) {
-		t[n] = data[n*(32*32*3+1)];
-#ifdef CATS_FASTCONV
-		for (int i=0; i<32*32; i++) {
-			x[n*32*32*3+i*3  ] = data[n*(32*32*3+1)+1        +i] * (1.0/255.0);	// r
-			x[n*32*32*3+i*3+1] = data[n*(32*32*3+1)+1+32*32  +i] * (1.0/255.0);	// g
-			x[n*32*32*3+i*3+2] = data[n*(32*32*3+1)+1+32*32*2+i] * (1.0/255.0);	// b
-		}
-//		x[n*32*32*3+1] = 1;
-#else
-		for (int i=0; i<32*32*3; i++) x[n*32*32*3+i] = data[n*(32*32*3+1)+1+i] * (1.0/255.0);
-#endif
-	}
-	fclose(fp);
-	free(data);
-
-	*label = t;
-	return x;
-}
 
 real *CatsEye_loadMnist(char *name, char *name2, int sample, int **label)
 {
