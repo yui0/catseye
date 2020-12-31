@@ -30,7 +30,7 @@ int main()
 		{  10, CATS_LINEAR, 0.01 }, // hidden layer
 		{   1, CATS_LOSS_MSE }, // output layer
 	};
-	CatsEye cat;
+	CatsEye cat = CATS_INIT;
 	CatsEye__construct(&cat, u);
 
 	// 訓練データ
@@ -42,7 +42,8 @@ int main()
 	// 多層パーセプトロンの訓練
 	printf("Starting training using (stochastic) gradient descent\n");
 //	CatsEye_train(&cat, x, t, sample, 2000/*repeat*/, sample, 0);
-	CatsEye_train(&cat, x, t, sample, 100/*repeat*/, sample, 0);
+	CatsEye_train(&cat, x, t, sample, 200/*repeat*/, sample, 0);
+//	CatsEye_train(&cat, x, t, sample, 100/*repeat*/, sample, 0);
 //	CatsEye_train(&cat, x, t, 1, 1/*repeat*/, 1, 0);
 	printf("Training complete\n");
 //	CatsEye_save(&cat, "sin.weights");
