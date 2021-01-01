@@ -301,12 +301,15 @@ static void CatsEye_linear_forward(CatsEye_layer *l)
 	gemm_rnt(l->p->batch, l->outputs, l->inputs, 1, l->x, l->W, 0, l->z);
 //	for (int i=0; i<l->outputs; i++) l->z[i] += l->W[l->inputs*l->outputs +i]; // bias!!
 	for (int n=0; n<l->p->batch; n++) {
+//		gemm_rnt(1, l->outputs, l->inputs, 1, l->x+l->inputs*n, l->W, 0, l->z+l->outputs*n);
 		for (int i=0; i<l->outputs; i++) l->z[n*l->outputs +i] += l->W[l->inputs*l->outputs +i]; // bias!!
 	}
+//	for (int i=l->inputs-10; i<l->inputs; i++) printf("%f ", l->x[i]);
+//	printf("\n");
 
 	// https://docs.nvidia.com/deeplearning/performance/dl-performance-fully-connected/index.html
 	// output := weightsT * input
-//	gemm_rtn(l->outputs, l->p->batch, l->inputs/*+1*/, 1, l->W, l->x, 0, l->z);
+//	gemm_rtn(l->outputs, l->p->batch, l->inputs, 1, l->W, l->x, 0, l->z);
 #endif
 }
 static void CatsEye_linear_backward(CatsEye_layer *l)
@@ -331,6 +334,7 @@ static void CatsEye_linear_backward(CatsEye_layer *l)
 	gemm_rnn(l->p->batch, l->inputs, l->outputs, 1, l->dOut, l->W, 0, l->dIn);
 //	for (int i=0; i<l->outputs; i++) l->dIn[l->inputs] += l->dOut[i] * l->W[l->inputs*l->outputs +i]; // bias!!
 	for (int n=0; n<l->p->batch; n++) {
+//		gemm_rnn(1, l->inputs, l->outputs, 1, l->dOut+l->outputs*n, l->W, 0, l->dIn+l->inputs*n);
 		for (int i=0; i<l->outputs; i++) l->dIn[n*l->inputs +l->inputs] += l->dOut[n*l->outputs +i] * l->W[l->inputs*l->outputs +i]; // bias!!
 	}
 
@@ -371,6 +375,7 @@ static void CatsEye_linear_update(CatsEye_layer *l)
 	gemm_rtn(l->outputs, l->inputs, l->p->batch, -l->eta, l->dOut, l->x, 1, l->W);
 //	for (int i=0; i<l->outputs; i++) l->W[l->inputs*l->outputs +i] += -l->eta * l->dOut[i]; // bias!!
 	for (int n=0; n<l->p->batch; n++) {
+//		gemm_rtn(l->outputs, l->inputs, 1, -l->eta, l->dOut+l->outputs*n, l->x+l->inputs*n, 1, l->W);
 		for (int i=0; i<l->outputs; i++) l->W[l->inputs*l->outputs +i] += -l->eta * l->dOut[n*l->outputs +i]; // bias!!
 	}
 //	for (int i=0; i<10; i++) printf("%f ", l->dOut[i]);
@@ -444,17 +449,16 @@ static void CatsEye_convolutional_forward(CatsEye_layer *l)
 		}
 		// z = W * x [A(m,k) B(k,n) C(m,n)], cnhw
 //		gemm('R', 'N', 'N', l->ch, l->ox*l->oy*1, l->ksize*l->ksize*l->ich, 1, l->W, l->ksize*l->ksize*l->ich, workspace, l->ox*l->oy, 0, l->z +l->outputs*i, l->ox*l->oy);
-		//gemm_rnn(l->ch, l->ox*l->oy*1, l->ksize*l->ksize*l->ich, 1, l->W, workspace, 0, l->z +l->outputs*i);
+		gemm_rnn(l->ch, l->ox*l->oy*1, l->ksize*l->ksize*l->ich, 1, l->W, workspace, 0, l->z +l->outputs*i);
 
 		// https://docs.nvidia.com/deeplearning/performance/dl-performance-convolutional/index.html
 		// output := workspace * weights
 //		gemm_rnn(l->ox*l->oy*1, l->ch, l->ksize*l->ksize*l->ich, 1, workspace, l->W, 0, l->z +l->outputs*i);
 	}
 
-	real *workspace = (l->ksize==1) ? l->x : l->workspace;
-	gemm_rnn(l->ch, l->ox*l->oy*l->p->batch, l->ksize*l->ksize*l->ich, 1, l->W, workspace, 0, l->z);
+//	real *workspace = (l->ksize==1) ? l->x : l->workspace;
+//	gemm_rnn(l->ch, l->ox*l->oy*l->p->batch, l->ksize*l->ksize*l->ich, 1, l->W, workspace, 0, l->z);
 }
-//static real col[32*32*1024*30];
 static void CatsEye_convolutional_backward(CatsEye_layer *l)
 {
 	for (int i=0; i<l->p->batch; i++) {
@@ -478,8 +482,10 @@ static void CatsEye_convolutional_update(CatsEye_layer *l)
 		// W = W - eta * dOut * x**T [A(m,k) B(k,n) C(m,n)]
 //		gemm('R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*l->p->batch, -l->eta/l->p->batch, l->dOut, l->ox*l->oy, workspace, l->ox*l->oy, 1, l->W, l->ksize*l->ksize*l->ich);
 //		CatsEye_solver(l, 'R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy, l->dOut +l->outputs*i, l->ox*l->oy, workspace, l->ox*l->oy, l->ksize*l->ksize*l->ich);
-		gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1/*l->p->batch*/, -l->eta, l->dOut, workspace, 1, l->W);
+		gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, -l->eta, l->dOut, workspace, 1, l->W);
 	}
+//	real *workspace = l->ksize!=1 ? l->workspace : l->x;
+//	gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*l->p->batch, -l->eta, l->dOut, workspace, 1, l->W);
 }
 
 // calculate forward propagation
@@ -1182,7 +1188,7 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			break;
 		}
 
-//		l->eta /= this->batch;
+		l->eta /= this->batch;
 //		this->o[i][l->outputs] = 1;	// FIXME: bias
 
 		// initialize weights, range depends on the research of Y. Bengio et al. (2010)
