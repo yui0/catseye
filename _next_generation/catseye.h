@@ -1,7 +1,7 @@
 //---------------------------------------------------------
 //	Cat's eye
 //
-//		©2016-2020 Yuichiro Nakada
+//		©2016-2021 Yuichiro Nakada
 //---------------------------------------------------------
 
 #include <stdio.h>
@@ -47,9 +47,12 @@
 #define gemm_rnt(m, n, k, alpha, a, b, beta, c)	sgemm_gl(GEMM1_RNT, m, n, k, alpha, a, b, beta, c)
 #define gemm_rtn(m, n, k, alpha, a, b, beta, c)	sgemm_gl(GEMM1_RTN, m, n, k, alpha, a, b, beta, c)
 #elif defined(CATS_OPENCL)
-#include "sgemm_ocl.h"
-#define sgemm_init(s)				sgemm_ocl_init(s)
+#include "sgemm_ocl2.h"
+#define sgemm_init(s)				sgemm_ocl_init(0, 0, (s))
 #define sgemm_finish()				sgemm_ocl_finish()
+#define gemm_rnn(m, n, k, alpha, a, b, beta, c)	sgemm_ocl('N', 'N', m, n, k, alpha, a, b, beta, c)
+#define gemm_rnt(m, n, k, alpha, a, b, beta, c)	sgemm_ocl('N', 'T', m, n, k, alpha, a, b, beta, c)
+#define gemm_rtn(m, n, k, alpha, a, b, beta, c)	sgemm_ocl('T', 'N', m, n, k, alpha, a, b, beta, c)
 #else
 //#include "gemm_cpu.h"
 inline void gemm_rnn(int M, int N, int K, real alpha, real *A, real *B, real beta, real *C)
@@ -376,7 +379,7 @@ static void CatsEye_linear_update(CatsEye_layer *l)
 //	for (int i=0; i<l->outputs; i++) l->W[l->inputs*l->outputs +i] += -l->eta * l->dOut[i]; // bias!!
 	for (int n=0; n<l->p->batch; n++) {
 //		gemm_rtn(l->outputs, l->inputs, 1, -l->eta, l->dOut+l->outputs*n, l->x+l->inputs*n, 1, l->W);
-		for (int i=0; i<l->outputs; i++) l->W[l->inputs*l->outputs +i] += -l->eta * l->dOut[n*l->outputs +i]; // bias!!
+		for (int i=0; i<l->outputs; i++) l->W[l->inputs*l->outputs +i] -= l->eta * l->dOut[n*l->outputs +i]; // bias!!
 	}
 //	for (int i=0; i<10; i++) printf("%f ", l->dOut[i]);
 /*	for (int i=0; i<10; i++) printf("%f ", l->W[i]);
@@ -1210,17 +1213,17 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 	this->clasify = (int16_t*)this->layer[this->layers-1].z;
 	this->label = this->layer[this->layers-1].z;
 
-	int max = 0;
+	uint64_t max = 0;
 	for (int i=0; i<this->layers; i++) {
 		CatsEye_layer *l = &this->layer[i];
 		printf("L%02d in:%d out:%d (x:%ld-z:%ld-d:%ld-w:%ld)\n", i+1, l->inputs, l->outputs, l->x-this->odata, l->z-this->odata, this->d[i]-this->ddata, this->w[i]-this->wdata);
 
-		int s = l->ox*l->oy*l->ksize*l->ksize*l->ich;
+		uint64_t s = l->ox*l->oy*l->ksize*l->ksize*l->ich;
 		if (max < s) max = s;
 	}
 	this->mem = calloc(max*this->batch, sizeof(real));
-	int wmem = this->osize*this->batch+this->dsize*this->batch+this->wsize*3;
-	printf("Memory: %.1f MiB [%d B], Working Memory: %.1f MiB [%d B]\n\n", this->wsize/1024/1024., this->wsize, wmem/1024/1024., wmem);
+	uint64_t wmem = this->osize*this->batch+this->dsize*this->batch+this->wsize*3;
+	printf("Memory: %.1f MiB [%d B], Working Memory: %.1f MiB [%lu B]\n\n", this->wsize/1024/1024., this->wsize, wmem/1024/1024., wmem);
 
 	this->start = this->stop = 0;
 	this->end = this->layers-1;
@@ -1347,6 +1350,7 @@ int CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, int random
 		for (int n=0; n<batch; n++) { // FIXME: depricate!
 			CatsEye_layer *l = &this->layer[this->start];
 
+			// create data
 			for (int b=0; b<this->batch; b++) {
 				int sample = random ? (int)(frand()*N) : n;
 				memcpy(l->x +l->inputs*b, x+sample*this->slide, l->inputs*sizeof(real));
