@@ -1,7 +1,7 @@
 //---------------------------------------------------------
 //	Cat's eye
 //
-//		©2016-2020 Yuichiro Nakada
+//		©2016-2021 Yuichiro Nakada
 //---------------------------------------------------------
 
 // gcc cifar10_train.c -o cifar10_train -lm -Ofast -march=native -funroll-loops -fopenmp -lgomp
@@ -48,7 +48,7 @@ int main()
 		{     0, _CATS_ACT_SOFTMAX },
 		{ label, CATS_LOSS_0_1 },
 	};
-	CatsEye cat;
+	CatsEye cat = { .batch=1 };
 	CatsEye__construct(&cat, u);
 
 	// 訓練データの読み込み

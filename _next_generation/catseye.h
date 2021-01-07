@@ -303,10 +303,10 @@ static void CatsEye_linear_forward(CatsEye_layer *l)
 	// output(m,n) := input(m=1,k) * weightsT(k,n)
 	gemm_rnt(l->p->batch, l->outputs, l->inputs, 1, l->x, l->W, 0, l->z);
 //	for (int i=0; i<l->outputs; i++) l->z[i] += l->W[l->inputs*l->outputs +i]; // bias!!
-	for (int n=0; n<l->p->batch; n++) {
+/*	for (int n=0; n<l->p->batch; n++) {
 //		gemm_rnt(1, l->outputs, l->inputs, 1, l->x+l->inputs*n, l->W, 0, l->z+l->outputs*n);
 		for (int i=0; i<l->outputs; i++) l->z[n*l->outputs +i] += l->W[l->inputs*l->outputs +i]; // bias!!
-	}
+	}*/
 //	for (int i=l->inputs-10; i<l->inputs; i++) printf("%f ", l->x[i]);
 //	printf("\n");
 
@@ -336,10 +336,10 @@ static void CatsEye_linear_backward(CatsEye_layer *l)
 	// dIn := dOut * W
 	gemm_rnn(l->p->batch, l->inputs, l->outputs, 1, l->dOut, l->W, 0, l->dIn);
 //	for (int i=0; i<l->outputs; i++) l->dIn[l->inputs] += l->dOut[i] * l->W[l->inputs*l->outputs +i]; // bias!!
-	for (int n=0; n<l->p->batch; n++) {
+/*	for (int n=0; n<l->p->batch; n++) {
 //		gemm_rnn(1, l->inputs, l->outputs, 1, l->dOut+l->outputs*n, l->W, 0, l->dIn+l->inputs*n);
 		for (int i=0; i<l->outputs; i++) l->dIn[n*l->inputs +l->inputs] += l->dOut[n*l->outputs +i] * l->W[l->inputs*l->outputs +i]; // bias!!
-	}
+	}*/
 
 /*	printf("gemm_rnn: ");
 	for (int i=l->inputs-10; i<l->inputs; i++) printf("%f ", l->dIn[i]);
@@ -377,10 +377,10 @@ static void CatsEye_linear_update(CatsEye_layer *l)
 	// W := W - eta * dOutT * x
 	gemm_rtn(l->outputs, l->inputs, l->p->batch, -l->eta, l->dOut, l->x, 1, l->W);
 //	for (int i=0; i<l->outputs; i++) l->W[l->inputs*l->outputs +i] += -l->eta * l->dOut[i]; // bias!!
-	for (int n=0; n<l->p->batch; n++) {
+/*	for (int n=0; n<l->p->batch; n++) {
 //		gemm_rtn(l->outputs, l->inputs, 1, -l->eta, l->dOut+l->outputs*n, l->x+l->inputs*n, 1, l->W);
 		for (int i=0; i<l->outputs; i++) l->W[l->inputs*l->outputs +i] -= l->eta * l->dOut[n*l->outputs +i]; // bias!!
-	}
+	}*/
 //	for (int i=0; i<10; i++) printf("%f ", l->dOut[i]);
 /*	for (int i=0; i<10; i++) printf("%f ", l->W[i]);
 	printf("\n");*/
@@ -388,6 +388,28 @@ static void CatsEye_linear_update(CatsEye_layer *l)
 	// weights := weights - eta * input * gradientsT(output)
 //	gemm_rnt(l->inputs, l->outputs, l->p->batch, -l->eta, l->x, l->dOut, 1, l->W);
 #endif
+}
+
+static void CatsEye_bias_forward(CatsEye_layer *l)
+{
+	for (int n=0; n<l->p->batch; n++) {
+//		gemm_rnt(1, l->outputs, l->inputs, 1, l->x+l->inputs*n, l->W, 0, l->z+l->outputs*n);
+		for (int i=0; i<l->outputs; i++) l->z[n*l->outputs +i] += l->W[i];
+	}
+}
+static void CatsEye_bias_backward(CatsEye_layer *l)
+{
+	for (int n=0; n<l->p->batch; n++) {
+//		gemm_rnn(1, l->inputs, l->outputs, 1, l->dOut+l->outputs*n, l->W, 0, l->dIn+l->inputs*n);
+		for (int i=0; i<l->outputs; i++) l->dIn[n*l->inputs] += l->dOut[n*l->outputs +i] * l->W[i];
+	}
+}
+static void CatsEye_bias_update(CatsEye_layer *l)
+{
+	for (int n=0; n<l->p->batch; n++) {
+//		gemm_rtn(l->outputs, l->inputs, 1, -l->eta, l->dOut+l->outputs*n, l->x+l->inputs*n, 1, l->W);
+		for (int i=0; i<l->outputs; i++) l->W[i] -= l->eta * l->dOut[n*l->outputs +i];
+	}
 }
 
 // convolution [https://github.com/hiroyam/dnn-im2col, https://github.com/pjreddie/darknet]
@@ -1191,7 +1213,7 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			break;
 		}
 
-		l->eta /= this->batch;
+//		l->eta /= this->batch;
 //		this->o[i][l->outputs] = 1;	// FIXME: bias
 
 		// initialize weights, range depends on the research of Y. Bengio et al. (2010)
@@ -1329,7 +1351,7 @@ int CatsEye_accuracy(CatsEye *this, real *x, int16_t *t, int verify)
 	return r;
 }
 
-int CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, int random, int verify)
+int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random, int verify)
 {
 	int a = this->end;	// layers-1
 	this->layer[a].z = t;	// FIXME
@@ -1339,15 +1361,17 @@ int CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, int random
 	}
 
 	if (verify) N -= verify;	// for test
-	int batch = N;			// for random
-	if (random) batch = random;
-
-	if (this->batch>1) batch = 1; // FIXME
+	int repeat = N;			// for random
+	if (random) repeat = random;
+	if (this->batch>1) {
+		repeat = N/this->batch;
+		printf(" repeat: %d\n", repeat);
+	}
 
 	struct timeval start, stop;
 	gettimeofday(&start, NULL);
-	for (int times=0; times<repeat; times++) {
-		for (int n=0; n<batch; n++) { // FIXME: depricate!
+	for (int times=0; times<epoch; times++) {
+		for (int n=0; n<repeat; n++) {
 			CatsEye_layer *l = &this->layer[this->start];
 
 			// create data
@@ -1386,9 +1410,11 @@ int CatsEye_train(CatsEye *this, real *x, void *t, int N, int repeat, int random
 			// calculate the mean squared error
 			real mse = 0;
 			CatsEye_layer *l = &this->layer[a];
-			for (int i=0; i<l->inputs; i++) { // FIXME batch
+//			for (int i=0; i<l->inputs; i++) { // FIXME batch
+			for (int i=0; i<this->batch * l->inputs; i++) {
 				mse += l->dIn[i] * l->dIn[i];
 			}
+			mse /= this->batch;
 			err = 0.5 * (err + mse);
 		}
 		/*CatsEye_layer *l = &this->layer[a];

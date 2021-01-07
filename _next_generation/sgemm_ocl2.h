@@ -129,21 +129,26 @@ __kernel void transpose(__global float* gm, const int8 _info, const float4 _para
 
 );
 
+//#define OPENCL_SVM
 int _info[8];
 float _param[4];
 args_t _args[] = {
-	{ CL_MEM_READ_WRITE,  0, 0, 0, OCL_BUFFER },
-	{ 0, sizeof(int)*8, 0, _info, 0 },
-	{ 0, sizeof(float)*4, 0, _param, 0 },
+#ifdef OPENCL_SVM
+	{ CL_MEM_READ_WRITE|CL_MEM_SVM_FINE_GRAIN_BUFFER, 0, 0, OCL_SVM },
+#else
+	{ CL_MEM_READ_WRITE, 0, 0, OCL_BUFFER },
+#endif
+	{ 0, sizeof(int)*8, _info },
+	{ 0, sizeof(float)*4, _param },
 	{ 0, 0, 0, 0, 0 },
 };
 ocl_t _kernel[] = {
 	// global: m*MDIMC/MWG, n*NDIMC/NWG
-	{ "gemm_rnn", 0, 2,{/*M*/1,/*N*/1},{TS,TS}, _args },
+	{ _args, "gemm_rnn", 0, 2,{TS,TS} },
 
 	// global: k, n
-	{ "transpose", 0, 2,{1,1},{TRANSPOSEX,TRANSPOSEY}, _args },
-//	{ "im2col", 0, 1,{1},{16}, _args },
+	{ _args, "transpose", 0, 2,{TRANSPOSEX,TRANSPOSEY} },
+//	{ _args, "im2col", 0, 1,{16} },
 };
 int _ksz = sizeof(_kernel)/sizeof(_kernel[0]);
 #define KGEMM_RNN	_kernel[0]
@@ -166,9 +171,11 @@ static inline void sgemm_ocl(char ta, char tb, int m, int n, int k, float alpha,
 	int off_a = 0;
 	int off_b = mk;
 
+#ifndef OPENCL_SVM
 	oclWrite(_args[0].p, 0, sizeof(float)*mk, a);
 	oclWrite(_args[0].p, sizeof(float)*mk, sizeof(float)*kn, b);
 	if (beta!=0) oclWrite(_args[0].p, sizeof(float)*(mk+kn), sizeof(float)*mn, c);
+#endif
 
 	if (ta=='T') {
 		_info[0] = m;	// a
@@ -178,7 +185,6 @@ static inline void sgemm_ocl(char ta, char tb, int m, int n, int k, float alpha,
 		KTRANSPOSE.global_size[0] = ceil_int(m, TRANSPOSEX);
 		KTRANSPOSE.global_size[1] = ceil_int(k, TRANSPOSEY);
 
-		oclKernelArgsWrite(_args);
 		oclRun(&KTRANSPOSE);
 	}
 	if (tb=='T') {
@@ -189,7 +195,6 @@ static inline void sgemm_ocl(char ta, char tb, int m, int n, int k, float alpha,
 		KTRANSPOSE.global_size[0] = ceil_int(k, TRANSPOSEX);
 		KTRANSPOSE.global_size[1] = ceil_int(n, TRANSPOSEY);
 
-		oclKernelArgsWrite(_args);
 		oclRun(&KTRANSPOSE);
 	}
 
@@ -208,7 +213,9 @@ static inline void sgemm_ocl(char ta, char tb, int m, int n, int k, float alpha,
 //	printf("M:%zu N:%zu ", KGEMM_RNN.global_size[0], KGEMM_RNN.global_size[1]);
 
 	oclRun(&KGEMM_RNN);
+#ifndef OPENCL_SVM
 	oclRead(_args[0].p, sizeof(float)*(mk+kn), sizeof(float)*mn, c);
+#endif
 }
 void sgemm_ocl_finish()
 {

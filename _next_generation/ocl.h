@@ -1,7 +1,7 @@
 //---------------------------------------------------------
 //	Cat's eye
 //
-//		©2016-2020 Yuichiro Nakada
+//		©2016-2021 Yuichiro Nakada
 //---------------------------------------------------------
 
 #ifndef OCL_H_INCLUDED
@@ -9,8 +9,7 @@
 
 #include <stdio.h>
 #include <string.h>
-
-#define CL_USE_DEPRECATED_OPENCL_1_2_APIS
+#include <assert.h>
 
 #ifdef __APPLE__
 #include <OpenCL/opencl.h>
@@ -29,10 +28,7 @@
 #define OCL_INPUT	2
 #define OCL_INPUT_ONCE	4
 #define OCL_BUFFER	8
-// deprecated
-#define OCL_READ	1
-#define OCL_WRITE	2
-#define OCL_WRITE_ONCE	4
+#define OCL_SVM		16
 
 //#define _DEBUG
 #ifdef _DEBUG
@@ -99,18 +95,19 @@ static void __checkOclErrors(const cl_int err, const char* const func, const cha
 typedef struct {
 	int type;
 	size_t size;
-	cl_mem p;	// device memory
 	void *s;	// cpu memory
 	int flag;
+
+	cl_mem p;	// device memory
 } args_t;
 
 typedef struct {
+	args_t *a;
 	char *f;
 	cl_kernel k;
 	int dim;
-	size_t global_size[3];
 	size_t local_size[3];
-	args_t *a;
+	size_t global_size[3];
 } ocl_t;
 
 int ocl_device;
@@ -132,12 +129,10 @@ char *_getenv(char *environment_name)
 #define _getenv	getenv
 #endif
 
-// for OpenCL 1.x
 inline int ceil_int_div(int i, int div)
 {
 	return (i + div - 1) / div;
 }
-
 inline int ceil_int(int i, int div)
 {
 	return ceil_int_div(i, div) * div;
@@ -150,8 +145,6 @@ void oclSetup(int platform, int device)
 	cl_uint num_platforms;
 	cl_int ret;
 
-	ocl_device = device;
-
 	int type = CL_DEVICE_TYPE_ALL;
 	if (_getenv("FORCE_GPU")) {
 		type = CL_DEVICE_TYPE_GPU;
@@ -159,7 +152,11 @@ void oclSetup(int platform, int device)
 		type = CL_DEVICE_TYPE_CPU;
 	} else if (_getenv("FORCE_ACCELERATOR")) {
 		type = CL_DEVICE_TYPE_ACCELERATOR;
+	} else if (_getenv("DEVICE")) {
+		device = atoi(_getenv("DEVICE"));
 	}
+
+	ocl_device = device;
 
 	checkOcl(ret = clGetPlatformIDs(MAX_PLATFORMS, platform_id, &num_platforms));
 	checkOcl(ret = clGetDeviceIDs(platform_id[platform], type, MAX_DEVICES, device_id, &num_devices));
@@ -167,17 +164,19 @@ void oclSetup(int platform, int device)
 	// device name (option)
 	size_t size;
 	char str[256];
+//	clGetPlatformInfo(platform_id, CL_PLATFORM_VERSION, sizeof(str), str, NULL);
+//	printf("%s ", str);
 	clGetDeviceInfo(device_id[device], CL_DEVICE_NAME, sizeof(str), str, &size);
 	printf("%s (platform %d/%d, device %d/%d)\n", str, platform, num_platforms, device, num_devices);
 
 	ocl_context = clCreateContext(NULL, 1, &device_id[device], NULL, NULL, &ret);
-//#if ! defined(CL_VERSION_2_0)
+#if ! defined(CL_VERSION_2_0)
 	command_queue = clCreateCommandQueue(ocl_context, device_id[device], 0, &ret);
-//#else
+#else
 	/*cl_queue_properties queueProps[] =
 		{ CL_QUEUE_PROPERTIES, (CL_QUEUE_ON_DEVICE && CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE), 0 };*/
-//	command_queue = clCreateCommandQueueWithProperties(ocl_context, device_id[device], /*queueProps*/0, &ret);
-//#endif
+	command_queue = clCreateCommandQueueWithProperties(ocl_context, device_id[device], /*queueProps*/0, &ret);
+#endif
 
 #ifdef _DEBUG
 	size_t max_work_group_size;
@@ -232,8 +231,16 @@ void oclKernelArgs(ocl_t *kernel, int n)
 		args_t *args = kernel->a;
 		while (args->size) {
 			if (args->type>0) {
-				if (!args->p) args->p = clCreateBuffer(ocl_context, args->type, args->size, NULL, &ret);
-				if (!args->p) printf("clCreateBuffer error!! %d\n", ret);
+				if (args->flag==OCL_BUFFER && !args->p) {
+					args->p = clCreateBuffer(ocl_context, args->type, args->size, NULL, &ret);
+					if (!args->p) {
+						printf("clCreateBuffer error!! %d\n", ret);
+						assert(!args->p);
+					}
+				} else if (args->flag==OCL_SVM && !args->s) {
+					args->s = clSVMAlloc(ocl_context, args->type, args->size, 0);
+					assert(!args->s);
+				}
 			}
 			args++;
 		}
@@ -293,7 +300,13 @@ static inline void oclRun(ocl_t *kernel)
 #ifdef _DEBUG
 		printf("clSetKernelArg[%d]: size %lu %x\n", n, /*sizeof(cl_mem), (unsigned int)args->p,*/ args->size, (unsigned int)args->s);
 #endif
-		if (args->type>0) checkOcl(clSetKernelArg(kernel->k, n++, sizeof(cl_mem), (void*)&args->p));
+		if (args->type>0) {
+			if (args->flag==OCL_SVM) {
+				checkOcl(clSetKernelArgSVMPointer(kernel->k, n++, (void*)&args->s));
+			} else {
+				checkOcl(clSetKernelArg(kernel->k, n++, sizeof(cl_mem), (void*)&args->p));
+			}
+		}
 		else checkOcl(clSetKernelArg(kernel->k, n++, args->size, (void*)args->s));
 		args++;
 	}
@@ -313,6 +326,8 @@ void oclReleaseKernel(ocl_t *kernel, int n)
 			if (args->type>0 && args->p) {
 				clReleaseMemObject(args->p);
 				args->p = 0;
+			} else if (args->flag==OCL_SVM) {
+				clSVMFree(ocl_context, args->s);
 			}
 			args++;
 		}

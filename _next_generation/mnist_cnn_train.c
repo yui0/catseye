@@ -1,15 +1,21 @@
 //---------------------------------------------------------
 //	Cat's eye
 //
-//		©2016-2020 Yuichiro Nakada
+//		©2016-2021 Yuichiro Nakada
 //---------------------------------------------------------
 
 // gcc mnist_cnn_train.c -o mnist_cnn_train -lm -Ofast -fopenmp -lgomp
 // clang mnist_cnn_train.c -o mnist_cnn_train -lm -Ofast -march=native -funroll-loops `pkg-config --libs --cflags OpenCL` -mf16c
+
 #define CATS_USE_FLOAT
+//#define CATS_OPENCL
+//#define CATS_OPENGL
 #include "catseye.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
+
+#define ETA 0.01	// batch 1
+//#define ETA 0.0001
 
 int main()
 {
@@ -18,16 +24,19 @@ int main()
 	int sample = 60000;
 
 	CatsEye_layer u[] = {	// 99.19% (100)
-		{  size, CATS_CONV, 0.01, .ksize=7, .stride=1, .ch=32 },
+		{  size, CATS_CONV, ETA, .ksize=7, .stride=1, .ch=32 },
 //		{     0, _CATS_ACT_RELU }, // minus??
 		{     0, _CATS_ACT_LEAKY_RELU },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
-		{     0, CATS_LINEAR, 0.01 },
+		{     0, CATS_LINEAR, ETA },
 		{ label, _CATS_ACT_SIGMOID },
 		//{ label, _CATS_ACT_SOFTMAX },
 		{ label, CATS_LOSS_0_1 },
 	};
-	CatsEye cat;
+//	CatsEye cat = { .batch=32 };
+//	CatsEye cat = { .batch=1500 };	// 87%
+//	CatsEye cat = { .batch=sample };// 26%
+	CatsEye cat = { .batch=1 };	// 99% (1 * 1500)
 	CatsEye__construct(&cat, u);
 
 	real *x = malloc(sizeof(real)*size*sample);	// 訓練データ
@@ -53,8 +62,9 @@ int main()
 
 	// 訓練
 	printf("Starting training using (stochastic) gradient descent\n");
-//	_CatsEye_train(&cat, x, t, sample, 100/*repeat*/, 1500/*random batch*/, sample/10);
+//	CatsEye_train(&cat, x, t, sample, 100/*repeat*/, 1500/*random batch*/, sample/10);
 	CatsEye_train(&cat, x, t, sample, 100/*repeat*/, 1500/*random batch*/, 0);
+//	CatsEye_train(&cat, x, t, sample, 3/*repeat*/, 1500/*random batch*/, 0); // for batch = sample
 	printf("Training complete\n");
 //	CatsEye_save(&cat, "mnist.weights");
 //	CatsEye_saveJson(&cat, "mnist_cnn_train.json");
@@ -86,6 +96,7 @@ int main()
 		}
 //		printf("%d -> %d\n", p, t[i]);
 	}
+	printf("\n");
 	for (int i=0; i<10; i++) {
 		for (int j=0; j<10; j++) {
 			printf("%3d ", result[i][j]);
