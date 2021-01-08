@@ -13,7 +13,7 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
-#define ETA	0.01
+#define ETA	0.001
 
 int main()
 {
@@ -68,7 +68,7 @@ int main()
 
 	// 結果の表示
 	static int result[10][10];
-	unsigned char *pixels = calloc(1, size*100);
+	uint8_t *pixels = calloc(1, size*100);
 	int c = 0;
 	int r = 0;
 	for (int i=0; i<sample; i++) {
@@ -77,11 +77,9 @@ int main()
 		if (p==t[i]) r++;
 		else {
 			if (c<100) {
-//				CatsEye_visualize(x+size*i, size, k*3, &pixels[(c/10)*size*10+(c%10)*k*3], k*3*10);
-
-				_CatsEye_visualize(x+size*i, 32*32, 32, &pixels[(c/10)*size*10+(c%10)*k*3], k*10, 3);
+				CatsEye_visualize(x+size*i, 32*32, 32, &pixels[(c/10)*size*10+(c%10)*k*3], k*10, 3);
 				/*real *xx = &x[size*i];
-				unsigned char *p = &pixels[(c/10)*size*10+(c%10)*k*3];
+				uint8_t *p = &pixels[(c/10)*size*10+(c%10)*k*3];
 				for (int y=0; y<k; y++) {
 					for (int x=0; x<k; x++) {
 						p[(y*k*10+x)*3  ] = xx[y*k+x] * 255.0;
@@ -112,8 +110,7 @@ int main()
 	for (int i=0; i<10*10; i++) {
 		int p = CatsEye_predict(&cat, x+size*i);
 
-//		CatsEye_visualize(x+size*i, size/3, k, &pixels[p*k*k*10+(n[p]%10)*k], k*10);
-		_CatsEye_visualize(x+size*i, 32*32, 32, &pixels[(p*k*k*10+(n[p]%10)*k)*3], k*10, 3);
+		CatsEye_visualize(x+size*i, 32*32, 32, &pixels[(p*k*k*10+(n[p]%10)*k)*3], k*10, 3);
 		n[p]++;
 	}
 //	stbi_write_png("cifar10_classify.png", k*10, k*10, 1, pixels, 0);
@@ -131,7 +128,7 @@ int main()
 
 			int mch = l->ch > 10 ? 10 : l->ch;
 			for (int ch=0; ch<mch; ch++) {
-				CatsEye_visualize(&l->z[ch*l->ox*l->oy], l->ox*l->oy, l->ox, &pixels[n*(k+2) +ch*(k+2)*k*10], k*10);
+				CatsEye_visualize(&l->z[ch*l->ox*l->oy], l->ox*l->oy, l->ox, &pixels[n*(k+2) +ch*(k+2)*k*10], k*10, 1);
 			}
 		}
 	}

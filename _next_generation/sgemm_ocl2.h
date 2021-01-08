@@ -127,6 +127,46 @@ __kernel void transpose(__global float* gm, const int8 _info, const float4 _para
 	}
 }
 
+__kernel void im2col(__global float* gm, const int8 _info, const float4 _param)
+{
+	__global float* im_src = (__global float*)(gm + _info.s0);
+	int channels   = _info.s1;
+	int height_inp = _info.s2;
+	int width_inp  = _info.s3;
+	int kernel_h   = _info.s4;
+	int kernel_w   = _info.s4;
+	int pad_h      = _info.s5;
+	int pad_w      = _info.s5;
+	int stride_h   = _info.s6;
+	int stride_w   = _info.s6;
+	__global float* im_col = (__global float*)(gm + _info.s7);
+	int height_out = (height_inp + 2 * pad_h - kernel_h) / stride_h + 1;
+	int width_out  = (width_inp + 2 * pad_w - kernel_w) / stride_w + 1;
+
+	int index = get_global_id(0);
+	if (index >= height_out * width_out * channels) return;
+
+	int j_out = index % width_out;
+	int i_out = (index / width_out) % height_out;
+	int c_inp = (index / width_out) / height_out;
+
+	int c_out = c_inp * kernel_h * kernel_w;
+	int i_inp = i_out * stride_h - pad_h;
+	int j_inp = j_out * stride_w - pad_w;
+
+	im_src += (c_inp * height_inp + i_inp) * width_inp + j_inp;
+	im_col += (c_out * height_out + i_out) * width_out + j_out;
+
+	for (int ki = 0; ki < kernel_h; ++ki) {
+		for (int kj = 0; kj < kernel_w; ++kj) {
+			int i = i_inp + ki;
+			int j = j_inp + kj;
+			*im_col = (i >= 0 && j >= 0 && i < height_inp && j < width_inp) ? im_src[ki * width_inp + kj] : 0;
+			im_col += height_out * width_out;
+		}
+	}
+}
+
 );
 
 //#define OPENCL_SVM
@@ -148,7 +188,7 @@ ocl_t _kernel[] = {
 
 	// global: k, n
 	{ _args, "transpose", 0, 2,{TRANSPOSEX,TRANSPOSEY} },
-//	{ _args, "im2col", 0, 1,{16} },
+	{ _args, "im2col", 0, 1,{16} },
 };
 int _ksz = sizeof(_kernel)/sizeof(_kernel[0]);
 #define KGEMM_RNN	_kernel[0]
@@ -221,5 +261,182 @@ void sgemm_ocl_finish()
 {
 	oclReleaseKernel(_kernel, _ksz);
 	oclFinish();
+}
+
+static inline void ocl_im2col(float *inputs, int ich, int w, int h, int k, int pad, int stride, float *outputs)
+{
+	// im2col(pix, 3, h, w, 4, 4, 2, 2, 1, 1, workspace);
+	int hcol = (h + 2 * pad - k) / stride + 1;
+	int wcol = (w + 2 * pad - k) / stride + 1;
+	_info[0] = wcol*hcol*ich*k*k;	// inputs
+	_info[1] = ich;
+	_info[2] = h;
+	_info[3] = w;
+	_info[4] = k;
+	_info[5] = pad;
+	_info[6] = stride;
+	_info[7] = 0;			// outputs
+	KIM2COL.global_size[0] = ceil_int(_info[0], 16);
+	oclWrite(_args[0].p, sizeof(float)*_info[0], sizeof(float)*w*h*ich, inputs);
+	oclRun(&KIM2COL);
+	oclRead(_args[0].p, sizeof(float)*_info[7], sizeof(float)*_info[0], outputs);
+}
+static inline void ocl_convolution(float *inputs, int ich, int w, int h, float *weights, int k, int pad, int stride, float *outputs, int ch)
+{
+	// im2col(pix, 3, h, w, 4, 4, 2, 2, 1, 1, workspace);
+	int hcol = (h + 2 * pad - k) / stride + 1;
+	int wcol = (w + 2 * pad - k) / stride + 1;
+	oclWrite(_args[0].p, sizeof(float)*wcol*hcol*ich*k*k, sizeof(float)*w*h*ich, inputs);
+	_info[0] = wcol*hcol*ich*k*k;	// inputs
+	_info[1] = ich;
+	_info[2] = h;
+	_info[3] = w;
+	_info[4] = k;
+	_info[5] = pad;
+	_info[6] = stride;
+	_info[7] = 0;			// outputs
+	KIM2COL.global_size[0] = ceil_int(_info[0], 16);
+	oclRun(&KIM2COL);
+
+	// sgemm_ocl('N', 'T', ch, wcol*hcol, k*k, magic_kernel, workspace, pix);
+	oclWrite(_args[0].p, sizeof(float)*(wcol*hcol*ich*k*k), sizeof(float)*k*k*ich*ch, weights);
+	_info[0] = ch;
+	_info[1] = wcol*hcol /* *batch */;
+	_info[2] = k*k*ich;
+	_info[3] = wcol*hcol*ich*k*k;			// a (weights)
+	_info[4] = 0;					// b (col)
+	_info[5] = wcol*hcol*ich*k*k +k*k*ich*ch;	// c
+	KGEMM_RNN.global_size[0] = ceil_int(_info[0], TS);
+	KGEMM_RNN.global_size[1] = ceil_int(_info[1], TS);
+	oclRun(&KGEMM_RNN);
+	oclRead(_args[0].p, sizeof(float)*_info[5], sizeof(float)*wcol*hcol*ch, outputs);
+}
+static inline void im2col(const float *im, const int channels,
+	const int height, const int width, const int kernel_h, const int kernel_w,
+	const int pad_h, const int pad_w, const int stride_h, const int stride_w, float *col)
+{
+	int height_col = (height + 2 * pad_h - kernel_h) / stride_h + 1;
+	int width_col = (width + 2 * pad_w - kernel_w) / stride_w + 1;
+	int channels_col = channels * kernel_h * kernel_w;
+
+	for (int c=0; c<channels_col; c++) {
+		int w_offset = c % kernel_w;
+		int h_offset = (c / kernel_w) % kernel_h;
+		int c_im = c / kernel_h / kernel_w;
+		for (int h=0; h<height_col; h++) {
+			for (int w=0; w<width_col; w++) {
+				int h_pad = h * stride_h - pad_h + h_offset;
+				int w_pad = w * stride_w - pad_w + w_offset;
+				if (h_pad >= 0 && h_pad < height && w_pad >= 0 && w_pad < width)
+					col[(c * height_col + h) * width_col + w] =
+						im[(c_im * height + h_pad) * width + w_pad];
+				else
+					col[(c * height_col + h) * width_col + w] = 0;
+			}
+		}
+	}
+}
+float workspace[256*256*128*64];
+static inline void ocl_convolution_LReLU(float *inputs, int ich, int w, int h, float *weights, int k, int pad, int stride, float *outputs, int ch, float *bias)
+{
+	// im2col(pix, 3, h, w, 4, 4, 2, 2, 1, 1, workspace);
+	int hcol = (h + 2 * pad - k) / stride + 1;
+	int wcol = (w + 2 * pad - k) / stride + 1;
+/*	_info[0] = wcol*hcol*ich*k*k;	// inputs
+	_info[1] = ich;
+	_info[2] = h;
+	_info[3] = w;
+	_info[4] = k;
+	_info[5] = pad;
+	_info[6] = stride;
+	_info[7] = 0;			// outputs
+	KIM2COL.global_size[0] = ceil_int(_info[0], 16);
+//	printf("clEnqueueWriteBuffer: %lu %lu\n", sizeof(float)*_info[0], sizeof(float)*w*h*ich);
+	oclWrite(_args[0].p, sizeof(float)*_info[0], sizeof(float)*w*h*ich, inputs);
+	oclRun(&KIM2COL);*/
+	im2col(inputs, ich, h, w, k, k, pad, pad, stride, stride, workspace);
+	sgemm_ocl('N', 'N', ch, wcol*hcol, k*k*ich, 1.0, weights, workspace, 0, outputs);
+//	oclWrite(_args[0].p, 0, sizeof(float)*wcol*hcol*ich*k*k, workspace);
+
+#if 0
+	// sgemm_ocl('N', 'T', ch, wcol*hcol, k*k, magic_kernel, workspace, pix);
+	_info[0] = ch;
+	_info[1] = wcol*hcol /* *batch */;
+	_info[2] = k*k*ich;
+	_info[3] = wcol*hcol*ich*k*k;			// a (weights)
+	_info[4] = 0;					// b (col)
+	_info[5] = wcol*hcol*ich*k*k +k*k*ich*ch;	// c
+	_info[6] = _info[5] + wcol*hcol*ch;
+	KGEMM_RNN.global_size[0] = ceil_int(_info[0], TS);
+	KGEMM_RNN.global_size[1] = ceil_int(_info[1], TS);
+//	printf("clEnqueueWriteBuffer: %lu %lu\n", sizeof(float)*_info[3], sizeof(float)*k*k*ich*ch);
+	oclWrite(_args[0].p, sizeof(float)*_info[3], sizeof(float)*k*k*ich*ch, weights);
+//	printf("clEnqueueWriteBuffer: %lu %lu\n", sizeof(float)*_info[6], sizeof(float)*ch);
+	//oclWrite(_args[0].p, sizeof(float)*_info[6], sizeof(float)*ch, bias);
+	oclRun(&KGEMM_RNN);
+//	printf("clEnqueueReadBuffer: %lu %lu\n", sizeof(float)*_info[5], sizeof(float)*wcol*hcol*ch);
+	oclRead(_args[0].p, sizeof(float)*_info[5], sizeof(float)*wcol*hcol*ch, outputs);
+#endif
+
+	// +bias LReLU
+	float *p = outputs;
+	for (int i=0; i<ch; i++) {
+		for (int n=0; n<wcol*hcol; n++) {
+			*p += bias[i];
+			*p = *p>0 ? (*p) : (*p)*0.1;
+			p++;
+		}
+	}
+}
+
+static int ocl_wsize;
+static int ocl_off;
+static int ocl_woff;
+static inline void ocl_conv_init(float *weights, int wsize, float *bias, int bsize, /*float *X, int size,*/ int woff)
+{
+	oclWrite(_args[0].p, 0, sizeof(float)*wsize, weights);
+	oclWrite(_args[0].p, sizeof(float)*wsize, sizeof(float)*bsize, bias);
+//	oclWrite(_args[0].p, sizeof(float)*(wsize+bsize), sizeof(float)*size, X);
+	ocl_wsize = wsize;
+	ocl_off = wsize+bsize;
+	ocl_woff = ocl_off + woff;
+}
+static inline void ocl_conv_LReLU(int inputs, int ich, int w, int h, int weights, int k, int pad, int stride, int outputs, int ch, int bias)
+{
+	// im2col(pix, 3, h, w, 4, 4, 2, 2, 1, 1, workspace);
+	int hcol = (h + 2 * pad - k) / stride + 1;
+	int wcol = (w + 2 * pad - k) / stride + 1;
+	_info[0] = ocl_off + inputs;		// inputs
+	_info[1] = ich;
+	_info[2] = h;
+	_info[3] = w;
+	_info[4] = k;
+	_info[5] = pad;
+	_info[6] = stride;
+	_info[7] = ocl_woff;			// outputs
+	KIM2COL.global_size[0] = ceil_int(_info[0], 16);
+	oclRun(&KIM2COL);
+
+	// sgemm_ocl('N', 'T', ch, wcol*hcol, k*k, magic_kernel, workspace, pix);
+	_info[0] = ch;
+	_info[1] = wcol*hcol /* *batch */;
+	_info[2] = k*k*ich;
+	_info[3] = weights;			// a (weights)
+	_info[4] = ocl_woff;			// b (col)
+	_info[5] = ocl_off + outputs;		// c
+	_info[6] = ocl_wsize + bias;		// bias
+	KGEMM_RNN.global_size[0] = ceil_int(_info[0], TS);
+	KGEMM_RNN.global_size[1] = ceil_int(_info[1], TS);
+	oclRun(&KGEMM_RNN);
+
+	// +bias LReLU
+/*	float *p = outputs;
+	for (int i=0; i<ch; i++) {
+		for (int n=0; n<wcol*hcol; n++) {
+			*p += bias[i];
+			*p = *p>0 ? (*p) : (*p)*0.1;
+			p++;
+		}
+	}*/
 }
 

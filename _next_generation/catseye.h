@@ -166,7 +166,7 @@ typedef struct __CatsEye_layer {
 	int ksize;		// CNN
 	int stride;		// CNN
 	int padding;		// CNN
-	int px, py, pz;	// CNN (AUTO: padding)
+	int px, py, pz;		// CNN (AUTO: padding)
 	int ich, ch;		// CNN
 	int sx, sy, ox, oy;	// CNN (AUTO: i/o size)
 
@@ -1398,14 +1398,25 @@ int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random,
 
 			// calculate the error and update the weights
 			int i = this->end;
-			/*CatsEye_layer **/l = &this->layer[i--];
+			l = &this->layer[i--];
 			l->backward(l);
+/*{
+	for (int i=0; i<l->inputs; i++) {
+		for (int n=0; n<this->batch; n++) {
+			l->dIn[i] += l->dIn[l->inputs*n+i];
+		}
+		l->dIn[i] /= this->batch;
+	}
+}
+int batch = this->batch;
+this->batch = 1;*/
 			l--;
 			for (; i>=this->start; i--) {
 				if (/*!(l->fix&2)*/i>=this->stop) l->backward(l);
 				if (!(l->fix&1)) l->update(l);
 				l--;
 			}
+//this->batch = batch;
 		}
 
 		real err = 0;
@@ -1420,9 +1431,9 @@ int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random,
 			mse /= this->batch;
 			err = 0.5 * (err + mse);
 		}
-		/*CatsEye_layer *l = &this->layer[a];
+/*		CatsEye_layer *l = &this->layer[a];
 		for (int i=0; i<this->batch * l->inputs; i++) err += l->dIn[i] * l->dIn[i];
-		err /= this->batch * l->inputs;*/
+		err /= (this->batch * l->inputs);*/
 
 		gettimeofday(&stop, NULL);
 		printf("%7d, err %f [%.2fs]", times, err, (stop.tv_sec - start.tv_sec) + (stop.tv_usec - start.tv_usec)*0.001*0.001);
@@ -1506,19 +1517,7 @@ int _CatsEye_saveJson(CatsEye *this, char *filename)
 }
 
 // visualize
-void CatsEye_visualize(real *o, int n, int size, unsigned char *p, int width)
-{
-	real max = o[0];
-	real min = o[0];
-	for (int i=1; i<n; i++) {
-		if (max < o[i]) max = o[i];
-		if (min > o[i]) min = o[i];
-	}
-	for (int i=0; i<n; i++) {
-		p[(i/size)*width + i%size] = (unsigned char)((o[i] - min) / (max - min) * 255.0);
-	}
-}
-void _CatsEye_visualize(real *o, int n, int sx, unsigned char *p, int width, int ch)
+void CatsEye_visualize(real *o, int n, int sx, uint8_t *p, int width, int ch)
 {
 	real max = o[0];
 	real min = o[0];
@@ -1528,7 +1527,7 @@ void _CatsEye_visualize(real *o, int n, int sx, unsigned char *p, int width, int
 	}
 	for (int c=0; c<ch; c++) {
 		for (int i=0; i<n; i++) {
-			p[((i/sx)*width + i%sx)*ch +c] = (unsigned char)((o[i+c*n] - min) / (max - min) * 255.0);
+			p[((i/sx)*width + i%sx)*ch +c] = (uint8_t)((o[i+c*n] - min) / (max - min) * 255.0);
 		}
 	}
 }
@@ -1536,7 +1535,7 @@ void _CatsEye_visualize(real *o, int n, int sx, unsigned char *p, int width, int
 // https://www.cs.toronto.edu/~kriz/cifar.html
 real *CatsEye_loadCifar(char *name, int size, int lsize, int sample, int16_t **label)
 {
-	unsigned char *data = malloc((size+lsize)*sample);	// +1 for label
+	uint8_t *data = malloc((size+lsize)*sample);	// +1 for label
 	if (!data) { printf("Can't open %s\n", name); return 0; }
 	int16_t *t = malloc(sizeof(int16_t)*sample);
 	if (!t) { printf("Can't open %s\n", name); return 0; }
@@ -1623,7 +1622,7 @@ real *CatsEye_loadCifar(char *name, int size, int lsize, int sample, int16_t **l
 }*/
 
 // visualize weights [w1]
-/*void CatsEye_visualizeWeights(CatsEye *this, int n, int size, unsigned char *p, int width)
+/*void CatsEye_visualizeWeights(CatsEye *this, int n, int size, uint8_t *p, int width)
 {
 	real *w = &this->w[0][n];
 	real max = w[0];
@@ -1633,14 +1632,14 @@ real *CatsEye_loadCifar(char *name, int size, int lsize, int sample, int16_t **l
 		if (min > w[i * SIZE(1)]) min = w[i * SIZE(1)];
 	}
 	for (int i=0; i<SIZE(0); i++) {
-		p[(i/size)*width + i%size] = (unsigned char)((w[i * SIZE(1)] - min) / (max - min) * 255.0);
+		p[(i/size)*width + i%size] = (uint8_t)((w[i * SIZE(1)] - min) / (max - min) * 255.0);
 	}
 }*/
 
 real *CatsEye_loadMnist(char *name, char *name2, int sample, int **label)
 {
 	int size = 784;
-	unsigned char *data = malloc((size+1)*sample);		// +1 for label
+	uint8_t *data = malloc((size+1)*sample);		// +1 for label
 	if (!data) return 0;
 	int *t = malloc(sizeof(int)*sample);
 	if (!t) return 0;
