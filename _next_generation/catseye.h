@@ -303,10 +303,10 @@ static void CatsEye_linear_forward(CatsEye_layer *l)
 	// output(m,n) := input(m=1,k) * weightsT(k,n)
 	gemm_rnt(l->p->batch, l->outputs, l->inputs, 1, l->x, l->W, 0, l->z);
 //	for (int i=0; i<l->outputs; i++) l->z[i] += l->W[l->inputs*l->outputs +i]; // bias!!
-/*	for (int n=0; n<l->p->batch; n++) {
+	for (int n=0; n<l->p->batch; n++) {
 //		gemm_rnt(1, l->outputs, l->inputs, 1, l->x+l->inputs*n, l->W, 0, l->z+l->outputs*n);
 		for (int i=0; i<l->outputs; i++) l->z[n*l->outputs +i] += l->W[l->inputs*l->outputs +i]; // bias!!
-	}*/
+	}
 //	for (int i=l->inputs-10; i<l->inputs; i++) printf("%f ", l->x[i]);
 //	printf("\n");
 
@@ -377,10 +377,10 @@ static void CatsEye_linear_update(CatsEye_layer *l)
 	// W := W - eta * dOutT * x
 	gemm_rtn(l->outputs, l->inputs, l->p->batch, -l->eta, l->dOut, l->x, 1, l->W);
 //	for (int i=0; i<l->outputs; i++) l->W[l->inputs*l->outputs +i] += -l->eta * l->dOut[i]; // bias!!
-/*	for (int n=0; n<l->p->batch; n++) {
+	for (int n=0; n<l->p->batch; n++) {
 //		gemm_rtn(l->outputs, l->inputs, 1, -l->eta, l->dOut+l->outputs*n, l->x+l->inputs*n, 1, l->W);
 		for (int i=0; i<l->outputs; i++) l->W[l->inputs*l->outputs +i] -= l->eta * l->dOut[n*l->outputs +i]; // bias!!
-	}*/
+	}
 //	for (int i=0; i<10; i++) printf("%f ", l->dOut[i]);
 /*	for (int i=0; i<10; i++) printf("%f ", l->W[i]);
 	printf("\n");*/
@@ -390,6 +390,7 @@ static void CatsEye_linear_update(CatsEye_layer *l)
 #endif
 }
 
+#if 0
 static void CatsEye_bias_forward(CatsEye_layer *l)
 {
 	for (int n=0; n<l->p->batch; n++) {
@@ -411,6 +412,7 @@ static void CatsEye_bias_update(CatsEye_layer *l)
 		for (int i=0; i<l->outputs; i++) l->W[i] -= l->eta * l->dOut[n*l->outputs +i];
 	}
 }
+#endif
 
 // convolution [https://github.com/hiroyam/dnn-im2col, https://github.com/pjreddie/darknet]
 static inline void im2col(const real *im, const int channels,
@@ -1364,7 +1366,8 @@ int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random,
 	int repeat = N;			// for random
 	if (random) repeat = random;
 	if (this->batch>1) {
-		repeat = N/this->batch;
+//		repeat = N/this->batch;
+		repeat /= this->batch;
 		printf(" repeat: %d\n", repeat);
 	}
 

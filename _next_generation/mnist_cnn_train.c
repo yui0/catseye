@@ -14,8 +14,8 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
-#define ETA 0.01	// batch 1
-//#define ETA 0.0001
+#define ETA 0.01	// batch 1,64
+//#define ETA 0.0001	// batch 1500
 
 int main()
 {
@@ -23,7 +23,7 @@ int main()
 	int label = 10;	// 出力層ユニット(0-9)
 	int sample = 60000;
 
-	CatsEye_layer u[] = {	// 99.19% (100)
+	CatsEye_layer u[] = {	// 99.21% (100)
 		{  size, CATS_CONV, ETA, .ksize=7, .stride=1, .ch=32 },
 //		{     0, _CATS_ACT_RELU }, // minus??
 		{     0, _CATS_ACT_LEAKY_RELU },
@@ -33,9 +33,8 @@ int main()
 		//{ label, _CATS_ACT_SOFTMAX },
 		{ label, CATS_LOSS_0_1 },
 	};
-//	CatsEye cat = { .batch=32 };
-//	CatsEye cat = { .batch=1500 };	// 87%
-//	CatsEye cat = { .batch=sample };// 26%
+//	CatsEye cat = { .batch=64 };	// 63%
+//	CatsEye cat = { .batch=1500 };	// 89%
 	CatsEye cat = { .batch=1 };	// 99% (1 * 1500)
 	CatsEye__construct(&cat, u);
 
