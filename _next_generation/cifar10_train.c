@@ -13,16 +13,17 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
-#define ETA	0.001
+//#define ETA	0.01
+#define ETA	0.0001
 
 int main()
 {
 	int k = 32;		// image size
 	int size = 32*32*3;	// 入力層
-	int label = 10;	// 出力層
+	int label = 10;		// 出力層
 	int sample = 10000;
 
-	CatsEye_layer u[] = {	// 52.4%(10), 95.8%(1000), 99.7%(2000)
+	CatsEye_layer u[] = {	// 52.4%(10), 85.1%(100), 95.8%(1000), 99.7%(2000)
 		{  size, CATS_PADDING, .sx=32, .sy=32, .ich=3, .padding=1 },
 		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=10, .ich=3 },
 //		{     0, CATS_BATCHNORMAL },

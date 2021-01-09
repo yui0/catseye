@@ -1371,6 +1371,8 @@ int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random,
 		printf(" repeat: %d\n", repeat);
 	}
 
+	printf("epoch    loss     elapsed time\n");
+
 	struct timeval start, stop;
 	gettimeofday(&start, NULL);
 	for (int times=0; times<epoch; times++) {
@@ -1436,14 +1438,16 @@ this->batch = 1;*/
 		err /= (this->batch * l->inputs);*/
 
 		gettimeofday(&stop, NULL);
-		printf("%7d, err %f [%.2fs]", times, err, (stop.tv_sec - start.tv_sec) + (stop.tv_usec - start.tv_usec)*0.001*0.001);
+		printf("%7d, %f [%.2fs]", times, err, (stop.tv_sec - start.tv_sec) + (stop.tv_usec - start.tv_usec)*0.001*0.001);
 
 		if (verify) {
 			int r = CatsEye_accuracy(this, x+this->layer[0].inputs*N, (int16_t*)t+N, verify);
 			printf(" %.1f%%", (float)r/verify*100.0);
 		}
 		printf("\n");
-		if (isnan(err)) return 0;
+		if (isnan(err) || isinf(err)) {
+			return 0;
+		}
 	}
 	return 1;
 }

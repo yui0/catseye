@@ -65,7 +65,7 @@ int main()
 	printf("Starting training using (stochastic) gradient descent\n");
 	CatsEye_train(&cat, x, t, sample, 100/*repeat*/, 1500/*random batch*/, sample/10);
 //	CatsEye_train(&cat, x, t, sample, 100/*repeat*/, 1500/*random batch*/, 0);
-//	CatsEye_train(&cat, x, t, sample, 2/*repeat*/, sample, 0); // 98.95%
+//	CatsEye_train(&cat, x, t, sample, 2/*repeat*/, sample, 0); // 98.97%
 	printf("Training complete\n");
 //	CatsEye_save(&cat, "mnist.weights");
 //	CatsEye_saveJson(&cat, "mnist_cnn_train.json");
@@ -113,31 +113,31 @@ int main()
 
 		// 初段フィルタ出力
 		CatsEye_layer *l = &cat.layer[0];
-		int s = l->ksize*l->ksize;
-		CatsEye_visualize(l->z+s*0, s, l->ksize, &pixels[i*28], 28*10, 1);
-		CatsEye_visualize(l->z+s*1, s, l->ksize, &pixels[28*28*10+i*28], 28*10, 1);
-		CatsEye_visualize(l->z+s*2, s, l->ksize, &pixels[28*28*10*2+i*28], 28*10, 1);
-		CatsEye_visualize(l->z+s*3, s, l->ksize, &pixels[28*28*10*3+i*28], 28*10, 1);
-		CatsEye_visualize(l->z+s*4, s, l->ksize, &pixels[28*28*10*4+i*28], 28*10, 1);
+		int s = l->ox*l->oy;
+		CatsEye_visualize(l->z+s*0, s, l->ox, &pixels[28*28*10*0+i*28], 28*10, 1);
+		CatsEye_visualize(l->z+s*1, s, l->ox, &pixels[28*28*10*1+i*28], 28*10, 1);
+		CatsEye_visualize(l->z+s*2, s, l->ox, &pixels[28*28*10*2+i*28], 28*10, 1);
+		CatsEye_visualize(l->z+s*3, s, l->ox, &pixels[28*28*10*3+i*28], 28*10, 1);
+		CatsEye_visualize(l->z+s*4, s, l->ox, &pixels[28*28*10*4+i*28], 28*10, 1);
 
 		// 2段目フィルタ出力
 		l = &cat.layer[1];
-		s = l->ksize*l->ksize;
-		CatsEye_visualize(l->z+s*0, s, l->ksize, &pixels[28*28*10*5+i*28], 28*10, 1);
-		CatsEye_visualize(l->z+s*1, s, l->ksize, &pixels[28*28*10*6+i*28], 28*10, 1);
-		CatsEye_visualize(l->z+s*2, s, l->ksize, &pixels[28*28*10*7+i*28], 28*10, 1);
-		CatsEye_visualize(l->z+s*3, s, l->ksize, &pixels[28*28*10*8+i*28], 28*10, 1);
-		CatsEye_visualize(l->z+s*4, s, l->ksize, &pixels[28*28*10*9+i*28], 28*10, 1);
-/*		CatsEye_visualizeUnits(&cat, 0, 2, 0, &pixels[28*28*10*5+i*28], 28*10);
-		CatsEye_visualizeUnits(&cat, 0, 2, 1, &pixels[28*28*10*6+i*28], 28*10);
-		CatsEye_visualizeUnits(&cat, 0, 2, 2, &pixels[28*28*10*7+i*28], 28*10);
-		CatsEye_visualizeUnits(&cat, 0, 2, 3, &pixels[28*28*10*8+i*28], 28*10);*/
+		s = l->ox*l->oy;
+		CatsEye_visualize(l->z+s*0, s, l->ox, &pixels[28*28*10*5+i*28], 28*10, 1);
+		CatsEye_visualize(l->z+s*1, s, l->ox, &pixels[28*28*10*6+i*28], 28*10, 1);
+		CatsEye_visualize(l->z+s*2, s, l->ox, &pixels[28*28*10*7+i*28], 28*10, 1);
+		CatsEye_visualize(l->z+s*3, s, l->ox, &pixels[28*28*10*8+i*28], 28*10, 1);
+		CatsEye_visualize(l->z+s*4, s, l->ox, &pixels[28*28*10*9+i*28], 28*10, 1);
 	}
 	// フィルタ
-/*	for (int i=0; i<u[CHANNEL+LPLEN]; i++) {
-		int n = (u[KSIZE+LPLEN]+2);
-		CatsEye_visualizeUnits(&cat, 1, 0, i, &pixels[28*28*10*(9+(i*n)/(28*10))+(i*n)%(28*10)], 28*10);
-	}*/
+	{
+	CatsEye_layer *l = &cat.layer[1];
+	for (int i=0; i<l->ch; i++) {
+		int s = l->ksize*l->ksize;
+		int n = l->ksize+2;
+		CatsEye_visualize(l->W+s*i, s, l->ksize, &pixels[28*28*10*(9+(i*n)/(28*10))+(i*n)%(28*10)], 28*10, 1);
+	}
+	}
 	stbi_write_png("mnist_cnn_train.png", 28*10, 28*10, 1, pixels, 28*10);
 	free(pixels);
 
