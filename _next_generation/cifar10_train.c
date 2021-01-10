@@ -14,7 +14,10 @@
 #include "stb_image_write.h"
 
 //#define ETA	0.01
-#define ETA	0.0001
+#define ETA	0.007 // 76%(100)
+//#define ETA	0.005 // 76%(100)
+//#define ETA	0.001 // 51%(100)
+//#define ETA	0.0001
 
 int main()
 {
@@ -27,26 +30,28 @@ int main()
 		{  size, CATS_PADDING, .sx=32, .sy=32, .ich=3, .padding=1 },
 		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=10, .ich=3 },
 //		{     0, CATS_BATCHNORMAL },
-		{     0, _CATS_ACT_LEAKY_RELU },
-//		{     0, _CATS_ACT_RRELU, .min=-0.1, .max=0.1 },
+		{     0, CATS_ACT_LEAKY_RELU },
+//		{     0, CATS_ACT_RRELU, .min=-0.1, .max=0.1 },
 
 		{     0, CATS_PADDING, .padding=1 },
 		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=10, },
 //		{     0, CATS_BATCHNORMAL },
-		{     0, _CATS_ACT_LEAKY_RELU },
-//		{     0, _CATS_ACT_RRELU, .min=-0.1, .max=0.1 },
+		{     0, CATS_ACT_LEAKY_RELU },
+//		{     0, CATS_ACT_RRELU, .min=-0.1, .max=0.1 },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
 //		{     0, CATS_AVGPOOL, .ksize=2, .stride=2 },
 
-		{     0, CATS_LINEAR, 0.01, .outputs=256 },
+		//{     0, CATS_LINEAR, 0.01, .outputs=256 },
+		{     0, CATS_LINEAR, ETA, .outputs=256 },
 //		{     0, CATS_BATCHNORMAL },
-		{     0, _CATS_ACT_LEAKY_RELU },
-//		{     0, _CATS_ACT_RRELU, .min=-0.1, .max=0.1 },
+		{     0, CATS_ACT_LEAKY_RELU },
+//		{     0, CATS_ACT_RRELU, .min=-0.1, .max=0.1 },
 
-		{     0, CATS_LINEAR, 0.01, .outputs=label },
+		//{     0, CATS_LINEAR, 0.01, .outputs=label },
+		{     0, CATS_LINEAR, ETA, .outputs=label },
 //		{     0, CATS_BATCHNORMAL },
-		//{     0, _CATS_ACT_SIGMOID }, // <- slow learning, but good recognize
-		{     0, _CATS_ACT_SOFTMAX },
+		//{     0, CATS_ACT_SIGMOID }, // <- slow learning, but good recognize
+		{     0, CATS_ACT_SOFTMAX },
 		{ label, CATS_LOSS_0_1 },
 	};
 	CatsEye cat = { .batch=1 };

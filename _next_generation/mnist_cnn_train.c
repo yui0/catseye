@@ -27,13 +27,13 @@ int main()
 
 	CatsEye_layer u[] = {	// 99.27% (100)
 		{  size, CATS_CONV, ETA, .ksize=7, .stride=1, .ch=32 },
-//		{     0, _CATS_ACT_RELU }, // minus??
-		{     0, _CATS_ACT_LEAKY_RELU },
+//		{     0, CATS_ACT_RELU }, // minus??
+		{     0, CATS_ACT_LEAKY_RELU },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
 		{     0, CATS_LINEAR, ETA },
-		{ label, _CATS_ACT_SIGMOID },
-		//{ label, _CATS_ACT_SOFTMAX },
+		{ label, CATS_ACT_SIGMOID },
 		{ label, CATS_LOSS_0_1 },
+//		{ label, CATS_SOFTMAX_CROSS_LOSS },
 	};
 //	CatsEye cat = { .batch=64 };	// 95%
 //	CatsEye cat = { .batch=1500 };	// 91%

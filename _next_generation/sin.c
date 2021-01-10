@@ -1,7 +1,7 @@
 //---------------------------------------------------------
 //	Cat's eye
 //
-//		©2016-2020 Yuichiro Nakada
+//		©2016-2021 Yuichiro Nakada
 //---------------------------------------------------------
 
 // gcc sin.c -o sin -lm -fopenmp -lgomp
@@ -20,16 +20,23 @@ int main()
 
 /*	CatsEye_layer u[] = {
 		{   1, CATS_LINEAR, 0.01 }, // input layer
-		{ 100, _CATS_ACT_SIGMOID },
+		{ 100, CATS_ACT_SIGMOID },
 		{ 100, CATS_LINEAR, 0.01 }, // hidden layer
 		{   1, CATS_LOSS_MSE }, // output layer
 	};*/
 	CatsEye_layer u[] = {
-		{   1, CATS_LINEAR, 0.01 }, // input layer
-		{  10, _CATS_ACT_TANH },
-		{  10, CATS_LINEAR, 0.01 }, // hidden layer
-		{   1, CATS_LOSS_MSE }, // output layer
+		{   1, CATS_LINEAR, 0.01 },
+		{  10, CATS_ACT_TANH },
+		{  10, CATS_LINEAR, 0.01 },
+		{   1, CATS_LOSS_MSE }, // 回帰なのでMSE
 	};
+/*	CatsEye_layer u[] = {
+		{   1, CATS_LINEAR, 0.01 },
+		{  10, CATS_ACT_TANH },
+		{  10, CATS_LINEAR, 0.01 },
+		{   1, CATS_IDENTITY_MSE }, // 回帰なのでMSE
+		{   1, CATS_LOSS_REGRESSION },
+	};*/
 	CatsEye cat = CATS_INIT;
 	CatsEye__construct(&cat, u);
 

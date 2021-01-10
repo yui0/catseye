@@ -749,7 +749,7 @@ static void CatsEye_BatchNormalization_backward(CatsEye_layer *l)
 }
 
 #define CATS_ACT_ARRAY(type)	\
-static void _CatsEye_act_##type(CatsEye_layer *l)\
+static void CatsEye_act_##type(CatsEye_layer *l)\
 {\
 	real *x = l->x;\
 	real *z = l->z;\
@@ -759,7 +759,7 @@ static void _CatsEye_act_##type(CatsEye_layer *l)\
 	}\
 }
 #define CATS_DACT_ARRAY(type)	\
-static void _CatsEye_dact_##type(CatsEye_layer *l)\
+static void CatsEye_dact_##type(CatsEye_layer *l)\
 {\
 	real *z = l->z;\
 	real *d = l->dIn;\
@@ -777,7 +777,7 @@ CATS_ACT_ARRAY(sigmoid);
 CATS_DACT_ARRAY(sigmoid);
 
 // softmax with loss function (output only)
-static void _CatsEye_act_softmax(CatsEye_layer *l)
+static void CatsEye_act_softmax(CatsEye_layer *l)
 {
 	real *x = l->x;
 	real *z = l->z;
@@ -806,7 +806,7 @@ CATS_DACT_ARRAY(softmax);
 #define CATS_ACT_tanh(x, l)		(tanh(x))
 CATS_ACT_ARRAY(tanh);
 #else
-static void _CatsEye_act_tanh(CatsEye_layer *l)
+static void CatsEye_act_tanh(CatsEye_layer *l)
 {
 	real *x = l->x;
 	real *z = l->z;
@@ -848,7 +848,7 @@ CATS_DACT_ARRAY(ELU);
 // https://qiita.com/Nezura/items/f52fdc483e5e7eceb6b9
 #define CATS_ACT_RReLU(x, l)		((x)>0 ? (x) : (x)*l->alpha)
 #define CATS_DACT_RReLU(y, l)		((y)>0 ? 1.0 : l->alpha)
-static void _CatsEye_act_RReLU(CatsEye_layer *l)
+static void CatsEye_act_RReLU(CatsEye_layer *l)
 {
 	l->alpha = random(l->min, l->max);
 	real *x = l->x;
@@ -877,6 +877,21 @@ static void CatsEye_loss_delivative_0_1(CatsEye_layer *l)
 	}
 }
 // loss function for mse with identity and cross entropy with sigmoid
+static void CatsEye_loss_mse(CatsEye_layer *l)
+{
+	real *t = l->p->label;
+	real *y = l->x;
+//	real *o = l->z;
+	real mse = 0;
+	for (int i=0; i<l->inputs *l->p->batch; i++) {
+//		*o++ = (*y - *t) * (*y - *t);
+		mse += (*y - *t) * (*y - *t);
+		y++;
+		t++;
+	}
+	mse /= l->inputs *l->p->batch;
+	l->z[0] = mse;
+}
 static void CatsEye_loss_delivative_mse(CatsEye_layer *l)
 {
 	real *t = l->p->label;
@@ -890,12 +905,14 @@ static void CatsEye_loss_delivative_mse(CatsEye_layer *l)
 	}
 }
 // cross-entropy loss function for (multiple independent) binary classifications
+// https://qiita.com/kenta1984/items/59a9ef1788e6934fd962
 static void CatsEye_loss_delivative_cross_entropy(CatsEye_layer *l)
 {
 	real *t = l->p->label;
 	real *d = l->dIn;
 	real *y = l->x;
 	for (int i=0; i<l->inputs *l->p->batch; i++) {
+		printf("(%f-%f=%f) ", *y, *t, (*y - *t) / (*y * (1 - *y)));
 		*d++ = (*y - *t++) / (*y * (1 - *y));	// -t * log(y) - (1 - t) * log(1 - y);
 		y++;
 	}
@@ -927,19 +944,26 @@ static void (*_CatsEye_layer_forward[])(CatsEye_layer *l) = {
 	CatsEye_BatchNormalization_forward,
 
 	// activation
-	_CatsEye_act_sigmoid,
-	_CatsEye_act_softmax,
-	_CatsEye_act_tanh,
-	_CatsEye_act_ReLU,
-	_CatsEye_act_LeakyReLU,
-	_CatsEye_act_ELU,
-	_CatsEye_act_RReLU,
+	CatsEye_act_sigmoid,
+	CatsEye_act_softmax,
+	CatsEye_act_tanh,
+	CatsEye_act_ReLU,
+	CatsEye_act_LeakyReLU,
+	CatsEye_act_ELU,
+	CatsEye_act_RReLU,
 
 	// loss
-	CatsEye_none,	// 0-1 loss
-	CatsEye_none,	// mse loss
-	CatsEye_none,	// cross-entropy loss
-	CatsEye_none,	// cross-entropy multiclass loss
+	CatsEye_none,		// 0-1 loss
+	CatsEye_none,		// mse loss
+	CatsEye_none,		// cross-entropy loss
+	CatsEye_none,		// cross-entropy multiclass loss
+
+	CatsEye_none,		// binary classification
+	CatsEye_none,		// multi-value classification
+	CatsEye_none,		// regression
+	CatsEye_loss_mse,	// identity with mse loss
+	CatsEye_act_sigmoid,	// sigmoid with cross-entropy loss
+	CatsEye_act_softmax,	// softmax with multi cross-entropy loss
 };
 static void (*_CatsEye_layer_backward[])(CatsEye_layer *l) = {
 	CatsEye_linear_backward,
@@ -953,19 +977,26 @@ static void (*_CatsEye_layer_backward[])(CatsEye_layer *l) = {
 	CatsEye_BatchNormalization_backward,
 
 	// activation
-	_CatsEye_dact_sigmoid,
-	_CatsEye_dact_softmax,
-	_CatsEye_dact_tanh,
-	_CatsEye_dact_ReLU,
-	_CatsEye_dact_LeakyReLU,
-	_CatsEye_dact_ELU,
-	_CatsEye_dact_RReLU,
+	CatsEye_dact_sigmoid,
+	CatsEye_dact_softmax,
+	CatsEye_dact_tanh,
+	CatsEye_dact_ReLU,
+	CatsEye_dact_LeakyReLU,
+	CatsEye_dact_ELU,
+	CatsEye_dact_RReLU,
 
 	// loss
 	CatsEye_loss_delivative_0_1,
 	CatsEye_loss_delivative_mse,
 	CatsEye_loss_delivative_cross_entropy,
 	CatsEye_loss_delivative_cross_entropy_multiclass,
+
+	CatsEye_none,		// binary classification
+	CatsEye_none,		// multi-value classification
+	CatsEye_none,		// regression
+	CatsEye_loss_delivative_mse,	// (y-t) identity with mse loss
+	CatsEye_loss_delivative_0_1,	// (y-t) sigmoid with cross-entropy loss
+	CatsEye_loss_delivative_0_1,	// (y-t) softmax with multi cross-entropy loss
 };
 static void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
 	CatsEye_linear_update,
@@ -992,20 +1023,38 @@ static void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
 	CatsEye_none,	// mse loss
 	CatsEye_none,	// cross-entropy loss
 	CatsEye_none,	// cross-entropy multiclass loss
+
+	CatsEye_none,	// binary classification
+	CatsEye_none,	// multi-value classification
+	CatsEye_none,	// regression
+	CatsEye_none,	// identity with mse loss
+	CatsEye_none,	// sigmoid with cross-entropy loss
+	CatsEye_none,	// softmax with multi cross-entropy loss
 };
 typedef enum {
 	CATS_LINEAR, CATS_CONV, CATS_MAXPOOL, CATS_AVGPOOL, CATS_PIXELSHUFFLER, /*CATS_RECURRENT,*/
 	CATS_PADDING, CATS_BATCHNORMAL,
-	_CATS_ACT_SIGMOID, _CATS_ACT_SOFTMAX, _CATS_ACT_TANH,
-	_CATS_ACT_RELU, _CATS_ACT_LEAKY_RELU, _CATS_ACT_ELU, _CATS_ACT_RRELU,
-	CATS_LOSS_0_1, CATS_LOSS_MSE, CATS_LOSS_CROSS_ENTROPY, CATS_LOSS_CROSS_ENTROPY_MULTICLASS
+
+	CATS_ACT_SIGMOID, CATS_ACT_SOFTMAX, CATS_ACT_TANH,
+	CATS_ACT_RELU, CATS_ACT_LEAKY_RELU, CATS_ACT_ELU, CATS_ACT_RRELU,
+
+	CATS_LOSS_0_1, CATS_LOSS_MSE, CATS_LOSS_BCE, CATS_LOSS_CE,
+
+	// y-t
+	CATS_LOSS_BC, CATS_LOSS_MC, CATS_LOSS_REGRESSION,
+	CATS_IDENTITY_MSE, CATS_SIGMOID_BCE, CATS_SOFTMAX_CE
 } CATS_LAYER_TYPE;
 char CatsEye_string[][16] = {
 	"dense", "conv", "max", "avg", "subpixel", /*"rnn",*/
 	"pad", "bn",
+
 	"sigmoid", "softmax", "tanh",
 	"relu", "leaky", "elu", "rrelu",
-	"binary", "mse", "cross", "mcross"
+
+	"binary", "mse", "bce", "ce",
+
+	"binary class", "multi class", "regression",
+	"identity/mse", "sigmoid/bce", "softmax/ce",
 };
 
 #define CATS_INIT			{ .batch=1 }
@@ -1140,15 +1189,15 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			printf("%3d %-8s %10d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
-		case _CATS_ACT_RRELU:
+		case CATS_ACT_RRELU:
 			l->min = 0;
 			l->max = 0.05;
-		case _CATS_ACT_LEAKY_RELU:
+		case CATS_ACT_LEAKY_RELU:
 			if (l->alpha==0.0) l->alpha = 0.01;
-		case _CATS_ACT_SIGMOID:
-		case _CATS_ACT_SOFTMAX:
-		case _CATS_ACT_TANH:
-		case _CATS_ACT_RELU:
+		case CATS_ACT_SIGMOID:
+		case CATS_ACT_SOFTMAX:
+		case CATS_ACT_TANH:
+		case CATS_ACT_RELU:
 			l->ch = l->ich;
 			l->outputs = l->inputs;
 			l->ox = l->sx;
@@ -1156,18 +1205,23 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			printf("%3d %-8s %10d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
-//		case CATS_LINEAR:
+		case CATS_LINEAR:
 		case CATS_LOSS_0_1:
 		case CATS_LOSS_MSE:
-		default: // LINEAR
+		default:
 			if (i<this->layers-1 && !l->outputs) {
 				if ((l+1)->inputs>0) l->outputs = (l+1)->inputs;
 				else { l->outputs = l->inputs; printf("\twarning: out:%d\n", l->outputs); }
 			}
+			/*if (l->type == CATS_LOSS_MSE && (l-1)->type >= CATS_ACT_SIGMOID) {
+				printf("\twarning: please use identity with mse loss.\n");
+			}*/
 			if (l->type == CATS_LINEAR) {
 				n[i] = l->inputs;
 				m[i] = l->outputs;
 				b[i] = 1; // bias
+				l->ox = l->oy = 1;
+				l->ch = l->outputs;
 			}
 			printf("%3d %-8s %10d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 		}
@@ -1208,10 +1262,13 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		this->w[i] = this->wdata + wsize[i];
 
 		if (i==this->layers-1) {
-			if ((l-1)->type >= _CATS_ACT_SIGMOID) { // FIXME: for loss function
+/*			if (l->type==CATS_LOSS_BCE && (l-1)->type==CATS_ACT_SIGMOID) {
+			}*/
+//CatsEye_loss_delivative_mse
+/*			if ((l-1)->type >= CATS_ACT_SIGMOID) { // FIXME: for loss function
 				(l-1)->backward = CatsEye_none;
 				(l-2)->dOut = l->dIn;
-			}
+			}*/
 			break;
 		}
 
@@ -1399,6 +1456,7 @@ int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random,
 //			CatsEye_forward(this, x+sample*this->slide);
 
 			// calculate the error and update the weights
+#if 0
 			int i = this->end;
 			l = &this->layer[i--];
 			l->backward(l);
@@ -1414,6 +1472,8 @@ int batch = this->batch;
 this->batch = 1;*/
 			l--;
 			for (; i>=this->start; i--) {
+#endif
+			for (int i = this->end; i>=this->start; i--) {
 				if (/*!(l->fix&2)*/i>=this->stop) l->backward(l);
 				if (!(l->fix&1)) l->update(l);
 				l--;
