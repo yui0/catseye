@@ -24,28 +24,28 @@ int main()
 		{  100, CATS_LINEAR, ETA },
 		{label, CATS_LOSS_0_1 },
 	};*/
-	CatsEye_layer u[] = {	// 99.0% (100)
+/*	CatsEye_layer u[] = {	// 99.0% (100)
 		{ size, CATS_LINEAR, ETA },
 		{  100, CATS_ACT_TANH },
 		{  100, CATS_LINEAR, ETA },
 //		{    0, CATS_ACT_SOFTMAX },
 		{label, CATS_ACT_SIGMOID },
 		{label, CATS_LOSS_0_1 },
-	};
-/*	CatsEye_layer u[] = {	// 98.9% (100)
+	};*/
+/*	CatsEye_layer u[] = {	// 99.1% (100)
 		{ size, CATS_LINEAR, ETA },
 		{  100, CATS_ACT_TANH },
 		{  100, CATS_LINEAR, ETA },
 		{label, CATS_ACT_SOFTMAX },
 		{label, CATS_LOSS_0_1 },
 	};*/
-/*	CatsEye_layer u[] = {	// 98.9% (100)
+	CatsEye_layer u[] = {	// 99.2% (100)
 		{ size, CATS_LINEAR, ETA },
 		{  100, CATS_ACT_TANH },
 		{  100, CATS_LINEAR, ETA },
+		{label, CATS_ACT_SOFTMAX },
 		{label, CATS_SOFTMAX_CE },
-		{label, CATS_LOSS_MC },
-	};*/
+	};
 	CatsEye cat = { .batch=1 };	// 97.8%
 	CatsEye__construct(&cat, u);
 
