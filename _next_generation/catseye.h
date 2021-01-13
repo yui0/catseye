@@ -1260,7 +1260,8 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		if (i==this->layers-1) {
 			if ((l->type==CATS_SOFTMAX_CE && (l-1)->type==CATS_ACT_SOFTMAX) ||
 				(l->type==CATS_SIGMOID_BCE && (l-1)->type==CATS_ACT_SIGMOID)) {
-				 // FIXME: for loss function
+				// FIXME: for loss function
+				// https://www.renom.jp/ja/notebooks/tutorial/basic_algorithm/lossfunction/notebook.html
 				(l-1)->backward = CatsEye_none;
 				(l-2)->dOut = l->dIn;
 			}

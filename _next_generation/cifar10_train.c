@@ -14,9 +14,9 @@
 #include "stb_image_write.h"
 
 //#define ETA	0.01
-#define ETA	0.007 // 76%(100)
+//#define ETA	0.007 // 76%(100)
 //#define ETA	0.005 // 76%(100)
-//#define ETA	0.001 // 51%(100)
+#define ETA	0.001 // 87%(100)
 //#define ETA	0.0001
 
 int main()
@@ -26,7 +26,7 @@ int main()
 	int label = 10;		// 出力層
 	int sample = 10000;
 
-	CatsEye_layer u[] = {	// 52.4%(10), 85.1%(100), 95.8%(1000), 99.7%(2000)
+	CatsEye_layer u[] = {	// 52.4%(10), 87.2%(100), 95.8%(1000), 99.7%(2000)
 		{  size, CATS_PADDING, .sx=32, .sy=32, .ich=3, .padding=1 },
 		{     0, CATS_CONV,   ETA, .ksize=3, .stride=1, .ch=10, .ich=3 },
 //		{     0, CATS_BATCHNORMAL },
@@ -51,8 +51,8 @@ int main()
 		{     0, CATS_LINEAR, ETA, .outputs=label },
 //		{     0, CATS_BATCHNORMAL },
 		//{     0, CATS_ACT_SIGMOID }, // <- slow learning, but good recognize
-		{     0, CATS_ACT_SOFTMAX },
-		{ label, CATS_LOSS_0_1 },
+		{ label, CATS_ACT_SOFTMAX },
+		{ label, CATS_SOFTMAX_CE },
 	};
 	CatsEye cat = { .batch=1 };
 	CatsEye__construct(&cat, u);
