@@ -7,32 +7,36 @@
 // gcc mnist_autoencoder.c -o mnist_autoencoder -lm -Ofast -fopenmp -lgomp
 // clang mnist_autoencoder.c -o mnist_autoencoder -lm -Ofast
 
-//#define CATS_USE_FLOAT
+#define CATS_USE_FLOAT
+#define CATS_OPENCL
+//#define CATS_OPENGL
 #include "catseye.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
-#define ETA 1e-5
+#define ETA 1e-3
+//#define ETA 1e-5 // ぼやける
 
 int main()
 {
 	const int wh = 28;
 	const int size = 28*28;	// 入出力層(28x28)
-	int sample = 60000;
+	const int sample = 60000;
 
-	CatsEye_layer u[] = {	//
+/*	CatsEye_layer u[] = {	// strange!!
 		{ size, CATS_LINEAR, ETA },
 		{   64, CATS_ACT_TANH },
 		{   64, CATS_LINEAR, ETA },
 		{ size, CATS_LOSS_IDENTITY_MSE }, // 回帰なのでMSE
-	};
-/*	CatsEye_layer u[] = {	// epoch 20/ eta 1e-5
+	};*/
+	// https://www.sejuku.net/blog/63331
+	CatsEye_layer u[] = {	// epoch 20/ eta 1e-5
 		{ size, CATS_LINEAR, ETA },
 		{   64, CATS_ACT_RELU },
 		{   64, CATS_LINEAR, ETA },
 		{ size, CATS_ACT_SIGMOID },
 		{ size, CATS_LOSS_MSE },
-	};*/
+	};
 //	CatsEye cat = { .batch=1 };	// 0.0%
 	CatsEye cat = { .batch=256 };	// 0.0%
 	CatsEye__construct(&cat, u);

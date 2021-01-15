@@ -1,3 +1,4 @@
+// https://www.saiensu.co.jp/book_support/978-4-86481-061-6/psu.html
 // https://www1.doshisha.ac.jp/~jmizushi/ps.html
 // https://www1.doshisha.ac.jp/~jmizushi/ps/NewPostScriptManual.pdf
 

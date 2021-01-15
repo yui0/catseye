@@ -21,9 +21,9 @@
 
 int main()
 {
-	int size = 784;	// 入力層ユニット(28x28)
-	int label = 10;	// 出力層ユニット(0-9)
-	int sample = 60000;
+	const int size = 784;	// 入力層ユニット(28x28)
+	const int label = 10;	// 出力層ユニット(0-9)
+	const int sample = 60000;
 
 /*	CatsEye_layer u[] = {	// 99.27% (100)
 		{  size, CATS_CONV, ETA, .ksize=7, .stride=1, .ch=32 },

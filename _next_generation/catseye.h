@@ -14,7 +14,7 @@
 
 #define _debug(...)	{ printf("%s(%d):", __func__, __LINE__); printf(__VA_ARGS__); }
 
-#ifdef CATS_OPENGL
+#if defined(CATS_OPENGL) || defined(CATS_OPENCL)
 #ifndef CATS_USE_FLOAT
 #define CATS_USE_FLOAT
 #endif

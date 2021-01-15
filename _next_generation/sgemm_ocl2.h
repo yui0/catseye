@@ -281,6 +281,7 @@ static inline void ocl_im2col(float *inputs, int ich, int w, int h, int k, int p
 	oclRun(&KIM2COL);
 	oclRead(_args[0].p, sizeof(float)*_info[7], sizeof(float)*_info[0], outputs);
 }
+#ifndef CATS_OPENCL
 static inline void ocl_convolution(float *inputs, int ich, int w, int h, float *weights, int k, int pad, int stride, float *outputs, int ch)
 {
 	// im2col(pix, 3, h, w, 4, 4, 2, 2, 1, 1, workspace);
@@ -439,4 +440,5 @@ static inline void ocl_conv_LReLU(int inputs, int ich, int w, int h, int weights
 		}
 	}*/
 }
+#endif
 

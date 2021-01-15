@@ -11,8 +11,8 @@
 //#define CATS_TEST
 //#define CATS_USE_FLOAT
 //#define CATS_OPENGL
-#include "./catseye.h"
-#include "./pssub.h"
+#include "catseye.h"
+#include "pssub.h"
 
 int main()
 {
@@ -24,19 +24,18 @@ int main()
 		{ 100, CATS_LINEAR, 0.01 }, // hidden layer
 		{   1, CATS_LOSS_MSE }, // output layer
 	};*/
-	CatsEye_layer u[] = {
-		{   1, CATS_LINEAR, 0.01 },
-		{  10, CATS_ACT_TANH },
-		{  10, CATS_LINEAR, 0.01 },
-		{   1, CATS_LOSS_MSE }, // 回帰なのでMSE
-	};
 /*	CatsEye_layer u[] = {
 		{   1, CATS_LINEAR, 0.01 },
 		{  10, CATS_ACT_TANH },
 		{  10, CATS_LINEAR, 0.01 },
-		{   1, CATS_IDENTITY_MSE }, // 回帰なのでMSE
-		{   1, CATS_LOSS_REGRESSION },
+		{   1, CATS_LOSS_MSE }, // 回帰なのでMSE
 	};*/
+	CatsEye_layer u[] = {
+		{   1, CATS_LINEAR, 0.01 },
+		{  10, CATS_ACT_TANH },
+		{  10, CATS_LINEAR, 0.01 },
+		{   1, CATS_LOSS_IDENTITY_MSE }, // 回帰なのでMSE
+	};
 	CatsEye cat = CATS_INIT;
 	CatsEye__construct(&cat, u);
 

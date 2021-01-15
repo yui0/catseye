@@ -12,10 +12,12 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
-#define ETA 0.01	// batch 1
+//#define ETA 0.01	// batch 1
 //#define ETA 0.001
 //#define ETA 0.0001
 //#define ETA 0.00003
+#define ETA 1e-3
+//#define ETA 3e-5
 //#define ETA 1e-5
 //#define ETA 1e-8
 
@@ -24,7 +26,7 @@ int main()
 	int size = 64;		// 入出力層(8x8)
 	int sample = 1797;
 
-/*	CatsEye_layer u[] = {	// 0.0% (100)
+/*	CatsEye_layer u[] = {
 		{ size, CATS_LINEAR, ETA },
 //		{   40, CATS_ACT_TANH },
 		{   48, CATS_ACT_SIGMOID },
@@ -33,7 +35,7 @@ int main()
 //		{ size, CATS_ACT_SIGMOID },
 		{ size, CATS_LOSS_MSE },
 	};*/
-/*	CatsEye_layer u[] = {	// 0.0% (100)
+/*	CatsEye_layer u[] = {
 		{ size, CATS_LINEAR, ETA },
 		{ 400, CATS_ACT_TANH },
 //		{ 400, CATS_ACT_SIGMOID },
@@ -47,7 +49,8 @@ int main()
 		{ size, CATS_LOSS_MSE },
 	};*/
 	// https://cntk.ai/pythondocs/CNTK_105_Basic_Autoencoder_for_Dimensionality_Reduction.html
-	CatsEye_layer u[] = {	// 0.0% (100)
+#if 0
+	CatsEye_layer u[] = {
 		{ size, CATS_LINEAR, ETA },
 //		{  400, CATS_ACT_TANH }, // 0.01
 //		{  400, CATS_LINEAR, ETA },
@@ -55,15 +58,33 @@ int main()
 		{  100, CATS_LINEAR, ETA },
 		{ size, CATS_ACT_TANH },*/
 
-/*		{   48, CATS_ACT_RELU }, //
+/*		{   48, CATS_ACT_RELU },
 		{   48, CATS_LINEAR, ETA },
 		{ size, CATS_ACT_SIGMOID },
 		{ size, CATS_LOSS_CROSS_ENTROPY },*/
 
 //		{   64, CATS_ACT_RELU }, // 1e-5 (10000)
-		{   64, CATS_ACT_TANH },
-		{   64, CATS_LINEAR, ETA },
-		{ size, CATS_ACT_TANH },
+/*		{   64, CATS_ACT_TANH },
+		{   64, CATS_LINEAR, ETA },*/
+//		{ size, CATS_ACT_TANH },
+
+		{   32, CATS_ACT_TANH },
+		{   32, CATS_LINEAR, ETA },
+		{ size, CATS_LOSS_IDENTITY_MSE }, // 回帰なのでMSE
+
+//		{   32, CATS_ACT_RELU },
+//		{   32, CATS_LINEAR, ETA },
+/*		{   16, CATS_ACT_RELU },
+		{   16, CATS_LINEAR, ETA },
+//		{ size, CATS_ACT_SIGMOID },
+		{ size, CATS_LOSS_MSE },*/
+	};
+#endif
+	CatsEye_layer u[] = {	// epoch 20/ eta 1e-5
+		{ size, CATS_LINEAR, ETA },
+		{    3, CATS_ACT_RELU },
+		{    3, CATS_LINEAR, ETA },
+		{ size, CATS_ACT_SIGMOID },
 		{ size, CATS_LOSS_MSE },
 	};
 	CatsEye cat = { .batch=1 };	// 0.0%
@@ -101,9 +122,9 @@ int main()
 
 	// 多層パーセプトロンの訓練
 	printf("Starting training using (stochastic) gradient descent\n");
-//	CatsEye_train(&cat, x, x, sample, 100/*epoch*/, sample, /*sample/10*/0);
+	CatsEye_train(&cat, x, x, sample, 100/*epoch*/, sample, /*sample/10*/0);
 //	CatsEye_train(&cat, x, x, sample, 1000/*epoch*/, sample, 0);
-	CatsEye_train(&cat, x, x, sample, 10000/*epoch*/, sample, 0);
+//	CatsEye_train(&cat, x, x, sample, 10000/*epoch*/, sample, 0);
 	printf("Training complete\n");
 
 	// 結果の表示
@@ -111,7 +132,7 @@ int main()
 	for (int i=0; i<50; i++) {
 		CatsEye_forward(&cat, x+size*i);
 
-		CatsEye_layer *l = &cat.layer[2];
+		CatsEye_layer *l = &cat.layer[cat.end-1];
 		double mse = 0;
 		uint8_t *p = &pixels[(i/10)*size*10 + (i%10)*8];
 		for (int j=0; j<size; j++) {
