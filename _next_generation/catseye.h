@@ -398,13 +398,13 @@ static void CatsEye_bias_forward(CatsEye_layer *l)
 		for (int i=0; i<l->outputs; i++) l->z[n*l->outputs +i] += l->W[i];
 	}
 }
-static void CatsEye_bias_backward(CatsEye_layer *l)
+/*static void CatsEye_bias_backward(CatsEye_layer *l)
 {
 	for (int n=0; n<l->p->batch; n++) {
 //		gemm_rnn(1, l->inputs, l->outputs, 1, l->dOut+l->outputs*n, l->W, 0, l->dIn+l->inputs*n);
 		for (int i=0; i<l->outputs; i++) l->dIn[n*l->inputs] += l->dOut[n*l->outputs +i] * l->W[i];
 	}
-}
+}*/
 static void CatsEye_bias_update(CatsEye_layer *l)
 {
 	for (int n=0; n<l->p->batch; n++) {
@@ -466,6 +466,7 @@ static inline void col2im(const real *col, const int channels,
 }
 static void CatsEye_convolutional_forward(CatsEye_layer *l)
 {
+#if 1
 	for (int i=0; i<l->p->batch; i++) {
 		real *workspace;
 		if (l->ksize==1) {
@@ -482,12 +483,22 @@ static void CatsEye_convolutional_forward(CatsEye_layer *l)
 		// output := workspace * weights
 //		gemm_rnn(l->ox*l->oy*1, l->ch, l->ksize*l->ksize*l->ich, 1, workspace, l->W, 0, l->z +l->outputs*i);
 	}
-
-//	real *workspace = (l->ksize==1) ? l->x : l->workspace;
-//	gemm_rnn(l->ch, l->ox*l->oy*l->p->batch, l->ksize*l->ksize*l->ich, 1, l->W, workspace, 0, l->z);
+#else
+	real *workspace;
+	if (l->ksize==1) {
+		workspace = l->x;
+	} else {
+		workspace = l->workspace;
+		for (int i=0; i<l->p->batch; i++) {
+			im2col(l->x +l->inputs*i, l->ich, l->sy, l->sx, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, workspace +l->ksize*l->ksize*l->ich *l->ox*l->oy*i);
+		}
+	}
+	gemm_rnn(l->ch, l->ox*l->oy*l->p->batch, l->ksize*l->ksize*l->ich, 1, l->W, workspace, 0, l->z);
+#endif
 }
 static void CatsEye_convolutional_backward(CatsEye_layer *l)
 {
+#if 1
 	for (int i=0; i<l->p->batch; i++) {
 //		real *workspace = l->ksize!=1 ? col : l->dIn +l->inputs*i;
 		real *workspace = l->ksize!=1 ? l->p->mem : l->dIn +l->inputs*i;
@@ -501,9 +512,19 @@ static void CatsEye_convolutional_backward(CatsEye_layer *l)
 			col2im(workspace, l->ich, l->sy, l->sx, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, l->dIn +l->inputs*i);
 		}
 	}
+#else
+	real *workspace = l->ksize!=1 ? l->p->mem : l->dIn;
+	gemm_rtn(l->ksize*l->ksize*l->ich, l->ox*l->oy*l->p->batch, l->ch, 1, l->W, l->dOut, 0, workspace);
+	if (l->ksize!=1) {
+		for (int i=0; i<l->p->batch; i++) {
+			col2im(workspace +l->ksize*l->ksize*l->ich *l->ox*l->oy*i, l->ich, l->sy, l->sx, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, l->dIn +l->inputs*i);
+		}
+	}
+#endif
 }
 static void CatsEye_convolutional_update(CatsEye_layer *l)
 {
+#if 1
 	for (int i=0; i<l->p->batch; i++) {
 		real *workspace = l->ksize!=1 ? l->workspace +l->ox*l->oy*l->ksize*l->ksize*l->ich *i : l->x +l->inputs*i;
 		// W = W - eta * dOut * x**T [A(m,k) B(k,n) C(m,n)]
@@ -511,8 +532,31 @@ static void CatsEye_convolutional_update(CatsEye_layer *l)
 //		CatsEye_solver(l, 'R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy, l->dOut +l->outputs*i, l->ox*l->oy, workspace, l->ox*l->oy, l->ksize*l->ksize*l->ich);
 		gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, -l->eta, l->dOut, workspace, 1, l->W);
 	}
-//	real *workspace = l->ksize!=1 ? l->workspace : l->x;
-//	gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*l->p->batch, -l->eta, l->dOut, workspace, 1, l->W);
+#else
+	real *workspace = l->ksize!=1 ? l->workspace : l->x;
+	gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*l->p->batch, -l->eta, l->dOut, workspace, 1, l->W);
+#endif
+}
+
+static void CatsEye_deconvolutional_forward(CatsEye_layer *l)
+{
+	gemm_rtn(l->ksize*l->ksize*l->ich, l->sx*l->sy*l->p->batch, l->ch, 1, l->W, l->x, 0, l->workspace);
+	for (int i=0; i<l->p->batch; i++) {
+		col2im(l->workspace +l->ksize*l->ksize*l->ich*l->sx*l->sy*i, l->ch, l->oy, l->ox, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, l->z +l->outputs*i);
+	}
+}
+static void CatsEye_deconvolutional_backward(CatsEye_layer *l)
+{
+	real *workspace = l->ksize!=1 ? l->workspace : l->dOut;
+	for (int i=0; i<l->p->batch; i++) {
+		im2col(l->dOut +l->outputs*i, l->ch, l->oy, l->ox, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, workspace +l->ksize*l->ksize*l->ich *l->ox*l->oy*i);
+	}
+	gemm_rnn(l->ch, l->ox*l->oy*l->p->batch, l->ksize*l->ksize*l->ich, 1, l->W, workspace, 0, l->dIn);
+}
+static void CatsEye_deconvolutional_update(CatsEye_layer *l)
+{
+	real *workspace = l->ksize!=1 ? l->workspace : l->dOut;
+	gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*l->p->batch, -l->eta, l->dOut, workspace, 1, l->W);
 }
 
 // calculate forward propagation
@@ -934,6 +978,7 @@ static void CatsEye_none(CatsEye_layer *l)
 static void (*_CatsEye_layer_forward[])(CatsEye_layer *l) = {
 	CatsEye_linear_forward,
 	CatsEye_convolutional_forward,
+	CatsEye_deconvolutional_forward,
 	CatsEye_maxpooling_forward,
 	CatsEye_avgpooling_forward,
 	CatsEye_PixelShuffler_forward,
@@ -957,9 +1002,9 @@ static void (*_CatsEye_layer_forward[])(CatsEye_layer *l) = {
 	CatsEye_none,		// cross-entropy loss
 	CatsEye_none,		// cross-entropy multiclass loss
 
-	CatsEye_none,		// binary classification
-	CatsEye_none,		// multi-value classification
-	CatsEye_none,		// regression
+//	CatsEye_none,		// binary classification
+//	CatsEye_none,		// multi-value classification
+//	CatsEye_none,		// regression
 	CatsEye_loss_mse,	// identity with mse loss
 	CatsEye_none,		// sigmoid with cross-entropy loss
 	CatsEye_none,		// softmax with multi cross-entropy loss
@@ -967,6 +1012,7 @@ static void (*_CatsEye_layer_forward[])(CatsEye_layer *l) = {
 static void (*_CatsEye_layer_backward[])(CatsEye_layer *l) = {
 	CatsEye_linear_backward,
 	CatsEye_convolutional_backward,
+	CatsEye_deconvolutional_backward,
 	CatsEye_maxpooling_backward,
 	CatsEye_avgpooling_backward,
 	CatsEye_PixelShuffler_backward,
@@ -990,9 +1036,9 @@ static void (*_CatsEye_layer_backward[])(CatsEye_layer *l) = {
 	CatsEye_loss_delivative_cross_entropy,
 	CatsEye_loss_delivative_cross_entropy_multiclass,
 
-	CatsEye_none,		// binary classification
-	CatsEye_none,		// multi-value classification
-	CatsEye_none,		// regression
+//	CatsEye_none,		// binary classification
+//	CatsEye_none,		// multi-value classification
+//	CatsEye_none,		// regression
 	CatsEye_loss_delivative_mse,	// (y-t) identity with mse loss
 	CatsEye_loss_delivative_0_1,	// (y-t) sigmoid with cross-entropy loss
 	CatsEye_loss_delivative_0_1,	// (y-t) softmax with multi cross-entropy loss
@@ -1000,6 +1046,7 @@ static void (*_CatsEye_layer_backward[])(CatsEye_layer *l) = {
 static void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
 	CatsEye_linear_update,
 	CatsEye_convolutional_update,
+	CatsEye_deconvolutional_update,
 	CatsEye_none,	// maxpool
 	CatsEye_none,	// avgpool
 	CatsEye_none,	// Pixel Shuffler
@@ -1023,15 +1070,15 @@ static void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
 	CatsEye_none,	// cross-entropy loss
 	CatsEye_none,	// cross-entropy multiclass loss
 
-	CatsEye_none,	// binary classification
-	CatsEye_none,	// multi-value classification
-	CatsEye_none,	// regression
+//	CatsEye_none,	// binary classification
+//	CatsEye_none,	// multi-value classification
+//	CatsEye_none,	// regression
 	CatsEye_none,	// identity with mse loss
 	CatsEye_none,	// sigmoid with cross-entropy loss
 	CatsEye_none,	// softmax with multi cross-entropy loss
 };
 typedef enum {
-	CATS_LINEAR, CATS_CONV, CATS_MAXPOOL, CATS_AVGPOOL, CATS_PIXELSHUFFLER, /*CATS_RECURRENT,*/
+	CATS_LINEAR, CATS_CONV, CATS_DECONV, CATS_MAXPOOL, CATS_AVGPOOL, CATS_PIXELSHUFFLER, /*CATS_RECURRENT,*/
 	CATS_PADDING, CATS_BATCHNORMAL,
 
 	CATS_ACT_SIGMOID, CATS_ACT_SOFTMAX, CATS_ACT_TANH,
@@ -1040,11 +1087,11 @@ typedef enum {
 	CATS_LOSS_0_1, CATS_LOSS_MSE, CATS_LOSS_BCE, CATS_LOSS_CE,
 
 	// y-t
-	CATS_LOSS_BC, CATS_LOSS_MC, CATS_LOSS_REGRESSION,
+//	CATS_LOSS_BC, CATS_LOSS_MC, CATS_LOSS_REGRESSION,
 	CATS_LOSS_IDENTITY_MSE, CATS_SIGMOID_BCE, CATS_SOFTMAX_CE
 } CATS_LAYER_TYPE;
 char CatsEye_string[][16] = {
-	"dense", "conv", "max", "avg", "subpixel", /*"rnn",*/
+	"dense", "conv", "deconv", "max", "avg", "subpixel", /*"rnn",*/
 	"pad", "bn",
 
 	"sigmoid", "softmax", "tanh",
@@ -1052,7 +1099,7 @@ char CatsEye_string[][16] = {
 
 	"binary", "mse", "bce", "ce",
 
-	"binary class", "multi class", "regression",
+//	"binary class", "multi class", "regression",
 	"identity/mse", "sigmoid/bce", "softmax/ce",
 };
 
@@ -1095,8 +1142,9 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		//osize[i] = 0;
 		if (i>0) { // NOT first layer
 			if (!l->ich) l->ich = (l-1)->ch;
-			if (!l->inputs) l->inputs = (l-1)->outputs;
-			else if (l->inputs<0) { // select the layer
+			if (!l->inputs) {
+				l->inputs = (l-1)->outputs;
+			} else if (l->inputs<0) { // select the layer
 				l->inputs = (l+l->inputs)->outputs;
 				//osize[i] = osize[i+l->inputs];
 			}
@@ -1110,9 +1158,21 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		n[i] = m[i] = b[i] = 0;
 		switch (l->type) {
 		case CATS_CONV:
-			if ((l->sx +2*l->padding -l->ksize) % l->stride > 0) printf("\twarning: stride is strange!\n");
 			l->ox = l->px = (l->sx +2*l->padding -l->ksize) /l->stride +1;
 			l->oy = l->py = (l->sy +2*l->padding -l->ksize) /l->stride +1;
+			l->px -= l->padding*2;
+			l->py -= l->padding*2;
+			l->pz = l->padding +l->padding*l->ox;
+			l->outputs = l->ch * l->ox * l->oy;
+			n[i] = l->ksize * l->ksize;	// kernel size
+			m[i] = l->ch * l->ich;		// channel
+			l->workspace = malloc(sizeof(real)* l->ox*l->oy*l->ksize*l->ksize*l->ich *this->batch);
+			printf("%3d %-8s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
+			if ((l->sx +2*l->padding -l->ksize) % l->stride > 0) printf("\t↑ warning: stride is strange!\n");
+			break;
+		case CATS_DECONV: // https://blog.shikoan.com/pytorch-convtranspose2d/
+			l->ox = l->px = (l->sx-1) *l->stride -2*l->padding +l->ksize;
+			l->oy = l->py = (l->sy-1) *l->stride -2*l->padding +l->ksize;
 			l->px -= l->padding*2;
 			l->py -= l->padding*2;
 			l->pz = l->padding +l->padding*l->ox;
@@ -1125,7 +1185,6 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 
 		case CATS_AVGPOOL:
 		case CATS_MAXPOOL:
-			if ((l->sx +2*l->padding -l->ksize) % l->stride > 0) printf("\twarning: stride is strange!\n");
 			l->ch = l->ich;
 			l->ox = (l->sx +2*l->padding -l->ksize) /l->stride +1;
 			l->oy = (l->sy +2*l->padding -l->ksize) /l->stride +1;
@@ -1136,14 +1195,18 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 				l->workspace = malloc(sizeof(int)* l->outputs *this->batch);
 			}
 			printf("%3d %-8s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
+			if ((l->sx +2*l->padding -l->ksize) % l->stride > 0) printf("\t↑ warning: stride is strange!\n");
 			break;
 
 		case CATS_PIXELSHUFFLER:
+			if (l->ch * l->r*l->r != l->ich) {
+				l->sx = l->sy = (int)sqrt(l->inputs/ (l->ch * l->r*l->r));
+			}
 			l->ich = l->ch * l->r*l->r;
 			l->ox = l->sx * l->r;
 			l->oy = l->sy * l->r;
 			l->outputs = l->ch * l->ox * l->oy;
-			printf("%3d %-8s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
+			printf("%3d %-8s %10d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
 		/*case CATS_RECURRENT:
@@ -1210,7 +1273,7 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		default:
 			if (i<this->layers-1 && !l->outputs) {
 				if ((l+1)->inputs>0) l->outputs = (l+1)->inputs;
-				else { l->outputs = l->inputs; printf("\twarning: out:%d\n", l->outputs); }
+				else { l->outputs = l->inputs; printf("\t↓ warning: out:%d\n", l->outputs); }
 			}
 			if (l->type == CATS_LINEAR) {
 				n[i] = l->inputs;
@@ -1220,6 +1283,10 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 				l->ch = l->outputs;
 			}
 			printf("%3d %-8s %10d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
+//			printf("%3d %-8s %10d %4d x%4d x%4d -> loss\n", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich);
+		}
+		if (!l->inputs) {
+			printf("\t↑ warning: input is strange!\n");
 		}
 		wsize[i] = this->wsize;
 		this->ws[i] = (n[i]+b[i])*m[i];

@@ -23,14 +23,14 @@ int main()
 	const int size = 28*28;	// 入出力層(28x28)
 	const int sample = 60000;
 
-/*	CatsEye_layer u[] = {	// strange!!
+/*	CatsEye_layer u[] = {	// eta 1e-5 strange!!
 		{ size, CATS_LINEAR, ETA },
 		{   64, CATS_ACT_TANH },
 		{   64, CATS_LINEAR, ETA },
 		{ size, CATS_LOSS_IDENTITY_MSE }, // 回帰なのでMSE
 	};*/
 	// https://www.sejuku.net/blog/63331
-	CatsEye_layer u[] = {	// epoch 20/ eta 1e-5
+	CatsEye_layer u[] = {	// epoch 20/ eta 1e-3
 		{ size, CATS_LINEAR, ETA },
 		{   64, CATS_ACT_RELU },
 		{   64, CATS_LINEAR, ETA },

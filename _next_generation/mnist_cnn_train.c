@@ -33,7 +33,7 @@ int main()
 		{ label, CATS_ACT_SIGMOID },
 		{ label, CATS_LOSS_0_1 },
 	};*/
-	CatsEye_layer u[] = {	// 99.23% (100)
+	CatsEye_layer u[] = {	// 99.25% (100)
 		{  size, CATS_CONV, ETA, .ksize=7, .stride=1, .ch=32 },
 		{     0, CATS_ACT_LEAKY_RELU },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
@@ -89,15 +89,6 @@ int main()
 		else {
 			if (c<100) {
 				CatsEye_visualize(x+size*i, size, 28, &pixels[(c/10)*size*10+(c%10)*28], 28*10, 1);
-/*				real *xx = &x[size*i];
-				uint8_t *p = &pixels[(c/10)*size*10+(c%10)*k*3];
-				for (int y=0; y<k; y++) {
-					for (int x=0; x<k; x++) {
-						p[(y*k*10+x)*3  ] = xx[y*k+x] * 255.0;
-						p[(y*k*10+x)*3+1] = xx[k*k+y*k+x] * 255.0;
-						p[(y*k*10+x)*3+2] = xx[2*k*k+y*k+x] * 255.0;
-					}
-				}*/
 			}
 			c++;
 		}

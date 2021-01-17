@@ -1,22 +1,22 @@
 //---------------------------------------------------------
 //	Cat's eye
 //
-//		©2016,2021 Yuichiro Nakada
+//		©2021 Yuichiro Nakada
 //---------------------------------------------------------
 
 // gcc mnist_autoencoder.c -o mnist_autoencoder -lm -Ofast -fopenmp -lgomp
 // clang mnist_autoencoder.c -o mnist_autoencoder -lm -Ofast
 
 #define CATS_USE_FLOAT
-#define CATS_OPENCL
+//#define CATS_OPENCL
 //#define CATS_OPENGL
 #include "catseye.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 #include"svg.h"
 
-//#define ETA 1e-2
-#define ETA 1e-3
+#define ETA 1e-2
+//#define ETA 1e-3
 
 int main()
 {
@@ -24,8 +24,17 @@ int main()
 	const int size = 28*28;	// 入出力層(28x28)
 	const int sample = 60000;
 
-	// https://www.sejuku.net/blog/63331
-	CatsEye_layer u[] = {	// epoch 20/ eta 1e-5
+	// https://rightcode.co.jp/blog/information-technology/autoencoder-dimensionality-reduction-implications-of-machine-learning
+/*	CatsEye_layer u[] = {	// epoch 20/ eta 1e-5
+		{  size, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=16 }, // b, 16, 10x10
+		{     0, CATS_ACT_LEAKY_RELU },
+		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 }, // b, 16, 5x5
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=32 }, // b, 32, 3x3
+		{     0, CATS_ACT_LEAKY_RELU },
+		{     0, CATS_MAXPOOL, .ksize=2, .stride=1 }, // b, 32, 2x2
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=0, .ch=64 }, // b, 64, 1x1
+		{     0, CATS_ACT_LEAKY_RELU },
+
 		{ size, CATS_LINEAR, ETA },
 		{   32, CATS_ACT_RELU },
 		{   32, CATS_LINEAR, ETA },
@@ -35,9 +44,37 @@ int main()
 		{   32, CATS_LINEAR, ETA },
 		{ size, CATS_ACT_SIGMOID },
 		{ size, CATS_LOSS_MSE },
+	};*/
+	CatsEye_layer u[] = {
+		{  size, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=4 },
+//		{  size, CATS_PADDING, .padding=1, .ich=1 },
+//		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=4 },
+		{     0, CATS_ACT_LEAKY_RELU },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=16 },
+		{     0, CATS_ACT_LEAKY_RELU },
+//		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=8 },
+		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=4 },
+		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=1 },
+//		{     0, CATS_CONV, 0.001, .ksize=1, .stride=1, .ch=4 },
+		//{     0, CATS_PIXELSHUFFLER, .r=4, .ch=1 },
+//		{ size, CATS_ACT_SIGMOID },
+		{ size, CATS_LOSS_MSE },
 	};
-//	CatsEye cat = { .batch=1 };	// 0.0%
-	CatsEye cat = { .batch=256 };	// 0.0%
+#if 0
+	CatsEye_layer u[] = {
+		{  size, CATS_PADDING, .padding=1, .ich=3 },
+		{     0, CATS_CONV, 0.001, .ksize=3, .stride=1, .ch=16*3, .sx=34, .sy=34, .ich=3 },
+		{     0, CATS_ACT_LEAKY_RELU, /*.alpha=0.01*/ },
+		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
+
+		{     0, CATS_CONV, 0.001, .ksize=1, .stride=1, .ch=4*3 },
+		{     0, CATS_ACT_LEAKY_RELU },
+		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=3 },
+		{  size, CATS_LOSS_MSE },
+	};
+#endif
+	CatsEye cat = { .batch=1 };	// 0.0%
+//	CatsEye cat = { .batch=256 };	// 0.0%
 	CatsEye__construct(&cat, u);
 
 	int16_t t[sample];	// ラベルデータ
@@ -84,7 +121,7 @@ int main()
 		}
 //		printf("%d mse %lf\n", t[i], mse);
 	}
-	stbi_write_png("mnist_autoencoder2.png", wh*10, wh*10, 1, pixels, wh*10);
+	stbi_write_png("mnist_cnn_autoencoder.png", wh*10, wh*10, 1, pixels, wh*10);
 
 	memset(pixels, 0, size*100);
 /*	int m = (hidden<100 ? hidden : 100);
@@ -106,7 +143,7 @@ int main()
 	//if (!psvg) return;
 	svg_scatter(psvg, xs, ys, sample/50, t, 10);
 	svg_finalize(psvg);
-	svg_save(psvg, "mnist_autoencoder2.svg");
+	svg_save(psvg, "mnist_cnn_autoencoder.svg");
 	svg_free(psvg);
 
 	free(x);
