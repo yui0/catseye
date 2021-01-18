@@ -599,7 +599,7 @@ static void CatsEye_maxpooling_backward(CatsEye_layer *l)
 	real *d = l->dIn;
 	memset(d, 0, sizeof(real)*l->inputs *l->p->batch);
 	for (int i=0; i<l->outputs *l->p->batch; i++) {
-		d[*max++] = *delta++;
+		d[*max++] += *delta++;
 	}
 }
 
@@ -632,6 +632,7 @@ static void CatsEye_avgpooling_backward(CatsEye_layer *l)
 {
 	int step = l->sx -l->ksize;
 	real n = l->ksize * l->ksize;
+	memset(l->dIn, 0, sizeof(real)*l->inputs *l->p->batch);
 	for (int i=0; i<l->p->batch; i++) {
 		real *delta = l->dOut +l->outputs*i;
 
@@ -643,7 +644,7 @@ static void CatsEye_avgpooling_backward(CatsEye_layer *l)
 					real a = *delta++ / n;
 					for (int wy=l->ksize; wy>0; wy--) {
 						for (int wx=l->ksize; wx>0; wx--) {
-							*d++ = a;
+							*d++ += a;
 						}
 						d += step;
 					}
@@ -1040,7 +1041,7 @@ static void (*_CatsEye_layer_backward[])(CatsEye_layer *l) = {
 //	CatsEye_none,		// multi-value classification
 //	CatsEye_none,		// regression
 	CatsEye_loss_delivative_mse,	// (y-t) identity with mse loss
-	CatsEye_loss_delivative_0_1,	// (y-t) sigmoid with cross-entropy loss
+	CatsEye_loss_delivative_mse,	// (y-t) sigmoid with cross-entropy loss
 	CatsEye_loss_delivative_0_1,	// (y-t) softmax with multi cross-entropy loss
 };
 static void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
@@ -1479,7 +1480,7 @@ int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random,
 	this->layer[a].z = t;	// FIXME
 	int lsize = this->layer[a].inputs *sizeof(real);
 	if (this->layer[a].type==CATS_LOSS_0_1 ||
-		this->layer[a].type==CATS_SOFTMAX_CE || this->layer[a].type==CATS_SIGMOID_BCE) {
+		this->layer[a].type==CATS_SOFTMAX_CE /*|| this->layer[a].type==CATS_SIGMOID_BCE*/) {
 		lsize = sizeof(int16_t);
 	}
 
@@ -1602,7 +1603,7 @@ int CatsEye_loadCats(CatsEye *this, char *filename)
 }
 
 // save weights to json file
-int _CatsEye_saveJson(CatsEye *this, char *filename)
+int CatsEye_saveJson(CatsEye *this, char *filename)
 {
 	FILE *fp = fopen(filename, "w");
 	if (fp==NULL) return -1;

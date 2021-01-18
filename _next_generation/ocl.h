@@ -29,6 +29,7 @@
 #define OCL_INPUT_ONCE	4
 #define OCL_BUFFER	8
 #define OCL_SVM		16
+//#define OCL_HOST_PTR	16
 
 //#define _DEBUG
 #ifdef _DEBUG
@@ -38,7 +39,7 @@ static void __checkOclErrors(const cl_int err, const char* const func, const cha
 	if (err != CL_SUCCESS) {
 		fprintf(stderr, "OpenCL error at %s:%d code=%d \"%s\" \n", file, line, err, func);
 
-		switch (err) {
+		switch (err) { // https://mkguytone.github.io/java-opencl/apd.html
 		case CL_DEVICE_NOT_FOUND:                 printf("-- Error at %d:  Device not found.\n", line); break;
 		case CL_DEVICE_NOT_AVAILABLE:             printf("-- Error at %d:  Device not available\n", line); break;
 		case CL_COMPILER_NOT_AVAILABLE:           printf("-- Error at %d:  Compiler not available\n", line); break;
@@ -231,11 +232,32 @@ void oclKernelArgs(ocl_t *kernel, int n)
 		args_t *args = kernel->a;
 		while (args->size) {
 			if (args->type>0) {
-				if (args->flag==OCL_BUFFER && !args->p) {
+				if (args->type & CL_MEM_USE_HOST_PTR && !args->p) {
+					args->size = ceil_int(args->size, 64);
+/*#ifdef _WIN32
+					args->s = _aligned_malloc(args->size, 4096);
+#else
+					posix_memalign(&args->s, args->size, 4096);
+#endif*/
+					args->s = aligned_alloc(args->size, 4096);
+					assert(args->s);
+//					printf("%x: %zu\n", args->s, args->size);
+					args->p = clCreateBuffer(ocl_context, args->type, args->size, args->s, &ret);
+					if (!args->p) {
+						printf("clCreateBuffer error!! %d\n", ret);
+						assert(!args->p);
+					}
+				} else if (args->flag==OCL_BUFFER && !args->p) {
 					args->p = clCreateBuffer(ocl_context, args->type, args->size, NULL, &ret);
 					if (!args->p) {
 						printf("clCreateBuffer error!! %d\n", ret);
 						assert(!args->p);
+					}
+					if (args->type & CL_MEM_ALLOC_HOST_PTR) {
+						args->s = clEnqueueMapBuffer(command_queue, args->p, CL_FALSE, CL_MAP_READ|CL_MAP_WRITE, 0, args->size, 0, NULL, NULL, &ret);
+						assert(!ret);
+						clFinish(command_queue);
+						assert(args->s);
 					}
 				} else if (args->flag==OCL_SVM && !args->s) {
 					args->s = clSVMAlloc(ocl_context, args->type, args->size, 0);
@@ -303,6 +325,10 @@ static inline void oclRun(ocl_t *kernel)
 		if (args->type>0) {
 			if (args->flag==OCL_SVM) {
 				checkOcl(clSetKernelArgSVMPointer(kernel->k, n++, (void*)&args->s));
+			/*} else if (args->type & CL_MEM_ALLOC_HOST_PTR) {
+				clEnqueueUnmapMemObject(command_queue, args->p, args->s, 0, NULL, NULL);
+				checkOcl(clSetKernelArg(kernel->k, n++, sizeof(cl_mem), (void*)&args->p));
+				args->s = clEnqueueMapBuffer(command_queue, args->p, CL_FALSE, CL_MAP_READ|CL_MAP_WRITE, 0, args->size, 0, NULL, NULL, &ret);*/
 			} else {
 				checkOcl(clSetKernelArg(kernel->k, n++, sizeof(cl_mem), (void*)&args->p));
 			}
@@ -324,6 +350,9 @@ void oclReleaseKernel(ocl_t *kernel, int n)
 		args_t *args = kernel->a;
 		while (args->size) {
 			if (args->type>0 && args->p) {
+				if (args->type & CL_MEM_ALLOC_HOST_PTR) {
+					clEnqueueUnmapMemObject(command_queue, args->p, args->s, 0, NULL, NULL);
+				}
 				clReleaseMemObject(args->p);
 				args->p = 0;
 			} else if (args->flag==OCL_SVM) {

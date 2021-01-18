@@ -51,7 +51,8 @@ int main()
 //		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=4 },
 		{     0, CATS_ACT_LEAKY_RELU },
 		{     0, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=16 },
-		{     0, CATS_ACT_LEAKY_RELU },
+		{     0, CATS_ACT_LEAKY_RELU, .name="encoder" },
+
 //		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=8 },
 		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=4 },
 		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=1 },
@@ -135,7 +136,9 @@ int main()
 	double xs[sample], ys[sample];
 	for (int i=0; i<sample/50; i++) {
 		CatsEye_forward(&cat, x+size*i);
-		CatsEye_layer *l = &cat.layer[3];
+
+		int e = CatsEye_getLayer(&cat, "encoder");
+		CatsEye_layer *l = &cat.layer[e];
 		xs[i] = l->z[0];
 		ys[i] = l->z[1];
 	}

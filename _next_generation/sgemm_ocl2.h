@@ -177,6 +177,8 @@ args_t _args[] = {
 	{ CL_MEM_READ_WRITE|CL_MEM_SVM_FINE_GRAIN_BUFFER, 0, 0, OCL_SVM },
 #else
 	{ CL_MEM_READ_WRITE, 0, 0, OCL_BUFFER },
+//	{ CL_MEM_READ_WRITE|CL_MEM_USE_HOST_PTR, 0, 0, OCL_BUFFER },
+//	{ CL_MEM_READ_WRITE|CL_MEM_ALLOC_HOST_PTR, 0, 0, OCL_HOST_PTR },
 #endif
 	{ 0, sizeof(int)*8, _info },
 	{ 0, sizeof(float)*4, _param },

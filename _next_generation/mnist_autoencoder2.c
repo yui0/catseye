@@ -16,7 +16,8 @@
 #include"svg.h"
 
 //#define ETA 1e-2
-#define ETA 1e-3
+//#define ETA 1e-3
+#define ETA 1e-4
 
 int main()
 {
@@ -29,7 +30,8 @@ int main()
 		{ size, CATS_LINEAR, ETA },
 		{   32, CATS_ACT_RELU },
 		{   32, CATS_LINEAR, ETA },
-		{    2, CATS_ACT_RELU },
+		{    2, CATS_ACT_RELU, .name="encoder" },
+
 		{    2, CATS_LINEAR, ETA },
 		{   32, CATS_ACT_RELU },
 		{   32, CATS_LINEAR, ETA },
@@ -98,7 +100,8 @@ int main()
 	double xs[sample], ys[sample];
 	for (int i=0; i<sample/50; i++) {
 		CatsEye_forward(&cat, x+size*i);
-		CatsEye_layer *l = &cat.layer[3];
+		int e = CatsEye_getLayer(&cat, "encoder");
+		CatsEye_layer *l = &cat.layer[e];
 		xs[i] = l->z[0];
 		ys[i] = l->z[1];
 	}
