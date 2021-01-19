@@ -38,7 +38,8 @@ int main()
 		{     0, CATS_CONV, ETA, .ksize=1, .stride=1, .ch=96, .name="conv1-2" },
 		{     0, CATS_CONV, ETA, .ksize=1, .stride=1, .ch=96, .name="conv1-3" },
 		{     0, CATS_MAXPOOL, .ksize=6, .stride=4 },
-//		{     0, CATS_AVGPOOL, .ksize=6, .stride=4 }, // global average pooling
+//		{     0, CATS_AVGPOOL, .ksize=6, .stride=4 }, // average pooling 34.1%(10)
+//		{     0, CATS_GAP }, // global average pooling 21.7%(10)
 		{     0, CATS_LINEAR, ETA, .outputs=label },
 		{ label, CATS_ACT_SOFTMAX },
 		{ label, CATS_SOFTMAX_CE },

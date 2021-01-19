@@ -34,6 +34,7 @@ int main()
 	int size = 28*28;	// 入出力層(28x28)
 	int sample = 60000;
 
+	// https://qiita.com/underfitting/items/a0cbb035568dea33b2d7
 	// https://cntk.ai/pythondocs/CNTK_206A_Basic_GAN.html
 	CatsEye_layer u[] = {
 		// generator

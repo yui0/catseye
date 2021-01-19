@@ -140,7 +140,7 @@ static inline uint64_t xor128()
 #define frand()			( xor128() / (XOR128_MAX +1.0) )
 #define _rand(max)		(int)( xor128() / (XOR128_MAX +1.0) * max)
 #define random(min, max)	( xor128() / (XOR128_MAX +1.0) * (max -min) +min )
-// http://www.sat.t.u-tokyo.ac.jp/~omi/random_variables_generation.html
+// https://omitakahiro.github.io/random/random_variables_generation.html
 static inline real rand_normal(real mu, real sigma)
 {
 	real z = sqrt(-2.0*log(frand())) * sin(2.0*M_PI*frand());
@@ -653,6 +653,35 @@ static void CatsEye_avgpooling_backward(CatsEye_layer *l)
 		}
 	}
 }
+static void CatsEye_global_avgpooling_forward(CatsEye_layer *l)
+{
+	real *o = l->z;
+	real *u = l->x;
+	for (int i=0; i<l->p->batch; i++) {
+		for (int c=0; c<l->ich; c++) { // in/out
+			real a = 0;
+			for (int n=l->sx*l->sy; n>0; n--) {
+				a += *u++;
+			}
+			*o++ = a / (l->sx*l->sy);
+		}
+	}
+}
+static void CatsEye_global_avgpooling_backward(CatsEye_layer *l)
+{
+//	memset(l->dIn, 0, sizeof(real)*l->inputs *l->p->batch);
+
+	real *delta = l->dOut;
+	real *d = l->dIn;
+	for (int i=0; i<l->p->batch; i++) {
+		for (int c=0; c<l->ich; c++) { // in/out
+			real a = (*delta++) / (l->sx*l->sy);
+			for (int n=l->sx*l->sy; n>0; n--) {
+				*d++ = a;
+			}
+		}
+	}
+}
 
 // Sub-Pixel Convolution
 static void CatsEye_PixelShuffler_forward(CatsEye_layer *l)
@@ -982,6 +1011,7 @@ static void (*_CatsEye_layer_forward[])(CatsEye_layer *l) = {
 	CatsEye_deconvolutional_forward,
 	CatsEye_maxpooling_forward,
 	CatsEye_avgpooling_forward,
+	CatsEye_global_avgpooling_forward,
 	CatsEye_PixelShuffler_forward,
 //	CatsEye_rnn_forward,
 
@@ -1016,6 +1046,7 @@ static void (*_CatsEye_layer_backward[])(CatsEye_layer *l) = {
 	CatsEye_deconvolutional_backward,
 	CatsEye_maxpooling_backward,
 	CatsEye_avgpooling_backward,
+	CatsEye_global_avgpooling_backward,
 	CatsEye_PixelShuffler_backward,
 //	CatsEye_rnn_backward,
 
@@ -1050,6 +1081,7 @@ static void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
 	CatsEye_deconvolutional_update,
 	CatsEye_none,	// maxpool
 	CatsEye_none,	// avgpool
+	CatsEye_none,	// global avgpool
 	CatsEye_none,	// Pixel Shuffler
 //	CatsEye_rnn_update,
 
@@ -1079,7 +1111,8 @@ static void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
 	CatsEye_none,	// softmax with multi cross-entropy loss
 };
 typedef enum {
-	CATS_LINEAR, CATS_CONV, CATS_DECONV, CATS_MAXPOOL, CATS_AVGPOOL, CATS_PIXELSHUFFLER, /*CATS_RECURRENT,*/
+	CATS_LINEAR, CATS_CONV, CATS_DECONV, CATS_MAXPOOL, CATS_AVGPOOL, CATS_GAP,
+	CATS_PIXELSHUFFLER, /*CATS_RECURRENT,*/
 	CATS_PADDING, CATS_BATCHNORMAL,
 
 	CATS_ACT_SIGMOID, CATS_ACT_SOFTMAX, CATS_ACT_TANH,
@@ -1092,7 +1125,8 @@ typedef enum {
 	CATS_LOSS_IDENTITY_MSE, CATS_SIGMOID_BCE, CATS_SOFTMAX_CE
 } CATS_LAYER_TYPE;
 char CatsEye_string[][16] = {
-	"dense", "conv", "deconv", "max", "avg", "subpixel", /*"rnn",*/
+	"dense", "conv", "deconv", "max", "avg", "gap",
+	"subpixel", /*"rnn",*/
 	"pad", "bn",
 
 	"sigmoid", "softmax", "tanh",
@@ -1197,6 +1231,12 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			}
 			printf("%3d %-8s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			if ((l->sx +2*l->padding -l->ksize) % l->stride > 0) printf("\t↑ warning: stride is strange!\n");
+			break;
+		case CATS_GAP:
+			l->outputs = l->ch = l->ich;
+			l->ox = 1;
+			l->oy = 1;
+			printf("%3d %-8s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
 		case CATS_PIXELSHUFFLER:

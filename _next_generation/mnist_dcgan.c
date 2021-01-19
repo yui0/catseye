@@ -31,19 +31,45 @@ int main()
 	int size = 28*28;	// 入出力層(28x28)
 	int sample = 60000;
 
-	// https://aidiary.hatenablog.com/entry/20180311/1520762446
-	CatsEye_layer u[] = {
-		// generator
-		{    ZDIM, CATS_LINEAR, ETA, .outputs=1024 },
-//		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+	CatsEye_layer u_ae[] = {
+#if 0
+		// decoder / generator
+		{    ZDIM, CATS_LINEAR, ETA, .outputs=128 },
 		{       0, CATS_ACT_RELU },
 		{       0, CATS_LINEAR, ETA, .outputs=4*14*14/*128*16*16*/ },
-//		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 		{       0, CATS_ACT_RELU },
 
 		{       0, CATS_PIXELSHUFFLER, .r=2/*4*/, .ch=1 },
 		{    size, CATS_ACT_TANH },	// [-1,1]
-//		{    size, CATS_ACT_SIGMOID },	// [-1,1]
+		{    size, CATS_LOSS_MSE },
+#endif
+		{    ZDIM, CATS_LINEAR, ETA_AE },
+		{     128, CATS_LINEAR, ETA_AE },
+		{    size, CATS_PIXELSHUFFLER, .r=2, .ch=4 },
+		{       0, CATS_PIXELSHUFFLER, .r=2, .ch=1 },
+		{    size, CATS_ACT_TANH },	// [-1,1]
+		{    size, CATS_LOSS_MSE },
+	};
+	CatsEye cat_ae = { .batch=256 };
+	CatsEye__construct(&cat_ae, u_ae);
+
+	// https://aidiary.hatenablog.com/entry/20180311/1520762446
+	CatsEye_layer u[] = {
+		// generator
+#if 0
+		{    ZDIM, CATS_LINEAR, ETA, .outputs=128/*1024*/ },
+		{       0, CATS_ACT_RELU },
+		{       0, CATS_LINEAR, ETA, .outputs=4*14*14/*128*16*16*/ },
+		{       0, CATS_ACT_RELU },
+
+		{       0, CATS_PIXELSHUFFLER, .r=2/*4*/, .ch=1 },
+		{    size, CATS_ACT_TANH },	// [-1,1]
+#endif
+		{    ZDIM, CATS_LINEAR, ETA_AE },
+		{     128, CATS_LINEAR, ETA_AE },
+		{    size, CATS_PIXELSHUFFLER, .r=2, .ch=4 },
+		{       0, CATS_PIXELSHUFFLER, .r=2, .ch=1 },
+		{    size, CATS_ACT_TANH },	// [-1,1]
 
 		// discriminator
 		{    size, CATS_CONV, ETA, .ksize=4, .stride=2, .padding=1, .ch=64, .name="Discriminator" },
@@ -86,6 +112,26 @@ int main()
 	free(data);
 	printf("OK\n");
 
+	// 訓練
+	printf("Starting training...\n");
+	for (int e=0; e<20; e++) {
+		for (int i=0; i<ZDIM*SAMPLE; i++) {
+			noise[i] = rand_normal(0, 1);
+		}
+		CatsEye_train(&cat_ae, noise, x, sample, 1/*epoch*/, sample, 0);
+	}
+//	CatsEye_train(&cat_ae, x, x, sample, 20/*epoch*/, sample, 0);
+	printf("Training complete\n");
+
+	int decoder = CatsEye_getLayer(&cat_ae, "decoder");
+//	CatsEye_layer *l_ae = cat_ae.layer[decoder];
+	CatsEye_layer *l = &cat.layer[0];
+	for (int n=decoder; n<cat_ae.layers-1; n++) {
+		memcpy(l->W, cat_ae.w[n], cat_ae.ws[n]);
+		l++;
+	}
+
+	// ラベル作成
 //	int16_t lreal[SAMPLE], lfake[SAMPLE];
 	real lreal[SAMPLE], lfake[SAMPLE];
 	for (int i=0; i<SAMPLE; i++) {

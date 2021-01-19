@@ -45,7 +45,7 @@ int main()
 		{ size, CATS_ACT_SIGMOID },
 		{ size, CATS_LOSS_MSE },
 	};*/
-	CatsEye_layer u[] = {
+/*	CatsEye_layer u[] = { // 1e-2
 		{  size, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=4 },
 //		{  size, CATS_PADDING, .padding=1, .ich=1 },
 //		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=4 },
@@ -57,9 +57,26 @@ int main()
 		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=4 },
 		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=1 },
 //		{     0, CATS_CONV, 0.001, .ksize=1, .stride=1, .ch=4 },
-		//{     0, CATS_PIXELSHUFFLER, .r=4, .ch=1 },
-//		{ size, CATS_ACT_SIGMOID },
-		{ size, CATS_LOSS_MSE },
+//		{  size, CATS_ACT_SIGMOID },
+		{  size, CATS_LOSS_MSE },
+	};*/
+	CatsEye_layer u[] = { // https://kitakantech.com/cifar10-autoencoder/
+		// 28 x 28 x 1
+		{  size, CATS_CONV, ETA, .ksize=5, .stride=2, .padding=2, .ch=8 },
+		{     0, CATS_ACT_LEAKY_RELU },
+		// 14 x 14 x 4
+		{     0, CATS_CONV, ETA, .ksize=5, .stride=2, .padding=2, .ch=8 },
+		{     0, CATS_ACT_LEAKY_RELU, .name="encoder" },
+
+		{     0, CATS_LINEAR, ETA },
+		{  size, CATS_PIXELSHUFFLER, .r=2, .ch=4 },
+		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=1 },
+
+/*		{     0, CATS_DECONV, ETA, .ksize=6, .stride=2, .padding=2, .ch=8 },
+		{     0, CATS_ACT_LEAKY_RELU },
+		{     0, CATS_DECONV, ETA, .ksize=6, .stride=2, .padding=2, .ch=1 },*/
+		{  size, CATS_ACT_SIGMOID },
+		{  size, CATS_LOSS_MSE },
 	};
 #if 0
 	CatsEye_layer u[] = {
@@ -115,10 +132,10 @@ int main()
 		double mse = 0;
 		uint8_t *p = &pixels[(i/10)*size*10 + (i%10)*wh];
 		for (int j=0; j<size; j++) {
-			p[(j/wh)*wh*10+(j%wh)] = l->z[j] * 255.0;
+			p[(j/wh)*wh*10+(j%wh)] = (uint8_t)(l->z[j] * 255.0);
 			mse += (x[size*i+j]-l->z[j])*(x[size*i+j]-l->z[j]);
 
-			p[5*size*10+(j/wh)*wh*10+(j%wh)] = x[size*i+j] * 255.0;
+			p[5*size*10+(j/wh)*wh*10+(j%wh)] = (uint8_t)(x[size*i+j] * 255.0);
 		}
 //		printf("%d mse %lf\n", t[i], mse);
 	}

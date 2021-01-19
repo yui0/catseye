@@ -36,9 +36,9 @@ int main()
 
 		// decoder / generator
 		{ ZDIM, CATS_LINEAR, ETA_AE, .name="decoder" },
-		{   32, CATS_ACT_RELU },
+		{   32, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 		{   32, CATS_LINEAR, ETA_AE },
-		{ size, CATS_ACT_SIGMOID },
+		{ size, CATS_ACT_TANH },	// [-1,1]
 		{ size, CATS_LOSS_MSE },
 	};
 	CatsEye cat_ae = { .batch=256 };
@@ -47,10 +47,9 @@ int main()
 	CatsEye_layer u[] = {
 		// decoder / generator
 		{ ZDIM, CATS_LINEAR, ETA_AE, .name="Generator" },
-		{   32, CATS_ACT_RELU },
+		{   32, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 		{   32, CATS_LINEAR, ETA_AE },
-		{ size, CATS_ACT_SIGMOID },
-		{ size, CATS_LOSS_MSE },
+		{ size, CATS_ACT_TANH },	// [-1,1]
 
 		// discriminator
 		{ size, CATS_LINEAR, ETA, .outputs=128, .name="Discriminator" },
