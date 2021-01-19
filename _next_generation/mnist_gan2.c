@@ -13,7 +13,9 @@
 #include "stb_image_write.h"
 
 #define NAME	"mnist_gan2"
-#define ZDIM	62
+//#define ZDIM	2
+#define ZDIM	3
+//#define ZDIM	64
 
 #define SAMPLE	60000
 #define BATCH	20000
@@ -30,10 +32,10 @@ int main()
 		{ size, CATS_LINEAR, ETA_AE },
 		{   32, CATS_ACT_RELU },
 		{   32, CATS_LINEAR, ETA_AE },
-		{    2, CATS_ACT_RELU, .name="encoder" },
+		{ ZDIM, CATS_ACT_RELU, .name="encoder" },
 
 		// decoder / generator
-		{    2, CATS_LINEAR, ETA_AE, .name="decoder" },
+		{ ZDIM, CATS_LINEAR, ETA_AE, .name="decoder" },
 		{   32, CATS_ACT_RELU },
 		{   32, CATS_LINEAR, ETA_AE },
 		{ size, CATS_ACT_SIGMOID },
@@ -44,7 +46,7 @@ int main()
 
 	CatsEye_layer u[] = {
 		// decoder / generator
-		{    2, CATS_LINEAR, ETA_AE, .name="Generator" },
+		{ ZDIM, CATS_LINEAR, ETA_AE, .name="Generator" },
 		{   32, CATS_ACT_RELU },
 		{   32, CATS_LINEAR, ETA_AE },
 		{ size, CATS_ACT_SIGMOID },
@@ -64,9 +66,9 @@ int main()
 	cat.epoch = 0;
 //	int generator = CatsEye_getLayer(&cat, "Generator");
 	int discriminator = CatsEye_getLayer(&cat, "Discriminator");
-	if (!CatsEye_loadCats(&cat, NAME".cats")) {
+	/*if (!CatsEye_loadCats(&cat, NAME".cats")) {
 		printf("Loading success!!\n");
-	}
+	}*/
 
 	int16_t t[sample];	// ラベルデータ
 	real *x = malloc(sizeof(real)*size*sample);	// 訓練データ

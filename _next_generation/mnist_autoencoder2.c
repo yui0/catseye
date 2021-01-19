@@ -53,6 +53,8 @@ int main()
 	fread(data, 16, 1, fp);		// header
 	fread(data, size, sample, fp);	// data
 	for (int i=0; i<sample*size; i++) x[i] = data[i] / 255.0;
+	// https://aidiary.hatenablog.com/entry/20180225/1519520981
+//	for (int i=0; i<sample*size; i++) x[i] = data[i] /255.0 *2 -1; // [0,1] => [-1,1]
 	fclose(fp);
 	fp = fopen("train-labels-idx1-ubyte", "rb");
 	if (fp==NULL) return -1;

@@ -12,57 +12,65 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
-#define NAME	"mnist_gan"
-//#define ZDIM	100
-#define ZDIM	62
-//#define NAME	"_mnist_gan"
-//#define ZDIM	10
+#define NAME	"mnist_gan3"
+//#define ZDIM	2
+#define ZDIM	3
+//#define ZDIM	64
 
 #define SAMPLE	60000
-//#define BATCH	10240
-//#define BATCH_G	20480
 #define BATCH	20000
 #define BATCH_G	40000
 #define ETA	0.00005
-//#define ETA	0.00003
-//#define ETA	0.00001
-//#define BATCH	640
-//#define BATCH_G	1280
+#define ETA_AE	1e-4
 
 int main()
 {
 	int size = 28*28;	// 入出力層(28x28)
 	int sample = 60000;
 
-	// https://cntk.ai/pythondocs/CNTK_206A_Basic_GAN.html
-	CatsEye_layer u[] = {
-		// generator
-		{    ZDIM, CATS_LINEAR, ETA, .outputs=128 },
-		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+	CatsEye_layer u_ae[] = {
+/*		{ size, CATS_LINEAR, ETA_AE },
+		{   32, CATS_ACT_RELU },
+		{   32, CATS_LINEAR, ETA_AE },
+		{ ZDIM, CATS_ACT_RELU, .name="encoder" },*/
 
-		{       0, CATS_LINEAR, ETA },
-		{    size, CATS_ACT_TANH },	// [-1,1]
-//		{    size, CATS_ACT_SIGMOID },
+		// decoder / generator
+		{ ZDIM, CATS_LINEAR, ETA_AE, .name="decoder" },
+		{   32, CATS_ACT_RELU },
+		{   32, CATS_LINEAR, ETA_AE },
+		{ size, CATS_ACT_SIGMOID },
+		{ size, CATS_LOSS_MSE },
+	};
+	CatsEye cat_ae = { .batch=256 };
+	CatsEye__construct(&cat_ae, u_ae);
+
+	CatsEye_layer u[] = {
+		// decoder / generator
+		{ ZDIM, CATS_LINEAR, ETA_AE, .name="Generator" },
+		{   32, CATS_ACT_RELU },
+		{   32, CATS_LINEAR, ETA_AE },
+		{ size, CATS_ACT_SIGMOID },
+		{ size, CATS_LOSS_MSE },
 
 		// discriminator
-		{    size, CATS_LINEAR, ETA, .outputs=128, .name="Discriminator" },
-		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+		{ size, CATS_LINEAR, ETA, .outputs=128, .name="Discriminator" },
+		{    0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 
-		{       0, CATS_LINEAR, ETA },
-		{       1, CATS_ACT_SIGMOID },
+		{    0, CATS_LINEAR, ETA },
+		{    1, CATS_ACT_SIGMOID },
 
-//		{       1, CATS_LOSS_MSE },
-		{       1, CATS_SIGMOID_BCE },
+		{    1, CATS_SIGMOID_BCE },
 	};
 	CatsEye cat = { .batch=1 };
 	CatsEye__construct(&cat, u);
 	cat.epoch = 0;
+//	int generator = CatsEye_getLayer(&cat, "Generator");
 	int discriminator = CatsEye_getLayer(&cat, "Discriminator");
-	printf("Discriminator: #%d\n", discriminator);
-	if (!CatsEye_loadCats(&cat, NAME".cats")) {
+	/*if (!CatsEye_loadCats(&cat, NAME".cats")) {
 		printf("Loading success!!\n");
-	}
+	}*/
 
+	int16_t t[sample];	// ラベルデータ
 	real *x = malloc(sizeof(real)*size*sample);	// 訓練データ
 	uint8_t *data = malloc(sample*size);
 	real *noise = malloc(sizeof(real)*ZDIM*SAMPLE);
@@ -76,12 +84,37 @@ int main()
 	}
 	fread(data, 16, 1, fp);		// header
 	fread(data, size, sample, fp);	// data
-//	for (int i=0; i<sample*size; i++) x[i] = data[i] / 255.0;
-	for (int i=0; i<sample*size; i++) x[i] = data[i] /255.0 *2 -1; // [0,1] => [-1,1]
+	for (int i=0; i<sample*size; i++) x[i] = data[i] / 255.0;
+	fclose(fp);
+	printf("OK\n");
+	fp = fopen("train-labels-idx1-ubyte", "rb");
+	if (fp==NULL) return -1;
+	fread(data, 8, 1, fp);		// header
+	fread(data, 1, sample, fp);	// data
+	for (int i=0; i<sample; i++) t[i] = data[i];
 	fclose(fp);
 	free(data);
-	printf("OK\n");
 
+	// 訓練
+	printf("Starting training...\n");
+	for (int e=0; e<20; e++) {
+		for (int i=0; i<ZDIM*SAMPLE; i++) {
+			noise[i] = rand_normal(0, 1);
+		}
+		CatsEye_train(&cat_ae, noise, x, sample, 1/*epoch*/, sample, 0);
+	}
+//	CatsEye_train(&cat_ae, x, x, sample, 20/*epoch*/, sample, 0);
+	printf("Training complete\n");
+
+	int decoder = CatsEye_getLayer(&cat_ae, "decoder");
+//	CatsEye_layer *l_ae = cat_ae.layer[decoder];
+	CatsEye_layer *l = &cat.layer[0];
+	for (int n=decoder; n<cat_ae.layers-1; n++) {
+		memcpy(l->W, cat_ae.w[n], cat_ae.ws[n]);
+		l++;
+	}
+
+	// ラベル作成
 //	int16_t lreal[SAMPLE], lfake[SAMPLE];
 	real lreal[SAMPLE], lfake[SAMPLE];
 	for (int i=0; i<SAMPLE; i++) {

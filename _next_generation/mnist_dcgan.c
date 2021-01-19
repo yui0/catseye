@@ -17,12 +17,11 @@
 #define ZDIM	62
 
 #define SAMPLE	60000
-//#define BATCH	10240
-//#define BATCH_G	20480
 #define BATCH	20000
 #define BATCH_G	40000
+#define ETA	0.0002
 //#define ETA	0.00005
-#define ETA	0.00003
+//#define ETA	0.00003
 //#define ETA	0.00001
 //#define BATCH	640
 //#define BATCH_G	1280
@@ -35,7 +34,7 @@ int main()
 	// https://aidiary.hatenablog.com/entry/20180311/1520762446
 	CatsEye_layer u[] = {
 		// generator
-		{    ZDIM, CATS_LINEAR, ETA, .outputs=256/*1024*/ },
+		{    ZDIM, CATS_LINEAR, ETA, .outputs=1024 },
 //		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 		{       0, CATS_ACT_RELU },
 		{       0, CATS_LINEAR, ETA, .outputs=4*14*14/*128*16*16*/ },
@@ -43,33 +42,33 @@ int main()
 		{       0, CATS_ACT_RELU },
 
 		{       0, CATS_PIXELSHUFFLER, .r=2/*4*/, .ch=1 },
-//		{    size, CATS_ACT_TANH },	// [-1,1]
-		{    size, CATS_ACT_SIGMOID },	// [-1,1]
+		{    size, CATS_ACT_TANH },	// [-1,1]
+//		{    size, CATS_ACT_SIGMOID },	// [-1,1]
 
 		// discriminator
-		{    size, CATS_CONV, ETA, .ksize=4, .stride=2, .padding=1, .ch=16/*64*/, .name="Discriminator" },
+		{    size, CATS_CONV, ETA, .ksize=4, .stride=2, .padding=1, .ch=64, .name="Discriminator" },
 		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
-		{       0, CATS_CONV, ETA, .ksize=4, .stride=2, .padding=1, .ch=32/*128*/, .name="Discriminator" },
+		{       0, CATS_CONV, ETA, .ksize=4, .stride=2, .padding=1, .ch=128, .name="Discriminator" },
 		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 
-		{       0, CATS_LINEAR, ETA, .outputs=128/*1024*/ },
+		{       0, CATS_LINEAR, ETA, .outputs=256/*1024*/ },
 		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 		{       0, CATS_LINEAR, ETA, .outputs=1 },
 		{       1, CATS_ACT_SIGMOID },
 
-		{       1, CATS_LOSS_MSE },
+		{       1, CATS_SIGMOID_BCE },
 	};
 	CatsEye cat = { .batch=1 };
 	CatsEye__construct(&cat, u);
 	cat.epoch = 0;
 	int discriminator = CatsEye_getLayer(&cat, "Discriminator");
-	printf("Discriminator: #%d\n", discriminator);
+//	printf("Discriminator: #%d\n", discriminator);
 	if (!CatsEye_loadCats(&cat, NAME".cats")) {
 		printf("Loading success!!\n");
 	}
 
 	real *x = malloc(sizeof(real)*size*sample);	// 訓練データ
-	unsigned char *data = malloc(sample*size);
+	uint8_t *data = malloc(sample*size);
 	real *noise = malloc(sizeof(real)*ZDIM*SAMPLE);
 
 	// 訓練データの読み込み
@@ -81,8 +80,8 @@ int main()
 	}
 	fread(data, 16, 1, fp);		// header
 	fread(data, size, sample, fp);	// data
-	for (int i=0; i<sample*size; i++) x[i] = data[i] / 255.0;
-//	for (int i=0; i<sample*size; i++) x[i] = data[i] /255.0 *2 -1;
+//	for (int i=0; i<sample*size; i++) x[i] = data[i] / 255.0;
+	for (int i=0; i<sample*size; i++) x[i] = data[i] /255.0 *2 -1;
 	fclose(fp);
 	free(data);
 	printf("OK\n");
@@ -135,7 +134,7 @@ int main()
 
 
 		// 結果の表示
-		unsigned char *pixels = calloc(1, size*100);
+		uint8_t *pixels = calloc(1, size*100);
 		for (int i=0; i</*50*/100; i++) {
 //			double mse = 0;
 			CatsEye_forward(&cat, noise+ZDIM*i);
@@ -147,7 +146,7 @@ int main()
 //			_CatsEye_forward(&cat, x+size*i);
 //			CatsEye_visualize(cat.layer[9].x, size, 28, &pixels[(i/10)*size*10+(i%10)*28], 28*10);
 
-/*			unsigned char *p = &pixels[(i/10)*size*10 + (i%10)*28];
+/*			uint8_t *p = &pixels[(i/10)*size*10 + (i%10)*28];
 			for (int j=0; j<size; j++) {
 				CatsEye_layer *l = &cat.layer[8];
 				mse += (x[size*i+j]-l->x[j])*(x[size*i+j]-l->x[j]);
