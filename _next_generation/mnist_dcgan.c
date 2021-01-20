@@ -14,7 +14,8 @@
 
 #define NAME	"mnist_dcgan"
 //#define ZDIM	100
-#define ZDIM	62
+//#define ZDIM	62
+#define ZDIM	10 // https://qiita.com/triwave33/items/a5b3007d31d28bc445c2
 
 #define SAMPLE	60000
 #define BATCH	20000
@@ -23,8 +24,7 @@
 //#define ETA	0.00005
 //#define ETA	0.00003
 //#define ETA	0.00001
-//#define BATCH	640
-//#define BATCH_G	1280
+#define ETA_AE	0.0005
 
 int main()
 {
@@ -34,9 +34,9 @@ int main()
 	CatsEye_layer u_ae[] = {
 #if 0
 		// decoder / generator
-		{    ZDIM, CATS_LINEAR, ETA, .outputs=128 },
+		{    ZDIM, CATS_LINEAR, ETA_AE, .outputs=128 },
 		{       0, CATS_ACT_RELU },
-		{       0, CATS_LINEAR, ETA, .outputs=4*14*14/*128*16*16*/ },
+		{       0, CATS_LINEAR, ETA_AE, .outputs=4*14*14/*128*16*16*/ },
 		{       0, CATS_ACT_RELU },
 
 		{       0, CATS_PIXELSHUFFLER, .r=2/*4*/, .ch=1 },
@@ -72,9 +72,9 @@ int main()
 		{    size, CATS_ACT_TANH },	// [-1,1]
 
 		// discriminator
-		{    size, CATS_CONV, ETA, .ksize=4, .stride=2, .padding=1, .ch=64, .name="Discriminator" },
+		{    size, CATS_CONV, ETA, .ksize=4, .stride=2, .padding=1, .ch=8/*64*/, .name="Discriminator" },
 		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
-		{       0, CATS_CONV, ETA, .ksize=4, .stride=2, .padding=1, .ch=128, .name="Discriminator" },
+		{       0, CATS_CONV, ETA, .ksize=4, .stride=2, .padding=1, .ch=16/*128*/ },
 		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 
 		{       0, CATS_LINEAR, ETA, .outputs=256/*1024*/ },

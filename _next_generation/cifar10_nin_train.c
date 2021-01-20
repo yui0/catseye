@@ -7,6 +7,11 @@
 // gcc cifar10_nin_train.c -o cifar10_nin_train -lm -Ofast -march=native -funroll-loops -fopenmp -lgomp
 // clang cifar10_nin_train.c -o cifar10_nin_train -lm -Ofast -march=native -funroll-loops
 
+#define CATS_USE_RMSPROP
+#define ETA	0.001 // RMSProp
+
+//#define ETA	0.01 // SGD
+
 #define CATS_USE_FLOAT
 #include "catseye.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -16,19 +21,17 @@
 #define SIZE	32	// 69.7%(10)
 //#define SIZE	96	// 92.0%(10)
 
-#define ETA	0.01
-
 int main()
 {
 #if SIZE == 32
 	int k = 32;		// image size
 	int size = 32*32*3;	// 入力層
-	int label = 10;	// 出力層
+	int label = 10;		// 出力層
 	int sample = 10000;
 #else
 	int k = 96;		// image size
 	int size = 96*96*3;	// 入力層
-	int label = 10;	// 出力層
+	int label = 10;		// 出力層
 	int sample = 946-1;
 #endif
 

@@ -14,14 +14,14 @@
 
 #define NAME	"mnist_gan3"
 //#define ZDIM	2
-#define ZDIM	3
+#define ZDIM	10
 //#define ZDIM	64
 
 #define SAMPLE	60000
 #define BATCH	20000
 #define BATCH_G	40000
 #define ETA	0.00005
-#define ETA_AE	1e-4
+#define ETA_AE	3e-5
 
 int main()
 {
