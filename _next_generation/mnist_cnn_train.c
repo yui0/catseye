@@ -132,7 +132,7 @@ int main()
 	for (int i=0; i<l->ch; i++) {
 		int s = l->ksize*l->ksize;
 		int n = l->ksize+2;
-		CatsEye_visualize(l->W+s*i, s, l->ksize, &pixels[28*28*10*(9+(i*n)/(28*10))+(i*n)%(28*10)], 28*10, 1);
+		CatsEye_visualize(l->w+s*i, s, l->ksize, &pixels[28*28*10*(9+(i*n)/(28*10))+(i*n)%(28*10)], 28*10, 1);
 	}
 	}
 	stbi_write_png("mnist_cnn_train.png", 28*10, 28*10, 1, pixels, 28*10);

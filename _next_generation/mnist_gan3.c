@@ -83,7 +83,8 @@ int main()
 	}
 	fread(data, 16, 1, fp);		// header
 	fread(data, size, sample, fp);	// data
-	for (int i=0; i<sample*size; i++) x[i] = data[i] / 255.0;
+//	for (int i=0; i<sample*size; i++) x[i] = data[i] / 255.0;
+	for (int i=0; i<sample*size; i++) x[i] = data[i] /255.0 *2 -1; // [0,1] => [-1,1]
 	fclose(fp);
 	printf("OK\n");
 	fp = fopen("train-labels-idx1-ubyte", "rb");
@@ -109,7 +110,7 @@ int main()
 //	CatsEye_layer *l_ae = cat_ae.layer[decoder];
 	CatsEye_layer *l = &cat.layer[0];
 	for (int n=decoder; n<cat_ae.layers-1; n++) {
-		memcpy(l->W, cat_ae.w[n], cat_ae.ws[n]);
+		memcpy(l->w, cat_ae.w[n], cat_ae.ws[n]);
 		l++;
 	}
 
@@ -139,7 +140,8 @@ int main()
 			noise[i] = rand_normal(0, 1);
 		}
 		cat.start = 0;
-		cat.stop = discriminator+1;
+//		cat.stop = discriminator+1;
+		cat.stop = discriminator;
 		cat.slide = ZDIM;
 		for (int i=0; i<discriminator; i++) cat.layer[i].fix = 1;
 		printf("Training Discriminator #%d: phase 2 [fake]\n", n);

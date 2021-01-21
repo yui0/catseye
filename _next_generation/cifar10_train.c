@@ -7,6 +7,9 @@
 // gcc cifar10_train.c -o cifar10_train -lm -Ofast -march=native -funroll-loops -fopenmp -lgomp
 // clang cifar10_train.c -o cifar10_train -lm -Ofast -march=native -funroll-loops
 
+//#define CATS_USE_ADAM
+//#define ETA	0.0001 // Adam: 90.7%(100)
+
 #define CATS_USE_FLOAT
 //#define CATS_OPENGL
 #include "catseye.h"
@@ -16,8 +19,7 @@
 //#define ETA	0.01
 //#define ETA	0.007 // 76%(100)
 //#define ETA	0.005 // 76%(100)
-#define ETA	0.001 // 92%(100)
-//#define ETA	0.0001
+#define ETA	0.001 // SGD: 92%(100)
 
 int main()
 {

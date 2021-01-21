@@ -7,10 +7,10 @@
 // gcc cifar10_nin_train.c -o cifar10_nin_train -lm -Ofast -march=native -funroll-loops -fopenmp -lgomp
 // clang cifar10_nin_train.c -o cifar10_nin_train -lm -Ofast -march=native -funroll-loops
 
-#define CATS_USE_RMSPROP
-#define ETA	0.001 // RMSProp
+//#define CATS_USE_RMSPROP
+//#define ETA	0.001 // RMSProp
 
-//#define ETA	0.01 // SGD
+#define ETA	0.01 // SGD
 
 #define CATS_USE_FLOAT
 #include "catseye.h"

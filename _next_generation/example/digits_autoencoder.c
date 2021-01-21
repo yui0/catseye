@@ -136,10 +136,10 @@ int main()
 		double mse = 0;
 		uint8_t *p = &pixels[(i/10)*size*10 + (i%10)*8];
 		for (int j=0; j<size; j++) {
-			p[(j/8)*8*10+(j%8)] = l->z[j] * 255.0;
+			p[(j/8)*8*10+(j%8)] = (uint8_t)(l->z[j] * 255.0);
 			mse += (x[size*i+j]-l->z[j])*(x[size*i+j]-l->z[j]);
 
-			p[5*size*10+(j/8)*8*10+(j%8)] = x[size*i+j] * 255.0;
+			p[5*size*10+(j/8)*8*10+(j%8)] = (uint8_t)(x[size*i+j] * 255.0);
 		}
 		printf("%d mse %lf\n", t[i], mse);
 	}

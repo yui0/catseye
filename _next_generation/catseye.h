@@ -113,7 +113,7 @@ inline void gemm_rtn(int M, int N, int K, real alpha, real *A, real *B, real bet
 
 // http://xorshift.di.unimi.it/xorshift128plus.c
 // https://github.com/AndreasMadsen/xorshift/blob/master/reference.c
-// http://ogawa-sankinkoutai.seesaa.net/category/5784373-1.html
+// https://ogawa-sankinkoutai.seesaa.net/article/108848981.html
 #define XOR128_MAX	18446744073709551615.0
 #if __WORDSIZE == 64
 typedef unsigned long int	uint64_t;
@@ -123,7 +123,7 @@ typedef unsigned long long int	uint64_t;
 #endif
 // The state must be seeded so that it is not everywhere zero.
 uint64_t seed[2];
-void xor128_init(unsigned int s)
+void xor128_init(uint64_t s)
 {
 	for (int i=1; i<=2; i++) {
 		seed[i-1] = s = 1812433253U * ( s ^ ( s >> 30 ) ) + i;
@@ -137,9 +137,41 @@ static inline uint64_t xor128()
 	s1 ^= s1 << 23;
 	return ( seed[1] = ( s1 ^ s0 ^ ( s1 >> 17 ) ^ ( s0 >> 26 ) ) ) + s0;
 }
-#define frand()			( xor128() / (XOR128_MAX +1.0) )
-#define _rand(max)		(int)( xor128() / (XOR128_MAX +1.0) * max)
-#define random(min, max)	( xor128() / (XOR128_MAX +1.0) * (max -min) +min )
+
+// xoroshiro generator taken from http://vigna.di.unimi.it/xorshift/xoroshiro128plus.c
+uint64_t xoroshiro_s[2] = {
+    0X922AC4EB35B502D9L,
+    0XDA3AA4832B8F1D27L
+};
+void xoroshiro128plus_init(uint64_t s)
+{
+	for (int i=1; i<=2; i++) {
+		xoroshiro_s[i-1] = s = 1812433253U * ( s ^ ( s >> 30 ) ) + i;
+	}
+}
+static inline uint64_t rotl(const uint64_t x, int k)
+{
+	return (x << k) | (x >> (64 - k));
+}
+uint64_t xoroshiro128plus()
+{
+	const uint64_t s0 = xoroshiro_s[0];
+	uint64_t s1 = xoroshiro_s[1];
+	const uint64_t result = s0 + s1;
+
+	s1 ^= s0;
+	xoroshiro_s[0] = rotl(s0, 55) ^ s1 ^ (s1 << 14); // a, b
+	xoroshiro_s[1] = rotl(s1, 36); // c
+	return result;
+}
+#ifdef CATS_USE_XOR128
+#define frand()			( xor128() / (XOR128_MAX+1.0) )
+#else
+#define frand()			( xoroshiro128plus() / (XOR128_MAX+1.0) )
+#endif
+#define _rand(max)		(int)( frand() * max)
+#define random(min, max)	( frand() * (max -min) +min )
+// http://www.natural-science.or.jp/article/20110404234734.php (mt19937ar.h)
 // https://omitakahiro.github.io/random/random_variables_generation.html
 static inline real rand_normal(real mu, real sigma)
 {
@@ -182,7 +214,7 @@ typedef struct __CatsEye_layer {
 	real *x;		// input
 	real *z;		// output
 	real *bias;		// bias
-	real *w, *dw, *g;	// weight
+	real *w, *dw, *g, *s;	// weight
 	real *dOut, *dIn;	// gradient
 	real *workspace;	// for im2col, col2im
 /*	real *Wi, *dOuti;	// RNN [hidden * time](input -> hidden) = W, dOut
@@ -249,11 +281,25 @@ typedef struct __CatsEye {
 {\
 	gemm(m, n, k, 1, a, b, 0, l->dw);\
 	for (int i=0; i<m*n; i++) {\
-		l->g[i] = /*l->mu*/RMSPROP_RHO * l->g[i] + (1 - /*l->mu*/RMSPROP_RHO) * l->dw[i] * l->dw[i];\
+		l->g[i] = RMSPROP_RHO * l->g[i] + (1 - RMSPROP_RHO) * l->dw[i] * l->dw[i];\
 		c[i] -= l->eta * l->dw[i] / (sqrt(l->g[i] +1e-12));\
 	}\
 }
-#else
+#elif defined CATS_USE_ADAM
+ #define ADAM_BETA1	0.9
+ #define ADAM_BETA2	0.999
+ #define SOLVER(gemm, m, n, k, alpha, a, b, beta, c)\
+{\
+	gemm(m, n, k, 1, a, b, 0, l->dw);\
+	for (int i=0; i<m*n; i++) {\
+		l->g[i] = ADAM_BETA1 * l->g[i] + (1-ADAM_BETA1) * l->dw[i];\
+		l->s[i] = ADAM_BETA2 * l->s[i] + (1-ADAM_BETA2) * l->dw[i] * l->dw[i];\
+		c[i] -= l->eta * l->g[i] / (sqrt(l->s[i] +1e-12));\
+	}\
+}
+// https://tech-lab.sios.jp/archives/21823
+//c[i] -= l->eta * (l->g[i]/(1-ADAM_BETA1)) / (sqrt((l->s[i]/(1-ADAM_BETA2)) +1e-12));
+#else // SGD
  #define SOLVER(gemm, m, n, k, alpha, a, b, beta, c) gemm(m, n, k, alpha, a, b, beta, c)
 #endif
 static inline void CatsEye_solver_MomentumSGD(CatsEye_layer *l, char mj, char ta, char tb, int m, int n, int k, real *a, int lda, real *b, int ldb, int ldc)
@@ -295,7 +341,6 @@ static void CatsEye_linear_forward(CatsEye_layer *l)
 	// https://petewarden.com/2015/04/20/why-gemm-is-at-the-heart-of-deep-learning/
 	// output(m,n) := input(m=1,k) * weightsT(k,n)
 	gemm_rnt(l->p->batch, l->outputs, l->inputs, 1, l->x, l->w, 0, l->z);
-//	for (int i=0; i<l->outputs; i++) l->z[i] += l->w[l->inputs*l->outputs +i]; // bias!!
 	for (int n=0; n<l->p->batch; n++) {
 //		gemm_rnt(1, l->outputs, l->inputs, 1, l->x+l->inputs*n, l->w, 0, l->z+l->outputs*n);
 		for (int i=0; i<l->outputs; i++) l->z[n*l->outputs +i] += l->w[l->inputs*l->outputs +i]; // bias!!
@@ -501,8 +546,7 @@ static void CatsEye_convolutional_backward(CatsEye_layer *l)
 	}
 #else
 	real *workspace = l->ksize!=1 ? l->p->mem : l->dIn;
-	//gemm_rtn(l->ksize*l->ksize*l->ich, l->ox*l->oy*l->p->batch, l->ch, 1, l->w, l->dOut, 0, workspace);
-	SOLVER(gemm_rtn, l->ksize*l->ksize*l->ich, l->ox*l->oy*l->p->batch, l->ch, 1, l->w, l->dOut, 0, workspace);
+	gemm_rtn(l->ksize*l->ksize*l->ich, l->ox*l->oy*l->p->batch, l->ch, 1, l->w, l->dOut, 0, workspace);
 	if (l->ksize!=1) {
 		for (int i=0; i<l->p->batch; i++) {
 			col2im(workspace +l->ksize*l->ksize*l->ich *l->ox*l->oy*i, l->ich, l->sy, l->sx, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, l->dIn +l->inputs*i);
@@ -518,11 +562,13 @@ static void CatsEye_convolutional_update(CatsEye_layer *l)
 		// W = W - eta * dOut * x**T [A(m,k) B(k,n) C(m,n)]
 //		gemm('R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*l->p->batch, -l->eta/l->p->batch, l->dOut, l->ox*l->oy, workspace, l->ox*l->oy, 1, l->w, l->ksize*l->ksize*l->ich);
 //		CatsEye_solver(l, 'R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy, l->dOut +l->outputs*i, l->ox*l->oy, workspace, l->ox*l->oy, l->ksize*l->ksize*l->ich);
-		gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, -l->eta, l->dOut, workspace, 1, l->w);
+//		gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, -l->eta, l->dOut, workspace, 1, l->w);
+		SOLVER(gemm_rnt, l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, -l->eta, l->dOut, workspace, 1, l->w);
 	}
 #else
 	real *workspace = l->ksize!=1 ? l->workspace : l->x;
-	gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*l->p->batch, -l->eta, l->dOut, workspace, 1, l->w);
+//	gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*l->p->batch, -l->eta, l->dOut, workspace, 1, l->w);
+	SOLVER(gemm_rnt, l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*l->p->batch, -l->eta, l->dOut, workspace, 1, l->w);
 #endif
 }
 
@@ -1332,7 +1378,7 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 	this->osize = this->dsize +this->layer[0].inputs +this->layer[this->layers-1].inputs; // input+output
 	this->odata = calloc(this->osize*this->batch, sizeof(real));
 	this->ddata = calloc(this->dsize*this->batch, sizeof(real));
-	this->wdata = calloc(this->wsize*3, sizeof(real)); // w, dw and g
+	this->wdata = calloc(this->wsize*4, sizeof(real)); // w, dw, g and s
 	for (int i=0; i<this->layers; i++) {
 		CatsEye_layer *l = &this->layer[i];
 
@@ -1346,6 +1392,7 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		l->w = this->wdata + wsize[i];
 		l->dw = this->wdata + this->wsize + wsize[i];
 		l->g = this->wdata + this->wsize*2 + wsize[i];
+		l->s = this->wdata + this->wsize*3 + wsize[i];
 
 //		this->o[i] = this->odata + osize[i];	// input
 //		this->d[i] = this->ddata + dsize[i];
@@ -1370,6 +1417,7 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		// initialize weights, range depends on the research of Y. Bengio et al. (2010)
 		// http://jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf
 		xor128_init(time(0));
+		xoroshiro128plus_init(time(0));
 		real range = sqrt(6)/sqrt(n[i]+m[i]+2);
 		if (l->type == CATS_LINEAR) {
 			range = sqrt(2)/sqrt(n[i]+m[i]);
@@ -1378,7 +1426,7 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 #ifdef CATS_WEIGHT_UNIFORM
 			this->w[i][j] = 2.0*range*frand()-range; // uniform
 #else
-			this->w[i][j] = rand_normal(0, range); // normal
+			this->w[i][j] = rand_normal(0, range); // normal sigma:0.02
 #endif
 		}
 //		memcpy(&this->wdata[this->wsize], this->wdata, this->wsize*sizeof(real));	// for debug
@@ -1546,32 +1594,35 @@ int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random,
 				l->forward(l);
 				l++;
 			}
-//			CatsEye_forward(this, x+sample*this->slide);
 
 			// calculate the error and update the weights
 #if 0
 			int i = this->end;
 			l = &this->layer[i--];
 			l->backward(l);
-/*{
-	for (int i=0; i<l->inputs; i++) {
-		for (int n=0; n<this->batch; n++) {
-			l->dIn[i] += l->dIn[l->inputs*n+i];
-		}
-		l->dIn[i] /= this->batch;
-	}
+{
+			for (int i=0; i<l->inputs; i++) {
+				for (int n=1; n<this->batch; n++) {
+					l->dIn[i] += l->dIn[l->inputs*n+i];
+				}
+				l->dIn[i] /= this->batch;
+			}
 }
-int batch = this->batch;
-this->batch = 1;*/
+			int batch = this->batch;
+			this->batch = 1;
+
 			l--;
 			for (; i>=this->start; i--) {
-#endif
+#else
 			for (int i = this->end; i>=this->start; i--) {
+#endif
 				if (/*!(l->fix&2)*/i>=this->stop) l->backward(l);
 				if (!(l->fix&1)) l->update(l);
 				l--;
 			}
-//this->batch = batch;
+#if 0
+			this->batch = batch;
+#endif
 		}
 
 		real err = 0;
