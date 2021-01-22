@@ -14,8 +14,8 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
-#define ETA 0.01	// batch 1
-//#define ETA 0.001	// batch 64
+//#define ETA 0.01	// batch 1
+#define ETA 0.001	// batch 64
 //#define ETA 0.0001	// batch 1500
 //#define ETA 0.00003	// batch 1500 (91.37%)
 
@@ -41,9 +41,9 @@ int main()
 		{ label, CATS_ACT_SOFTMAX },
 		{ label, CATS_SOFTMAX_CE },
 	};
-//	CatsEye cat = { .batch=64 };	// 95%
+	CatsEye cat = { .batch=64 };	// 95%
 //	CatsEye cat = { .batch=1500 };	// 91%
-	CatsEye cat = { .batch=1 };	// 99% (1 * 1500)
+//	CatsEye cat = { .batch=1 };	// 99% (1 * 1500)
 	CatsEye__construct(&cat, u);
 
 	real *x = malloc(sizeof(real)*size*sample);	// 訓練データ
@@ -57,6 +57,7 @@ int main()
 	fread(data, 16, 1, fp);		// header
 	fread(data, size, sample, fp);	// data
 	for (int i=0; i<sample*size; i++) x[i] = data[i] / 255.0;
+//	for (int i=0; i<sample*size; i++) x[i] = data[i] / 255.0 *2-1; // calc err!
 	fclose(fp);
 	fp = fopen("train-labels-idx1-ubyte", "rb");
 	if (fp==NULL) return -1;

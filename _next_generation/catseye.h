@@ -164,6 +164,7 @@ uint64_t xoroshiro128plus()
 	xoroshiro_s[1] = rotl(s1, 36); // c
 	return result;
 }
+//#define CATS_USE_XOR128
 #ifdef CATS_USE_XOR128
 #define frand()			( xor128() / (XOR128_MAX+1.0) )
 #else
@@ -901,7 +902,7 @@ static void CatsEye_act_softmax(CatsEye_layer *l)
 			*z++ = (numer / denom);
 		}
 
-		x += l->inputs;
+//		x += l->inputs;
 	}
 }
 #define CATS_DACT_softmax(y, l)		((y) * (1.0 - (y)))
@@ -1614,9 +1615,9 @@ int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random,
 			l--;
 			for (; i>=this->start; i--) {
 #else
-			for (int i = this->end; i>=this->start; i--) {
+			for (int i=this->end; i>=this->start; i--) {
 #endif
-				if (/*!(l->fix&2)*/i>=this->stop) l->backward(l);
+				if (/*!(l->fix&2)*/i>this->stop) l->backward(l);
 				if (!(l->fix&1)) l->update(l);
 				l--;
 			}
