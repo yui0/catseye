@@ -150,6 +150,7 @@ $ ./sin
   - Neural Networks and Deep Learning [http://nnadl-ja.github.io/nnadl_site_ja/chap1.html]
   - Explain easy backpropagation in the universe [https://www.yukisako.xyz/entry/backpropagation]
   - Optimization algorithm with super easy explanation [https://qiita.com/omiita/items/1735c1d048fe5f611f80]
+  - Automatic differentiation [https://tech-lab.sios.jp/archives/21072]
   - Machine learning [http://hokuts.com/category/%E3%83%97%E3%83%AD%E3%82%B0%E3%83%A9%E3%83%A0/%E6%A9%9F%E6%A2%B0%E5%AD%A6%E7%BF%92/]
   - CS231n Convolutional Neural Networks for Visual Recognition [http://cs231n.github.io/neural-networks-3/#anneal]
   - SVM [http://d.hatena.ne.jp/echizen_tm/20110627/1309188711]

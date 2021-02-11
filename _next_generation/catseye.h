@@ -258,15 +258,18 @@ typedef struct __CatsEye {
 	int16_t *clasify;
 	real *label;
 
+	real loss;
+
 	// output layers [o = f(z)]
 	real **z, **o, *odata;
 	int osize;
-	// error value
+	// gradient value
 	real **d, *ddata;
 	int dsize;
 	// weights
 	real **w, *wdata;
 	int *ws, wsize;
+
 	// working memory
 	real *mem;
 } CatsEye;
@@ -287,8 +290,10 @@ typedef struct __CatsEye {
 	}\
 }
 #elif defined CATS_USE_ADAM
+ #ifndef ADAM_BETA1
  #define ADAM_BETA1	0.9
  #define ADAM_BETA2	0.999
+ #endif
  #define SOLVER(gemm, m, n, k, alpha, a, b, beta, c)\
 {\
 	gemm(m, n, k, 1, a, b, 0, l->dw);\
@@ -890,7 +895,8 @@ static void CatsEye_act_softmax(CatsEye_layer *l)
 {
 	real *x = l->x;
 	real *z = l->z;
-	for (int i=0; i<l->p->batch; i++) {
+	for (int n=0; n<l->p->batch; n++) {
+#if 0
 		real alpha = x[0];
 //		for (int i=1; i<l->inputs; i++) alpha = alpha>x[i] ? alpha : x[i]; // FIXME
 		for (int i=1; i<l->inputs; i++) alpha = alpha<x[i] ? alpha : x[i];
@@ -903,6 +909,16 @@ static void CatsEye_act_softmax(CatsEye_layer *l)
 		}
 
 //		x += l->inputs;
+#endif
+		real sum = 0;
+		real max = x[0];
+		for (int i=1; i<l->inputs; i++) max = max<x[i] ? x[i] : max;
+		for (int i=0; i<l->inputs; i++) {
+			real e = exp(*x++ - max);
+			sum += e;
+			z[i] = e;
+		}
+		for (int i=l->inputs/*out*/; i>0; i--) *z++ /= sum;
 	}
 }
 #define CATS_DACT_softmax(y, l)		((y) * (1.0 - (y)))
@@ -924,12 +940,14 @@ static void CatsEye_act_tanh(CatsEye_layer *l)
 		real em = exp(-x);
 		return (ep-em) / (ep+em);*/
 		// fast approximation of tanh (improve 2-3% speed in LeNet-5)
-		real x1 = *x;
+		real x1 = *x++;
 		real x2 = x1 * x1;
 		x1 *= 1.0 + x2 * (0.1653 + x2 * 0.0097);
 
 		*z++ = x1 / sqrt(1.0 + x2);
-		x++;
+
+//		real ep = exp(2* *x++);
+//		*z++ = (ep-1) / (ep+1);
 	}
 }
 #endif
@@ -938,7 +956,8 @@ CATS_DACT_ARRAY(tanh);
 
 // rectified linear unit function
 #define CATS_ACT_ReLU(x, l)		((x)>0 ? (x) : 0.0)
-#define CATS_DACT_ReLU(y, l)		((y)>0 ? 1.0 : 0.0)
+//#define CATS_DACT_ReLU(y, l)		((y)>0 ? 1.0 : 0.0)
+#define CATS_DACT_ReLU(y, l)		((y)>0)
 CATS_ACT_ARRAY(ReLU);
 CATS_DACT_ARRAY(ReLU);
 // leaky rectified linear unit function
@@ -990,16 +1009,14 @@ static void CatsEye_loss_mse(CatsEye_layer *l)
 {
 	real *t = l->p->label;
 	real *y = l->x;
-//	real *o = l->z;
 	real mse = 0;
 	for (int i=0; i<l->inputs *l->p->batch; i++) {
-//		*o++ = (*y - *t) * (*y - *t);
 		mse += (*y - *t) * (*y - *t);
 		y++;
 		t++;
 	}
 	mse /= l->inputs *l->p->batch;
-	l->z[0] = mse;
+	l->p->loss = mse;
 }
 static void CatsEye_loss_delivative_mse(CatsEye_layer *l)
 {
@@ -1015,6 +1032,19 @@ static void CatsEye_loss_delivative_mse(CatsEye_layer *l)
 }
 // cross-entropy loss function for (multiple independent) binary classifications
 // https://qiita.com/kenta1984/items/59a9ef1788e6934fd962
+static void CatsEye_loss_cross_entropy(CatsEye_layer *l)
+{
+	real *t = l->p->label;
+	real *y = l->x;
+	real loss = 0;
+	for (int i=0; i<l->inputs *l->p->batch; i++) {
+		loss += - *t * log(*y) - (1 - *t) * log(1 - *y);
+		y++;
+		t++;
+	}
+	loss /= l->inputs *l->p->batch;
+	l->p->loss = loss;
+}
 static void CatsEye_loss_delivative_cross_entropy(CatsEye_layer *l)
 {
 	real *t = l->p->label;
@@ -1026,14 +1056,41 @@ static void CatsEye_loss_delivative_cross_entropy(CatsEye_layer *l)
 	}
 }
 // cross-entropy loss function for multi-class classification
+static void CatsEye_loss_cross_entropy_multiclass(CatsEye_layer *l)
+{
+	int16_t *a = l->p->clasify;
+	real *y = l->x;
+	real loss = 0;
+	for (int i=0; i<l->p->batch; i++) {
+		loss += - 1 * log(y[*a++]);
+		y += l->inputs;
+	}
+/*	real *t = l->p->label;
+	real *y = l->x;
+	real loss = 0;
+	for (int i=0; i<l->inputs *l->p->batch; i++) {
+		loss += - *t * log(*y);
+		y++;
+		t++;
+	}*/
+	loss /= l->inputs *l->p->batch;
+	l->p->loss = loss;
+}
 static void CatsEye_loss_delivative_cross_entropy_multiclass(CatsEye_layer *l)
 {
-	real *t = l->p->label;
+/*	real *t = l->p->label; // FIXME
 	real *d = l->dIn;
 	real *y = l->x;
 	for (int i=0; i<l->inputs *l->p->batch; i++) {
 		// https://www.yukisako.xyz/entry/napier-number
 		*d++ = -(*t++) / *y++;	// -t * log(y);
+	}*/
+	// y - t [ t <- one hot ]
+	memcpy(l->dIn, l->x, sizeof(real)*l->inputs *l->p->batch);
+	int16_t *a = l->p->clasify;
+	for (int i=0; i<l->p->batch; i++) {
+		l->dIn[l->inputs*i + *a] = -1 / l->x[l->inputs*i + *a];
+		a++;
 	}
 }
 
@@ -1063,17 +1120,17 @@ static void (*_CatsEye_layer_forward[])(CatsEye_layer *l) = {
 	CatsEye_act_RReLU,
 
 	// loss
-	CatsEye_none,		// 0-1 loss
-	CatsEye_none,		// mse loss
-	CatsEye_none,		// cross-entropy loss
-	CatsEye_none,		// cross-entropy multiclass loss
+	CatsEye_none,				// 0-1 loss
+	CatsEye_loss_mse,			// mse loss
+	CatsEye_loss_cross_entropy,		// cross-entropy loss
+	CatsEye_loss_cross_entropy_multiclass,	// cross-entropy multiclass loss
 
-//	CatsEye_none,		// binary classification
-//	CatsEye_none,		// multi-value classification
-//	CatsEye_none,		// regression
-	CatsEye_loss_mse,	// identity with mse loss
-	CatsEye_none,		// sigmoid with cross-entropy loss
-	CatsEye_none,		// softmax with multi cross-entropy loss
+//	CatsEye_none,				// binary classification
+//	CatsEye_none,				// multi-value classification
+//	CatsEye_none,				// regression
+	CatsEye_loss_mse,			// identity with mse loss
+	CatsEye_loss_cross_entropy,		// sigmoid with cross-entropy loss
+	CatsEye_loss_cross_entropy_multiclass,	// softmax with multi cross-entropy loss
 };
 static void (*_CatsEye_layer_backward[])(CatsEye_layer *l) = {
 	CatsEye_linear_backward,
@@ -1203,7 +1260,7 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 
 		l->forward = _CatsEye_layer_forward[l->type];
 		l->backward = _CatsEye_layer_backward[l->type];
-		if (!i /*&& l->type!=CATS_RECURRENT*/) l->backward = CatsEye_none;
+		if (!i /*&& l->type!=CATS_RECURRENT*/) l->backward = CatsEye_none; // first layer
 		l->update = _CatsEye_layer_update[l->type];
 
 		if (i>=this->layers-1) { // last layer
@@ -1591,10 +1648,11 @@ int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random,
 			}
 
 			// forward propagation
-			for (int i=this->start; i<this->end; i++) {
+			for (int i=this->start; i<=this->end; i++) {
 				l->forward(l);
 				l++;
 			}
+			l--;
 
 			// calculate the error and update the weights
 #if 0
@@ -1643,7 +1701,7 @@ int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random,
 		err /= (this->batch * l->inputs);*/
 
 		gettimeofday(&stop, NULL);
-		printf("%7d, %f [%.2fs]", times, err, (stop.tv_sec - start.tv_sec) + (stop.tv_usec - start.tv_usec)*0.001*0.001);
+		printf("%7d, %f %f [%.2fs]", times, this->loss, err, (stop.tv_sec - start.tv_sec) + (stop.tv_usec - start.tv_usec)*0.001*0.001);
 
 		if (verify) {
 			int r = CatsEye_accuracy(this, x+this->layer[0].inputs*N, (int16_t*)t+N, verify);
