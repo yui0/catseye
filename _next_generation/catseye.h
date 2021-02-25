@@ -166,8 +166,10 @@ uint64_t xoroshiro128plus()
 }
 //#define CATS_USE_XOR128
 #ifdef CATS_USE_XOR128
+#define xrand()			xor128()
 #define frand()			( xor128() / (XOR128_MAX+1.0) )
 #else
+#define xrand()			xoroshiro128plus()
 #define frand()			( xoroshiro128plus() / (XOR128_MAX+1.0) )
 #endif
 #define _rand(max)		(int)( frand() * max)
@@ -257,6 +259,13 @@ typedef struct __CatsEye {
 	// label
 	int16_t *clasify;
 	real *label;
+
+	int label_size;		// internal use
+	void *label_data;	// internal use
+	real *learning_data;	// internal use
+	int data_num;		// internal use
+	int *shuffle_buffer;	// internal use
+	int shuffle_base;	// internal use
 
 	real loss;
 
@@ -1123,7 +1132,7 @@ static void (*_CatsEye_layer_forward[])(CatsEye_layer *l) = {
 	CatsEye_none,				// 0-1 loss
 	CatsEye_loss_mse,			// mse loss
 	CatsEye_loss_cross_entropy,		// cross-entropy loss
-	CatsEye_loss_cross_entropy_multiclass,	// cross-entropy multiclass loss
+	CatsEye_loss_cross_entropy_multiclass,	// (0-1) cross-entropy multiclass loss
 
 //	CatsEye_none,				// binary classification
 //	CatsEye_none,				// multi-value classification
@@ -1158,7 +1167,7 @@ static void (*_CatsEye_layer_backward[])(CatsEye_layer *l) = {
 	CatsEye_loss_delivative_0_1,
 	CatsEye_loss_delivative_mse,
 	CatsEye_loss_delivative_cross_entropy,
-	CatsEye_loss_delivative_cross_entropy_multiclass,
+	CatsEye_loss_delivative_cross_entropy_multiclass, // 0-1
 
 //	CatsEye_none,		// binary classification
 //	CatsEye_none,		// multi-value classification
@@ -1608,6 +1617,61 @@ int CatsEye_accuracy(CatsEye *this, real *x, int16_t *t, int verify)
 	return r;
 }
 
+static inline void _CatsEye_shuffle(int *array, int n)
+{
+	for (int i=0; i<n-1; i++) {
+//		int j = i + rand() / (RAND_MAX / (n - i) + 1);
+		int j = i + (int)(xrand() / (XOR128_MAX / (n-i) +1));
+		int t = array[j];
+		array[j] = array[i];
+		array[i] = t;
+	}
+}
+static inline void _CatsEye_data_transfer(CatsEye *this, real *x, void *l, int n)
+{
+	if (!this->shuffle_buffer) this->shuffle_buffer = malloc(n * sizeof(int));
+	for (int i=0; i<n; i++) this->shuffle_buffer[i] = i;
+	_CatsEye_shuffle(this->shuffle_buffer, n);
+	this->shuffle_base = (n/this->batch)*this->batch;
+
+	this->label_size = this->layer[this->end].inputs *sizeof(real);
+	if (this->layer[this->end].type==CATS_LOSS_0_1 ||
+		this->layer[this->end].type==CATS_SOFTMAX_CE /*|| this->layer[this->end].type==CATS_SIGMOID_BCE*/) {
+		this->label_size = sizeof(int16_t);
+	}
+
+	this->data_num = n;
+	this->learning_data = x;
+	this->label_data = l;
+}
+static inline void _CatsEye_forward(CatsEye *this)
+{
+	CatsEye_layer *l = &this->layer[this->start];
+
+	// create data for every batch
+	int lsize = this->label_size;
+	for (int b=0; b<this->batch; b++) {
+		int sample = this->shuffle_buffer[this->shuffle_base+b];
+		memcpy(l->x +l->inputs*b, this->learning_data+sample*this->slide, l->inputs*sizeof(real));
+		memcpy((int8_t*)this->label +lsize*b, (int8_t*)this->label_data+lsize*sample, lsize);
+	}
+	this->shuffle_base -= this->batch;
+	if (this->shuffle_base<0) this->label_size = (this->data_num/this->batch)*this->batch;
+
+	for (int i=this->start; i<=this->end; i++) {
+		l->forward(l);
+		l++;
+	}
+}
+static inline void _CatsEye_backward(CatsEye *this)
+{
+	CatsEye_layer *l = &this->layer[this->end];
+	for (int i=this->end; i>=this->start; i--) {
+		if (/*!(l->fix&2)*/i>this->stop) l->backward(l);
+		if (!(l->fix&1)) l->update(l);
+		l--;
+	}
+}
 int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random, int verify)
 {
 	int a = this->end;	// layers-1
@@ -1632,7 +1696,11 @@ int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random,
 	struct timeval start, stop;
 	gettimeofday(&start, NULL);
 	for (int times=0; times<epoch; times++) {
+		_CatsEye_data_transfer(this, x, t, N);
 		for (int n=0; n<repeat; n++) {
+			_CatsEye_forward(this);
+			_CatsEye_backward(this);
+#if 0
 			CatsEye_layer *l = &this->layer[this->start];
 
 			// create data
@@ -1681,6 +1749,7 @@ int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random,
 			}
 #if 0
 			this->batch = batch;
+#endif
 #endif
 		}
 
