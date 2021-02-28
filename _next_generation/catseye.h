@@ -1656,12 +1656,15 @@ static inline void _CatsEye_forward(CatsEye *this)
 		memcpy((int8_t*)this->label +lsize*b, (int8_t*)this->label_data+lsize*sample, lsize);
 	}
 	this->shuffle_base -= this->batch;
-	if (this->shuffle_base<0) this->label_size = (this->data_num/this->batch)*this->batch;
+	if (this->shuffle_base<0) this->shuffle_base = (this->data_num/this->batch)*this->batch;
 
 	for (int i=this->start; i<=this->end; i++) {
 		l->forward(l);
 		l++;
 	}
+
+	l--;
+	l->backward(l); // FIXME: for loss
 }
 static inline void _CatsEye_backward(CatsEye *this)
 {
@@ -1676,11 +1679,13 @@ int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random,
 {
 	int a = this->end;	// layers-1
 	this->layer[a].z = t;	// FIXME
+#if 0
 	int lsize = this->layer[a].inputs *sizeof(real);
 	if (this->layer[a].type==CATS_LOSS_0_1 ||
 		this->layer[a].type==CATS_SOFTMAX_CE /*|| this->layer[a].type==CATS_SIGMOID_BCE*/) {
 		lsize = sizeof(int16_t);
 	}
+#endif
 
 	if (verify) N -= verify;	// for test
 	int repeat = N;			// for random
@@ -1700,57 +1705,6 @@ int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random,
 		for (int n=0; n<repeat; n++) {
 			_CatsEye_forward(this);
 			_CatsEye_backward(this);
-#if 0
-			CatsEye_layer *l = &this->layer[this->start];
-
-			// create data
-			for (int b=0; b<this->batch; b++) {
-				int sample = random ? (int)(frand()*N) : n;
-				memcpy(l->x +l->inputs*b, x+sample*this->slide, l->inputs*sizeof(real));
-				memcpy((int8_t*)this->label +lsize*b, (int8_t*)t+lsize*sample, lsize);
-//				memcpy((int8_t*)this->label +lsize*b, (int8_t*)this->layer[a].z+lsize*sample, lsize);
-//printf("label %d: %d\n", sample, *((int8_t*)t+lsize*sample));
-//printf("label %d: %x %x %x %x\n", sample, this->layer[a].z, &this->layer[a].z[sample], t, ((int8_t*)t+lsize*sample));
-//printf("d:%f label %d: %f %f\n", l->x[3], sample, this->layer[a].z[sample], *(real*)((int8_t*)t+lsize*sample));
-//printf("d:%f label: %f %f\n", l->x[3], this->label[0], *((real*)t+sample));
-			}
-
-			// forward propagation
-			for (int i=this->start; i<=this->end; i++) {
-				l->forward(l);
-				l++;
-			}
-			l--;
-
-			// calculate the error and update the weights
-#if 0
-			int i = this->end;
-			l = &this->layer[i--];
-			l->backward(l);
-{
-			for (int i=0; i<l->inputs; i++) {
-				for (int n=1; n<this->batch; n++) {
-					l->dIn[i] += l->dIn[l->inputs*n+i];
-				}
-				l->dIn[i] /= this->batch;
-			}
-}
-			int batch = this->batch;
-			this->batch = 1;
-
-			l--;
-			for (; i>=this->start; i--) {
-#else
-			for (int i=this->end; i>=this->start; i--) {
-#endif
-				if (/*!(l->fix&2)*/i>this->stop) l->backward(l);
-				if (!(l->fix&1)) l->update(l);
-				l--;
-			}
-#if 0
-			this->batch = batch;
-#endif
-#endif
 		}
 
 		real err = 0;
