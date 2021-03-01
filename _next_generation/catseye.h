@@ -1663,8 +1663,8 @@ static inline void _CatsEye_forward(CatsEye *this)
 		l++;
 	}
 
-	l--;
-	l->backward(l); // FIXME: for loss
+//	l--;
+//	l->backward(l); // FIXME: for loss
 }
 static inline void _CatsEye_backward(CatsEye *this)
 {
