@@ -207,6 +207,11 @@ typedef struct __CatsEye_layer {
 
 	int r;			// Pixel Shuffler
 
+	char *layer;		// concat
+	struct __CatsEye_layer* l; // concat
+	int offset;		// concat
+//	int size;		// concat
+
 	int fix;		// training / no training
 
 	int hiddens;		// RNN
@@ -871,6 +876,17 @@ static void CatsEye_BatchNormalization_backward(CatsEye_layer *l)
 	}
 }
 
+static void CatsEye_concat_forward(CatsEye_layer *l)
+{
+	memcpy(l->z, l->x, l->inputs*sizeof(real));
+	memcpy(l->z+l->inputs, l->l->x+l->offset, (l->outputs - l->inputs)*sizeof(real));
+}
+static void CatsEye_concat_backward(CatsEye_layer *l)
+{
+	memcpy(l->dIn, l->dOut, l->inputs*sizeof(real));
+//	memcpy(l->l->dIn+l->offset, l->dOut+l->inputs, (l->outputs - l->inputs)*sizeof(real));
+}
+
 #define CATS_ACT_ARRAY(type)	\
 static void CatsEye_act_##type(CatsEye_layer *l)\
 {\
@@ -1119,6 +1135,8 @@ static void (*_CatsEye_layer_forward[])(CatsEye_layer *l) = {
 	CatsEye_padding_forward,
 	CatsEye_BatchNormalization_forward,
 
+	CatsEye_concat_forward,
+
 	// activation
 	CatsEye_act_sigmoid,
 	CatsEye_act_softmax,
@@ -1153,6 +1171,8 @@ static void (*_CatsEye_layer_backward[])(CatsEye_layer *l) = {
 
 	CatsEye_padding_backward,
 	CatsEye_BatchNormalization_backward,
+
+	CatsEye_concat_backward,
 
 	// activation
 	CatsEye_dact_sigmoid,
@@ -1189,6 +1209,8 @@ static void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
 	CatsEye_none,	// padding
 	CatsEye_none,	// Batch Normalization
 
+	CatsEye_none,	// Mix
+
 	// activation
 	CatsEye_none,	// sigmoid
 	CatsEye_none,	// softmax
@@ -1215,6 +1237,7 @@ typedef enum {
 	CATS_LINEAR, CATS_CONV, CATS_DECONV, CATS_MAXPOOL, CATS_AVGPOOL, CATS_GAP,
 	CATS_PIXELSHUFFLER, /*CATS_RECURRENT,*/
 	CATS_PADDING, CATS_BATCHNORMAL,
+	CATS_CONCAT,
 
 	CATS_ACT_SIGMOID, CATS_ACT_SOFTMAX, CATS_ACT_TANH,
 	CATS_ACT_RELU, CATS_ACT_LEAKY_RELU, CATS_ACT_ELU, CATS_ACT_RRELU,
@@ -1229,6 +1252,7 @@ char CatsEye_string[][16] = {
 	"dense", "conv", "deconv", "max", "avg", "gap",
 	"subpixel", /*"rnn",*/
 	"pad", "bn",
+	"concat",
 
 	"sigmoid", "softmax", "tanh",
 	"relu", "leaky", "elu", "rrelu",
@@ -1238,6 +1262,16 @@ char CatsEye_string[][16] = {
 //	"binary class", "multi class", "regression",
 	"identity/mse", "sigmoid/bce", "softmax/ce",
 };
+
+int CatsEye_getLayer(CatsEye *this, char *name)
+{
+	CatsEye_layer *l = this->layer;
+	for (int i=0; i<this->layers; i++) {
+		if (l->name && !strcmp(l->name, name)) return i;
+		l++;
+	}
+	return -1;
+}
 
 #define CATS_INIT			{ .batch=1 }
 #define CatsEye__construct(t, p)	_CatsEye__construct(t, p, sizeof(p)/sizeof(CatsEye_layer))
@@ -1409,6 +1443,8 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			printf("%3d %-8s %10d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
+		case CATS_CONCAT:
+			l->l = &this->layer[CatsEye_getLayer(this, l->layer)];
 		case CATS_LINEAR:
 		case CATS_LOSS_0_1:
 		case CATS_LOSS_MSE:
@@ -1417,7 +1453,7 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 				if ((l+1)->inputs>0) l->outputs = (l+1)->inputs;
 				else { l->outputs = l->inputs; printf("\t↓ warning: out:%d\n", l->outputs); }
 			}
-			if (l->type == CATS_LINEAR) {
+			if (l->type==CATS_LINEAR || l->type==CATS_CONCAT) {
 				n[i] = l->inputs;
 				m[i] = l->outputs;
 				b[i] = 1; // bias
@@ -1551,16 +1587,6 @@ void CatsEye__destruct(CatsEye *this)
 	free(this->wdata);
 	free(this->w);
 	if (this->u) free(this->u);
-}
-
-int CatsEye_getLayer(CatsEye *this, char *name)
-{
-	CatsEye_layer *l = this->layer;
-	for (int i=0; i<this->layers; i++) {
-		if (l->name && !strcmp(l->name, name)) return i;
-		l++;
-	}
-	return -1;
 }
 
 void CatsEye_forward(CatsEye *this, real *x)

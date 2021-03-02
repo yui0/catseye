@@ -10,23 +10,17 @@
 #define CATS_USE_ADAM
 #define ADAM_BETA1	0.5
 #define ADAM_BETA2	0.999
-//#define ETA	0.001
-//#define ETA	0.0002
-//#define ETA	0.00005
-#define ETA	0.00002
-//#define ETA_AE	0.0005
+#define ETA		0.0002
 
-//#define CATS_OPENCL
-//#define CATS_OPENGL
 #define CATS_USE_FLOAT
 #include "catseye.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
-#define NAME	"mnist_dcgan"
+#define NAME	"mnist_vgan"
 //#define ZDIM	100
 //#define ZDIM	62
-#define ZDIM	10 // https://qiita.com/triwave33/items/a5b3007d31d28bc445c2
+#define ZDIM	10
 
 #define SAMPLE	60000
 #define BATCH	64
@@ -36,97 +30,40 @@ int main()
 	int size = 28*28;	// 入出力層(28x28)
 	int sample = 60000;
 
-#if 0
-	CatsEye_layer u_ae[] = {
-#if 0
-		// decoder / generator
-		{    ZDIM, CATS_LINEAR, ETA_AE, .outputs=128 },
-		{       0, CATS_ACT_RELU },
-		{       0, CATS_LINEAR, ETA_AE, .outputs=4*14*14/*128*16*16*/ },
-		{       0, CATS_ACT_RELU },
-
-		{       0, CATS_PIXELSHUFFLER, .r=2/*4*/, .ch=1 },
-		{    size, CATS_ACT_TANH },	// [-1,1]
-		{    size, CATS_LOSS_MSE },
-#endif
-		{    ZDIM, CATS_LINEAR, ETA_AE },
-		{     128, CATS_LINEAR, ETA_AE },
-		{    size, CATS_PIXELSHUFFLER, .r=2, .ch=4 },
-		{       0, CATS_PIXELSHUFFLER, .r=2, .ch=1 },
-		{    size, CATS_ACT_TANH },	// [-1,1]
-		{    size, CATS_LOSS_MSE },
-	};
-	CatsEye cat_ae = { .batch=256 };
-	CatsEye__construct(&cat_ae, u_ae);
-#endif
-
-#if 1
-	// https://aidiary.hatenablog.com/entry/20180311/1520762446
+	// https://github.com/Yangyangii/GAN-Tutorial/blob/master/MNIST/VanillaGAN.ipynb
 	CatsEye_layer u[] = {
 		// generator
-#if 1
-		{    ZDIM, CATS_LINEAR, ETA, .outputs=1024 },
-		{       0, CATS_ACT_RELU },
-		{       0, CATS_LINEAR, ETA, .outputs=4*14*14/*128*16*16*/ },
-		{       0, CATS_ACT_RELU },
-
-		{       0, CATS_PIXELSHUFFLER, .r=2/*4*/, .ch=1 },
-		{    size, CATS_ACT_TANH },	// [-1,1]
-#endif
-/*		{    ZDIM, CATS_LINEAR, ETA },
-		{ 4*4*512, CATS_LINEAR, ETA },
-		{    size, CATS_PIXELSHUFFLER, .r=4, .ch=1 },
-//		{    size, CATS_PIXELSHUFFLER, .r=2, .ch=4 },
-//		{       0, CATS_PIXELSHUFFLER, .r=2, .ch=1 },
-		{    size, CATS_ACT_TANH },	// [-1,1]*/
-
-		// discriminator
-		{    size, CATS_CONV, ETA, .ksize=4, .stride=2, .padding=1, .ch=64, .name="Discriminator" },
+		{    ZDIM, CATS_LINEAR, ETA, .outputs=128 },
 		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
-		{       0, CATS_CONV, ETA, .ksize=4, .stride=2, .padding=1, .ch=128 },
+
+		{       0, CATS_LINEAR, ETA, .outputs=256 },
+		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+
+		{       0, CATS_LINEAR, ETA, .outputs=512 },
 		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 
 		{       0, CATS_LINEAR, ETA, .outputs=1024 },
 		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
-		{       0, CATS_LINEAR, ETA, .outputs=1 },
-		{       1, CATS_ACT_SIGMOID },
 
-		{       1, CATS_SIGMOID_BCE },
-	};
-#else
-	// https://github.com/Yangyangii/GAN-Tutorial/blob/master/MNIST/DCGAN.ipynb
-	CatsEye_layer u[] = {
-		// generator
-		{    ZDIM, CATS_LINEAR, ETA, .outputs=1024 },
-		{       0, CATS_ACT_RELU },
-		{       0, CATS_LINEAR, ETA, .outputs=4*14*14 },
-		{       0, CATS_ACT_RELU },
-
-		{       0, CATS_PIXELSHUFFLER, .r=2, .ch=1 },
+		{       0, CATS_LINEAR, ETA, .outputs=size },
 		{    size, CATS_ACT_TANH },	// [-1,1]
 
 		// discriminator
-		// 28 -> 14
-		{    size, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=512, .name="Discriminator" },
+		{    size, CATS_LINEAR, ETA, .outputs=512, .name="Discriminator" },
 		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
-		// 14 -> 7
-		{       0, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=256 },
+
+		{       0, CATS_LINEAR, ETA, .outputs=256 },
 		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
-		// 7 -> 4
-		{       0, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=128 },
-		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
-		{       0, CATS_AVGPOOL, .ksize=4, .stride=1 }, // 4x4x128 -> 128
 
 		{       0, CATS_LINEAR, ETA, .outputs=1 },
 		{       1, CATS_ACT_SIGMOID },
-
-		{       1, CATS_SIGMOID_BCE },
+		{       1, CATS_SIGMOID_BCE, .name="Output" },
 	};
-#endif
 	CatsEye cat = { .batch=BATCH };
 	CatsEye__construct(&cat, u);
 	cat.epoch = 0;
 	int discriminator = CatsEye_getLayer(&cat, "Discriminator");
+	int output = CatsEye_getLayer(&cat, "Output");
 //	printf("Discriminator: #%d\n", discriminator);
 	if (!CatsEye_loadCats(&cat, NAME".cats")) {
 		printf("Loading success!!\n");
@@ -146,33 +83,11 @@ int main()
 	fread(data, 16, 1, fp);		// header
 	fread(data, size, sample, fp);	// data
 	for (int i=0; i<sample*size; i++) x[i] = data[i] / 255.0;
-//	for (int i=0; i<sample*size; i++) x[i] = data[i] /255.0 *2 -1;
+//	for (int i=0; i<sample*size; i++) x[i] = data[i] /255.0 *2 -1; // [0,1] => [-1,1]
 	fclose(fp);
 	free(data);
 	printf("OK\n");
 
-#if 0
-	// 訓練
-	printf("Starting training...\n");
-	for (int e=0; e<20; e++) {
-		for (int i=0; i<ZDIM*SAMPLE; i++) {
-			noise[i] = rand_normal(0, 1);
-		}
-		CatsEye_train(&cat_ae, noise, x, sample, 1/*epoch*/, sample, 0);
-	}
-//	CatsEye_train(&cat_ae, x, x, sample, 20/*epoch*/, sample, 0);
-	printf("Training complete\n");
-
-	int decoder = CatsEye_getLayer(&cat_ae, "decoder");
-//	CatsEye_layer *l_ae = cat_ae.layer[decoder];
-	CatsEye_layer *l = &cat.layer[0];
-	for (int n=decoder; n<cat_ae.layers-1; n++) {
-		memcpy(l->w, cat_ae.w[n], cat_ae.ws[n]);
-		l++;
-	}
-#endif
-
-	// ラベル作成
 //	int16_t lreal[SAMPLE], lfake[SAMPLE];
 	real lreal[SAMPLE], lfake[SAMPLE];
 	for (int i=0; i<SAMPLE; i++) {
@@ -187,7 +102,7 @@ int main()
 	int repeat = SAMPLE/cat.batch;
 	real grad[BATCH];
 	printf("Starting training...\n");
-	for (int n=cat.epoch; n<50; n++) {
+	for (int n=cat.epoch; n<40; n++) {
 		_CatsEye_data_transfer(&cat, x, lreal, SAMPLE);
 		int base = cat.shuffle_base;
 		for (int r=0; r<repeat; r++) {
@@ -202,7 +117,7 @@ int main()
 			base = cat.shuffle_base;
 			real loss = cat.loss;
 //			memcpy(grad, cat.layer[output].dIn, sizeof(real)*BATCH);
-			cat.start = discriminator;
+//			cat.start = discriminator;
 			_CatsEye_backward(&cat);
 
 			// Training Discriminator [ D(G(z)) = 0 ]
@@ -222,7 +137,6 @@ int main()
 			loss += cat.loss;
 //			for (int i=0; i<BATCH; i++) grad[i] = (grad[i] + cat.layer[output].dIn[i])/2;
 //			memcpy(cat.layer[output].dIn, grad, sizeof(real)*BATCH);
-
 			cat.start = discriminator;
 			_CatsEye_backward(&cat);
 
