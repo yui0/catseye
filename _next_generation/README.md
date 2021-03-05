@@ -81,9 +81,10 @@ $ ./sin
   ![sin](example/sin.png)
   ![quadratic function](example/quadratic.png)
 
-- Convolution Autoencoder ([example/mnist_autoencoder.c](example/mnist_autoencoder.c),[example/cifar_autoencoder.c](example/cifar_autoencoder.c))
+- Convolution Autoencoder ([example/mnist_cnn_autoencoder.c](example/mnist_cnn_autoencoder.c),[example/cifar_autoencoder.c](example/cifar_autoencoder.c))
 
-  ![autoencoder](example/mnist_autoencoder.png)
+  ![autoencoder](example/mnist_cnn_autoencoder.png)
+  ![autoencoder](example/mnist_cnn_autoencoder.svg)
   ![autoencoder](example/cifar_autoencoder.png)
 
 - DCGAN ([example/mnist_lsgan.c](example/mnist_lsgan.c))

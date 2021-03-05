@@ -14,6 +14,16 @@
 
 #define _debug(...)	{ printf("%s(%d):", __func__, __LINE__); printf(__VA_ARGS__); }
 
+#if 0
+#if defined(_MSC_VER) || defined(__MINGW32__)
+#define malloc(size)	_aligned_malloc(size, 16)
+#define free(p)		_aligned_free(p)
+#else
+#define malloc(size)	({ void* p; posix_memalign((void**) &p, 16, size) == 0 ? p : NULL; })
+#define free(p)		free(p)
+#endif  /* _MSC_VER */
+#endif
+
 #if defined(CATS_OPENGL) || defined(CATS_OPENCL)
 #ifndef CATS_USE_FLOAT
 #define CATS_USE_FLOAT
@@ -878,13 +888,27 @@ static void CatsEye_BatchNormalization_backward(CatsEye_layer *l)
 
 static void CatsEye_concat_forward(CatsEye_layer *l)
 {
-	memcpy(l->z, l->x, l->inputs*sizeof(real));
-	memcpy(l->z+l->inputs, l->l->x+l->offset, (l->outputs - l->inputs)*sizeof(real));
+	real *x = l->x;
+	real *mix = l->l->x +l->offset;
+	real *z = l->z;
+	for (int i=0; i<l->p->batch; i++) {
+		memcpy(z, x, l->inputs*sizeof(real));
+		memcpy(z+l->inputs, mix, (l->outputs - l->inputs)*sizeof(real));
+		x += l->inputs;
+		mix += l->l->inputs;
+		z += l->outputs;
+	}
 }
 static void CatsEye_concat_backward(CatsEye_layer *l)
 {
-	memcpy(l->dIn, l->dOut, l->inputs*sizeof(real));
-//	memcpy(l->l->dIn+l->offset, l->dOut+l->inputs, (l->outputs - l->inputs)*sizeof(real));
+	real *d = l->dIn;
+	real *delta = l->dOut;
+	for (int i=0; i<l->p->batch; i++) {
+		memcpy(d, delta, l->inputs*sizeof(real));
+//		memcpy(l->l->dIn+l->offset, l->dOut+l->inputs, (l->outputs - l->inputs)*sizeof(real));
+		d += l->inputs;
+		delta += l->outputs;
+	}
 }
 
 #define CATS_ACT_ARRAY(type)	\

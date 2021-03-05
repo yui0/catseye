@@ -12,6 +12,8 @@
 #define ADAM_BETA2	0.999
 #define ETA		0.0002
 
+//#define CATS_OPENCL
+//#define CATS_OPENGL
 #define CATS_USE_FLOAT
 #include "catseye.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -19,8 +21,8 @@
 
 #define NAME		"mnist_cgan"
 #define CLASS_NUM	10
-#define ZDIM		100
-//#define ZDIM		62
+//#define ZDIM		100
+#define ZDIM		62
 #define ZSIZE		(ZDIM + CLASS_NUM)
 #define DSIZE		(28*28 + CLASS_NUM)
 
@@ -39,12 +41,15 @@ int main()
 		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 
 		{       0, CATS_LINEAR, ETA, .outputs=256 },
+//		{       0, CATS_BATCHNORMAL },
 		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 
 		{       0, CATS_LINEAR, ETA, .outputs=512 },
+//		{       0, CATS_BATCHNORMAL },
 		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 
 		{       0, CATS_LINEAR, ETA, .outputs=1024 },
+//		{       0, CATS_BATCHNORMAL },
 		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 
 		{       0, CATS_LINEAR, ETA, .outputs=size },
@@ -75,7 +80,7 @@ int main()
 
 	real *x = calloc(DSIZE*sample, sizeof(real));	// 訓練データ
 	uint8_t *data = malloc(sample*size);
-	real *noise = malloc(sizeof(real)*ZSIZE*SAMPLE);
+	real *noise = calloc(ZSIZE*SAMPLE, sizeof(real));
 
 	// 訓練データの読み込み
 	printf("Training data: loading...");
@@ -99,6 +104,7 @@ int main()
 	fread(data, 1, sample, fp);	// data
 //	for (int i=0; i<sample; i++) t[i] = data[i];
 	for (int i=0; i<sample; i++) x[i*DSIZE+size+data[i]] = 1;
+	for (int i=0; i<SAMPLE; i++) noise[i*ZSIZE+ZDIM+data[i]] = 1;
 	fclose(fp);
 	free(data);
 	printf("OK\n");
@@ -116,7 +122,7 @@ int main()
 	// 訓練
 	int step = 0;
 	int repeat = SAMPLE/cat.batch;
-	real grad[BATCH];
+//	real grad[BATCH];
 	printf("Starting training...\n");
 	for (int n=cat.epoch; n<40; n++) {
 		_CatsEye_data_transfer(&cat, x, lreal, SAMPLE);
@@ -142,6 +148,7 @@ int main()
 //				noise[i] = random(-1, 1);
 				noise[i] = rand_normal(0, 1);
 			}
+//			cat.shuffle_base = base;
 			for (int i=0; i<SAMPLE; i++) {
 				for (int n=0; n<CLASS_NUM; n++) noise[i*ZSIZE+ZDIM+n] = 0;
 //				int n = random(0, CLASS_NUM-1);
@@ -164,15 +171,14 @@ int main()
 
 			if ((step % 1)==0) {
 				// Training Generater [ D(G(z)) = 1 ]
-/*				for (int i=0; i<ZDIM*SAMPLE; i++) {
-					noise[i] = rand_normal(0, 1);
-				}*/
-/*				for (int i=0; i<ZSIZE*SAMPLE; i++) noise[i] = rand_normal(0, 1);
+//				for (int i=0; i<ZDIM*SAMPLE; i++) noise[i] = rand_normal(0, 1);
+//				cat.shuffle_base = base;
+				for (int i=0; i<ZSIZE*SAMPLE; i++) noise[i] = rand_normal(0, 1);
 				for (int i=0; i<SAMPLE; i++) {
 					for (int n=0; n<CLASS_NUM; n++) noise[i*ZSIZE+ZDIM+n] = 0;
 					int n = i%10;
 					noise[i*ZSIZE+ZDIM+n] = 1;
-				}*/
+				}
 				cat.start = 0;
 				cat.slide = ZSIZE;
 				for (int i=discriminator; i<cat.layers; i++) cat.layer[i].fix = 1;
@@ -184,7 +190,7 @@ int main()
 				for (int i=discriminator; i<cat.layers; i++) cat.layer[i].fix = 0;
 			}
 //			if ((step % 100)==0) {
-				printf("Epoch: %d/50, Step: %d, D Loss: %f, G Loss: %f\n", n, step, loss, cat.loss);
+				printf("Epoch: %d/40, Step: %d, D Loss: %f, G Loss: %f\n", n, step, loss, cat.loss);
 //			}
 //			if ((step % 1000)==0) {
 			if ((step % 100)==0) {
