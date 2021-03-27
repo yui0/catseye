@@ -14,7 +14,7 @@
 
 #define _debug(...)	{ printf("%s(%d):", __func__, __LINE__); printf(__VA_ARGS__); }
 
-#if 0
+#if 1
 #if defined(_MSC_VER) || defined(__MINGW32__)
 #define malloc(size)	_aligned_malloc(size, 16)
 #define free(p)		_aligned_free(p)
@@ -1380,16 +1380,16 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		case CATS_AVGPOOL:
 		case CATS_MAXPOOL:
 			l->ch = l->ich;
-			l->ox = (l->sx +2*l->padding -l->ksize) /l->stride +1;
-			l->oy = (l->sy +2*l->padding -l->ksize) /l->stride +1;
-//			l->ox = (l->sx +2*l->padding -l->ksize +(l->stride-1)) /l->stride +1;
-//			l->oy = (l->sy +2*l->padding -l->ksize +(l->stride-1)) /l->stride +1;
+//			l->ox = (l->sx +2*l->padding -l->ksize) /l->stride +1;
+//			l->oy = (l->sy +2*l->padding -l->ksize) /l->stride +1;
+			l->ox = (l->sx +2*l->padding -l->ksize +(l->stride-1)) /l->stride +1; // 32->16(k:3,s:2)
+			l->oy = (l->sy +2*l->padding -l->ksize +(l->stride-1)) /l->stride +1;
 			l->outputs = l->ch * l->ox * l->oy;
 			if (l->type == CATS_MAXPOOL) {
 				l->workspace = malloc(sizeof(int)* l->outputs *this->batch);
 			}
 			printf("%3d %-8s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
-			if ((l->sx +2*l->padding -l->ksize) % l->stride > 0) printf("\t↑ warning: stride is strange!\n");
+			if ((l->sx +2*l->padding -l->ksize) % l->stride > 0) printf("\t↑ warning: kernel or stride is strange!\n");
 			break;
 		case CATS_GAP:
 			l->outputs = l->ch = l->ich;
@@ -1577,9 +1577,8 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 	this->end = this->layers-1;
 	this->slide = this->layer[0].inputs;
 
-//	sgemm_init(wmem);
-	//sgemm_init(128*128*sizeof(real));
-	sgemm_init(1024*1024*1024);
+	sgemm_init(wmem);
+	//sgemm_init(1024*1024*1024);
 }
 
 // deconstructor
@@ -1682,7 +1681,7 @@ static inline void _CatsEye_data_transfer(CatsEye *this, real *x, void *l, int n
 	if (!this->shuffle_buffer) this->shuffle_buffer = malloc(n * sizeof(int));
 	for (int i=0; i<n; i++) this->shuffle_buffer[i] = i;
 	_CatsEye_shuffle(this->shuffle_buffer, n);
-	this->shuffle_base = (n/this->batch)*this->batch;
+	this->shuffle_base = (n/this->batch)*this->batch -this->batch;
 
 	this->label_size = this->layer[this->end].inputs *sizeof(real);
 	if (this->layer[this->end].type==CATS_LOSS_0_1 ||
@@ -1706,7 +1705,7 @@ static inline void _CatsEye_forward(CatsEye *this)
 		memcpy((int8_t*)this->label +lsize*b, (int8_t*)this->label_data+lsize*sample, lsize);
 	}
 	this->shuffle_base -= this->batch;
-	if (this->shuffle_base<0) this->shuffle_base = (this->data_num/this->batch)*this->batch;
+	if (this->shuffle_base<0) this->shuffle_base = (this->data_num/this->batch)*this->batch -this->batch;
 
 	for (int i=this->start; i<=this->end; i++) {
 		l->forward(l);
@@ -1857,6 +1856,9 @@ int CatsEye_saveJson(CatsEye *this, char *filename)
 }
 
 // visualize
+/*#define DEF_OR_ARG(value,...) value
+#define DEF_OR_ARG2(v1, v2, ...) v1,v2
+#define CatsEye_visualize(o, n, sx, p, width, ch, ...) _CatsEye_visualize(o, n, sx, p, width, ch, DEF_OR_ARG2(__VA_ARGS__ __VA_OPT__(,) 0,0))*/
 void CatsEye_visualize(real *o, int n, int sx, uint8_t *p, int width, int ch)
 {
 	real max = o[0];
@@ -1864,6 +1866,22 @@ void CatsEye_visualize(real *o, int n, int sx, uint8_t *p, int width, int ch)
 	for (int i=1; i<n*ch; i++) {
 		if (max < o[i]) max = o[i];
 		if (min > o[i]) min = o[i];
+	}
+	for (int c=0; c<ch; c++) {
+		for (int i=0; i<n; i++) {
+			p[((i/sx)*width + i%sx)*ch +c] = (uint8_t)((o[i+c*n] - min) / (max - min) * 255.0);
+		}
+	}
+}
+void _CatsEye_visualize(real *o, int n, int sx, uint8_t *p, int width, int ch, real min, real max)
+{
+	if (min!=max) {
+		/*real*/ max = o[0];
+		/*real*/ min = o[0];
+		for (int i=1; i<n*ch; i++) {
+			if (max < o[i]) max = o[i];
+			if (min > o[i]) min = o[i];
+		}
 	}
 	for (int c=0; c<ch; c++) {
 		for (int i=0; i<n; i++) {
