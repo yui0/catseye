@@ -1577,7 +1577,7 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 	this->end = this->layers-1;
 	this->slide = this->layer[0].inputs;
 
-	sgemm_init(wmem);
+	sgemm_init(wmem*2);
 	//sgemm_init(1024*1024*1024);
 }
 
@@ -1681,7 +1681,7 @@ static inline void _CatsEye_data_transfer(CatsEye *this, real *x, void *l, int n
 	if (!this->shuffle_buffer) this->shuffle_buffer = malloc(n * sizeof(int));
 	for (int i=0; i<n; i++) this->shuffle_buffer[i] = i;
 	_CatsEye_shuffle(this->shuffle_buffer, n);
-	this->shuffle_base = (n/this->batch)*this->batch -this->batch;
+	this->shuffle_base = 0;
 
 	this->label_size = this->layer[this->end].inputs *sizeof(real);
 	if (this->layer[this->end].type==CATS_LOSS_0_1 ||
@@ -1700,12 +1700,13 @@ static inline void _CatsEye_forward(CatsEye *this)
 	// create data for every batch
 	int lsize = this->label_size;
 	for (int b=0; b<this->batch; b++) {
-		int sample = this->shuffle_buffer[this->shuffle_base+b];
+		int sample = this->shuffle_buffer[this->shuffle_base];
 		memcpy(l->x +l->inputs*b, this->learning_data+sample*this->slide, l->inputs*sizeof(real));
 		memcpy((int8_t*)this->label +lsize*b, (int8_t*)this->label_data+lsize*sample, lsize);
+
+		this->shuffle_base++;
+		if (this->shuffle_base>=this->data_num) this->shuffle_base = 0;
 	}
-	this->shuffle_base -= this->batch;
-	if (this->shuffle_base<0) this->shuffle_base = (this->data_num/this->batch)*this->batch -this->batch;
 
 	for (int i=this->start; i<=this->end; i++) {
 		l->forward(l);
