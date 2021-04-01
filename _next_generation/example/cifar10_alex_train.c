@@ -7,6 +7,13 @@
 // gcc cifar10_nin_train.c -o cifar10_nin_train -lm -Ofast -march=native -funroll-loops -fopenmp -lgomp
 // clang cifar10_nin_train.c -o cifar10_nin_train -lm -Ofast -march=native -funroll-loops
 
+//#define CATS_USE_MOMENTUM_SGD
+//#define CATS_USE_RMSPROP
+//#define ETA	0.0001
+//#define ETA	0.001
+#define ETA	0.01
+#define BATCH	1
+
 #define CATS_USE_FLOAT
 #include "./catseye.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -16,13 +23,6 @@
 //#define SIZE	32	// 71.2%(10)
 #define SIZE	96	// 93.4%(10)
 //#define SIZE	227
-
-//#define CATS_USE_MOMENTUM_SGD
-#define CATS_USE_RMSPROP
-//#define ETA	0.0001
-//#define ETA	0.001
-#define ETA	0.01
-#define BATCH	1
 
 int main()
 {

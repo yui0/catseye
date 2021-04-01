@@ -1781,7 +1781,30 @@ int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random,
 			printf(" %.1f%%", (float)r/verify*100.0);
 		}
 		printf("\n");
-		if (isnan(err) || isinf(err)) {
+		if (isnan(err) || isinf(err)) { // Ofast or O3
+			printf("\nnan or inf error!\n");
+			CatsEye_layer *l = &this->layer[this->start];
+			for (int i=this->start; i<=this->end; i++) {
+				for (int n=0; n<this->ws[i]; n++) {
+					if (isnan(l->w[n]) || isinf(l->w[n])) {
+						printf(" layer[%d] weight[%d]:%f\n", i, n, l->w[n]);
+						break;
+					}
+				}
+				for (int n=0; n<l->outputs; n++) {
+					if (isnan(l->z[n]) || isinf(l->z[n])) {
+						printf(" layer[%d] z[%d]:%f\n", i, n, l->z[n]);
+						break;
+					}
+				}
+				for (int n=0; n<l->inputs; n++) {
+					if (isnan(l->dIn[n]) || isinf(l->dIn[n])) {
+						printf(" layer[%d] d[%d]\n", i, n);
+						break;
+					}
+				}
+				l++;
+			}
 			return 0;
 		}
 	}
