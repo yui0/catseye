@@ -313,6 +313,13 @@ typedef struct __CatsEye {
 		c[i] -= l->eta * l->dw[i] / (sqrt(l->g[i] +1e-12));\
 	}\
 }
+ #define _SOLVER(n)\
+{\
+	for (int i=(n)-1; i>=0; i--) {\
+		l->g[i] = RMSPROP_RHO * l->g[i] + (1 - RMSPROP_RHO) * l->dw[i] * l->dw[i];\
+		l->w[i] -= l->eta * l->dw[i] / (sqrt(l->g[i] +1e-12));\
+	}\
+}
 #elif defined CATS_USE_ADAM
  #ifndef ADAM_BETA1
  #define ADAM_BETA1	0.9
@@ -327,10 +334,24 @@ typedef struct __CatsEye {
 		c[i] -= l->eta * l->g[i] / (sqrt(l->s[i] +1e-12));\
 	}\
 }
+ #define _SOLVER(n)\
+{\
+	for (int i=(n)-1; i>=0; i--) {\
+		l->g[i] = ADAM_BETA1 * l->g[i] + (1-ADAM_BETA1) * l->dw[i];\
+		l->s[i] = ADAM_BETA2 * l->s[i] + (1-ADAM_BETA2) * l->dw[i] * l->dw[i];\
+		l->w[i] -= l->eta * l->g[i] / (sqrt(l->s[i] +1e-12));\
+	}\
+}
 // https://tech-lab.sios.jp/archives/21823
 //c[i] -= l->eta * (l->g[i]/(1-ADAM_BETA1)) / (sqrt((l->s[i]/(1-ADAM_BETA2)) +1e-12));
 #else // SGD
  #define SOLVER(gemm, m, n, k, alpha, a, b, beta, c) gemm(m, n, k, alpha, a, b, beta, c)
+ #define _SOLVER(n)\
+{\
+	for (int i=(n)-1; i>=0; i--) {\
+		l->w[i] -= l->eta * l->dw;\
+	}\
+}
 #endif
 static inline void CatsEye_solver_MomentumSGD(CatsEye_layer *l, char mj, char ta, char tb, int m, int n, int k, real *a, int lda, real *b, int ldb, int ldc)
 {
@@ -538,7 +559,6 @@ static void CatsEye_convolutional_forward(CatsEye_layer *l)
 			im2col(l->x +l->inputs*i, l->ich, l->sy, l->sx, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, workspace);
 		}
 		// z = W * x [A(m,k) B(k,n) C(m,n)], cnhw
-//		gemm('R', 'N', 'N', l->ch, l->ox*l->oy*1, l->ksize*l->ksize*l->ich, 1, l->w, l->ksize*l->ksize*l->ich, workspace, l->ox*l->oy, 0, l->z +l->outputs*i, l->ox*l->oy);
 		gemm_rnn(l->ch, l->ox*l->oy*1, l->ksize*l->ksize*l->ich, 1, l->w, workspace, 0, l->z +l->outputs*i);
 
 		// https://docs.nvidia.com/deeplearning/performance/dl-performance-convolutional/index.html
@@ -546,6 +566,7 @@ static void CatsEye_convolutional_forward(CatsEye_layer *l)
 //		gemm_rnn(l->ox*l->oy*1, l->ch, l->ksize*l->ksize*l->ich, 1, workspace, l->w, 0, l->z +l->outputs*i);
 	}
 #else
+	// https://qiita.com/t-tkd3a/items/6b17f296d61d14e12953
 	real *workspace;
 	if (l->ksize==1) {
 		workspace = l->x;
@@ -555,17 +576,15 @@ static void CatsEye_convolutional_forward(CatsEye_layer *l)
 			im2col(l->x +l->inputs*i, l->ich, l->sy, l->sx, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, workspace +l->ksize*l->ksize*l->ich *l->ox*l->oy*i);
 		}
 	}
-	gemm_rnn(l->ch, l->ox*l->oy*l->p->batch, l->ksize*l->ksize*l->ich, 1, l->w, workspace, 0, l->z);
+	gemm_rnn(l->ch, l->ox*l->oy*l->p->batch, l->ksize*l->ksize*l->ich, 1, l->w, workspace, 0, l->z); // !!z: [ch][ox*sy*batch]
 #endif
 }
 static void CatsEye_convolutional_backward(CatsEye_layer *l)
 {
 #if 1
 	for (int i=0; i<l->p->batch; i++) {
-//		real *workspace = l->ksize!=1 ? col : l->dIn +l->inputs*i;
 		real *workspace = l->ksize!=1 ? l->p->mem : l->dIn +l->inputs*i;
 		// dIn = W**T * dOut [A(m,k) B(k,n) C(m,n)]
-//		gemm('R', 'T', 'N', l->ksize*l->ksize*l->ich, l->ox*l->oy*1, l->ch, 1, l->w, l->ksize*l->ksize*l->ich, l->dOut +l->outputs*i, l->ox*l->oy, 0, workspace, l->ox*l->oy);
 		gemm_rtn(l->ksize*l->ksize*l->ich, l->ox*l->oy*1, l->ch, 1, l->w, l->dOut +l->outputs*i, 0, workspace);
 /*		printf("gemm_rtn: ");
 		for (int i=0; i<10; i++) printf("%f ", workspace[i]);
@@ -587,14 +606,32 @@ static void CatsEye_convolutional_backward(CatsEye_layer *l)
 static void CatsEye_convolutional_update(CatsEye_layer *l)
 {
 #if 1
-	for (int i=0; i<l->p->batch; i++) {
+/*	for (int i=0; i<l->p->batch; i++) {
 		real *workspace = l->ksize!=1 ? l->workspace +l->ox*l->oy*l->ksize*l->ksize*l->ich *i : l->x +l->inputs*i;
 		// W = W - eta * dOut * x**T [A(m,k) B(k,n) C(m,n)]
-//		gemm('R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*l->p->batch, -l->eta/l->p->batch, l->dOut, l->ox*l->oy, workspace, l->ox*l->oy, 1, l->w, l->ksize*l->ksize*l->ich);
-//		CatsEye_solver(l, 'R', 'N', 'T', l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy, l->dOut +l->outputs*i, l->ox*l->oy, workspace, l->ox*l->oy, l->ksize*l->ksize*l->ich);
-//		gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, -l->eta, l->dOut, workspace, 1, l->w);
-		SOLVER(gemm_rnt, l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, -l->eta, l->dOut, workspace, 1, l->w);
+//		gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, -l->eta, l->dOut +l->outputs*i, workspace, 1, l->w);
+		SOLVER(gemm_rnt, l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, -l->eta, l->dOut +l->outputs*i, workspace, 1, l->w);
+	}*/
+	real *workspace = l->ksize!=1 ? l->workspace : l->x;
+	gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, 1, l->dOut, workspace, 0, l->dw);
+//	real *workspace = l->ksize!=1 ? l->workspace +l->ox*l->oy*l->ksize*l->ksize*l->ich *1 : l->x +l->inputs*1;
+//	gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, 1, l->dOut +l->outputs*1, workspace, 0, l->dw);
+	for (int i=1; i<l->p->batch; i++) {
+		real *workspace = l->ksize!=1 ? l->workspace +l->ox*l->oy*l->ksize*l->ksize*l->ich *i : l->x +l->inputs*i;
+		// W = W - eta * dOut * x**T [A(m,k) B(k,n) C(m,n)]
+		gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, 1, l->dOut +l->outputs*i, workspace, 1, l->dw);
+//		SOLVER(gemm_rnt, l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, -l->eta, l->dOut +l->outputs*i, workspace, 1, l->w);
 	}
+	_SOLVER(l->ch*l->ksize*l->ksize*l->ich);
+	/*for (int i=0; i<l->ch*l->ksize*l->ksize*l->ich; i++) {
+//		l->w[i] -= l->eta * l->dw[i]/l->p->batch;
+
+//		real dw = l->dw[i]/l->p->batch;
+		real dw = l->dw[i];
+		l->g[i] = ADAM_BETA1 * l->g[i] + (1-ADAM_BETA1) * dw;\
+		l->s[i] = ADAM_BETA2 * l->s[i] + (1-ADAM_BETA2) * dw * dw;\
+		l->w[i] -= l->eta * l->g[i] / (sqrt(l->s[i] +1e-12));\
+	}*/
 #else
 	real *workspace = l->ksize!=1 ? l->workspace : l->x;
 //	gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*l->p->batch, -l->eta, l->dOut, workspace, 1, l->w);
@@ -1743,7 +1780,7 @@ int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random,
 	if (this->batch>1) {
 //		repeat = N/this->batch;
 		repeat /= this->batch;
-		printf(" repeat: %d\n", repeat);
+		printf(" batch: %d, repeat: %d\n", this->batch, repeat);
 	}
 
 	printf("epoch    loss     elapsed time\n");

@@ -10,12 +10,14 @@
 #define CATS_USE_ADAM
 #define ADAM_BETA1	0.5
 #define ADAM_BETA2	0.999
-//#define ETA		1e-4
-#define ETA		1e-3
-//#define CATS_USE_RMSPROP
-//#define ETA		0.01	// batch 1
+//#define ETA		1e-4	// ADAM (batch 256)
+#define ETA		1e-3	// ADAM (batch 1,3)
+//#define ETA		1e-7	// SGD (batch 64)
+//#define ETA		1e-5	// SGD (batch 1)
 #define BATCH		1
+//#define BATCH		3
 //#define BATCH		64
+//#define BATCH		256
 
 #define CATS_USE_FLOAT
 //#define CATS_OPENCL
@@ -44,6 +46,7 @@ int main()
 	// https://qiita.com/nekono_nekomori/items/08ec250ceb09a0004768
 	CatsEye_layer u[] = {
 		{size/4, CATS_CONV, ETA, .ksize=5, .stride=1, .padding=2, .ch=64, .ich=3 },
+//		{  size, CATS_CONV, ETA, .ksize=5, .stride=1, .padding=2, .ch=64, .ich=3 },
 //		{     0, CATS_ACT_TANH },
 		{     0, CATS_ACT_RELU },
 
@@ -55,9 +58,11 @@ int main()
 //		{     0, CATS_ACT_TANH },
 		{     0, CATS_ACT_RELU },
 
+//		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=3, .name="Output" },
+//		{  size, CATS_LOSS_IDENTITY_MSE },
+
 		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=4*3 },
 //		{     0, CATS_CONV, ETA, .ksize=1, .stride=1, .ch=4*3 },
-//		{     0, CATS_ACT_TANH }, // avoid nan
 		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=3, .name="Output" },
 
 		{  size, CATS_LOSS_IDENTITY_MSE },
@@ -72,7 +77,7 @@ int main()
 
 	// 訓練データの読み込み
 	printf("Training data: loading...");
-	real *x = CatsEye_loadCifar("./animeface.bin", k*k*3, sizeof(int16_t), sample, &t); // 0-1
+	real *x = CatsEye_loadCifar("./animeface.bin", k*k*3, sizeof(int16_t), sample, (int16_t**)&t); // 0-1
 	for (int i=0; i<sample*3; i++) {
 		stbir_resize_float(x+k*k*i, k, k, 0, xh+k/2*k/2*i, k/2, k/2, 0, 1);
 	}
@@ -91,6 +96,7 @@ int main()
 //	CatsEye_train(&cat, xh, x, sample, 10/*repeat*/, sample/*random batch*/, sample/10);
 //	CatsEye_train(&cat, xh, x, sample, 45/*repeat*/, sample/*random batch*/, 0);
 	CatsEye_train(&cat, xh, x, sample, 5/*repeat*/, sample/*random batch*/, 0);
+//	CatsEye_train(&cat, x, x, sample, 5/*repeat*/, sample/*random batch*/, 0);
 	printf("Training complete\n");
 
 	// 結果の表示
@@ -99,11 +105,14 @@ int main()
 	int c = 0;
 	int r = 0;
 	for (int i=0; i<10*10; i++) {
+#if BATCH>=4
+		cat.batch = 4;
+		_CatsEye_forward(&cat);
+		CatsEye_visualize(cat.layer[output].z+k*k*3, k*k, k, &pixels[((i/10)*k*k*10+(i%10)*k)*3], k*10, 3);
+#else
 		CatsEye_forward(&cat, xh+k/2*k/2*3*i);
-
-//		CatsEye_visualize(xh+size/4*i, k/2*k/2, k/2, &pixels[((i/10)*k/2*k*10+(i%10)*k/2)*3], k*10, 3);
-//		CatsEye_visualize(x+size*i, k*k, k, &pixels[((i/10)*k*k*10+(i%10)*k)*3], k*10, 3);
 		CatsEye_visualize(cat.layer[output].z, k*k, k, &pixels[((i/10)*k*k*10+(i%10)*k)*3], k*10, 3);
+#endif
 	}
 	stbi_write_png(NAME"_.png", k*10, k*10, 3, pixels, 0);
 	free(pixels);
