@@ -10,10 +10,10 @@
 #define CATS_USE_ADAM
 #define ADAM_BETA1	0.5
 #define ADAM_BETA2	0.999
-//#define ETA	0.001
-//#define ETA	0.0002
-//#define ETA	0.00005
-#define ETA	0.00002
+#define ETA		0.001
+//#define ETA		0.0002
+//#define ETA		0.00005
+//#define ETA		0.00002 //
 //#define ETA_AE	0.0005
 
 //#define CATS_OPENCL
@@ -29,56 +29,47 @@
 #define ZDIM	10 // https://qiita.com/triwave33/items/a5b3007d31d28bc445c2
 
 #define SAMPLE	60000
+//#define BATCH	1
 #define BATCH	64
+//#define BATCH	128
 
 int main()
 {
 	int size = 28*28;	// 入出力層(28x28)
 	int sample = 60000;
 
-#if 0
-	CatsEye_layer u_ae[] = {
-#if 0
-		// decoder / generator
-		{    ZDIM, CATS_LINEAR, ETA_AE, .outputs=128 },
-		{       0, CATS_ACT_RELU },
-		{       0, CATS_LINEAR, ETA_AE, .outputs=4*14*14/*128*16*16*/ },
-		{       0, CATS_ACT_RELU },
-
-		{       0, CATS_PIXELSHUFFLER, .r=2/*4*/, .ch=1 },
-		{    size, CATS_ACT_TANH },	// [-1,1]
-		{    size, CATS_LOSS_MSE },
-#endif
-		{    ZDIM, CATS_LINEAR, ETA_AE },
-		{     128, CATS_LINEAR, ETA_AE },
-		{    size, CATS_PIXELSHUFFLER, .r=2, .ch=4 },
-		{       0, CATS_PIXELSHUFFLER, .r=2, .ch=1 },
-		{    size, CATS_ACT_TANH },	// [-1,1]
-		{    size, CATS_LOSS_MSE },
-	};
-	CatsEye cat_ae = { .batch=256 };
-	CatsEye__construct(&cat_ae, u_ae);
-#endif
-
 #if 1
 	// https://aidiary.hatenablog.com/entry/20180311/1520762446
 	CatsEye_layer u[] = {
 		// generator
-#if 1
-		{    ZDIM, CATS_LINEAR, ETA, .outputs=1024 },
+#if 0
+		{    ZDIM, CATS_LINEAR, ETA, .outputs=14*14*256 },
 		{       0, CATS_ACT_RELU },
-		{       0, CATS_LINEAR, ETA, .outputs=4*14*14/*128*16*16*/ },
+
+		{       0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=256, .ich=16, .sx=14, .sy=14 },
 		{       0, CATS_ACT_RELU },
+
+		{       0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=64 },
+		{       0, CATS_ACT_RELU },
+
+		{       0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=32 },
+		{       0, CATS_ACT_RELU },
+
+		{       0, CATS_CONV, ETA, .ksize=1, .stride=1, .ch=4 },
+		{       0, CATS_PIXELSHUFFLER, .r=2, .ch=1 },
+
+		{    size, CATS_ACT_TANH },	// [-1,1]
+#else
+		{    ZDIM, CATS_LINEAR, ETA, .outputs=128*14*14/*512*/ },
+		{       0, CATS_ACT_RELU },
+//		{       0, CATS_LINEAR, ETA, .outputs=128*14*14 },
+//		{       0, CATS_ACT_RELU },
+
+		{       0, CATS_CONV, ETA, .ksize=1, .stride=1, .padding=0, .ich=128, .sx=14, .sy=14, .ch=4 },
 
 		{       0, CATS_PIXELSHUFFLER, .r=2/*4*/, .ch=1 },
 		{    size, CATS_ACT_TANH },	// [-1,1]
 #endif
-/*		{    ZDIM, CATS_LINEAR, ETA },
-		{ 4*4*512, CATS_LINEAR, ETA },
-		{    size, CATS_PIXELSHUFFLER, .r=4, .ch=1 },
-//		{    size, CATS_PIXELSHUFFLER, .r=2, .ch=4 },
-//		{       0, CATS_PIXELSHUFFLER, .r=2, .ch=1 },
-		{    size, CATS_ACT_TANH },	// [-1,1]*/
 
 		// discriminator
 		{    size, CATS_CONV, ETA, .ksize=4, .stride=2, .padding=1, .ch=64, .name="Discriminator" },
@@ -88,6 +79,7 @@ int main()
 
 		{       0, CATS_LINEAR, ETA, .outputs=1024 },
 		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+//		{       0, CATS_GAP }, // 7x7x128 -> 128
 		{       0, CATS_LINEAR, ETA, .outputs=1 },
 		{       1, CATS_ACT_SIGMOID },
 
@@ -115,7 +107,8 @@ int main()
 		// 7 -> 4
 		{       0, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=128 },
 		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
-		{       0, CATS_AVGPOOL, .ksize=4, .stride=1 }, // 4x4x128 -> 128
+//		{       0, CATS_AVGPOOL, .ksize=4, .stride=1 }, // 4x4x128 -> 128
+		{       0, CATS_GAP }, // 4x4x128 -> 128
 
 		{       0, CATS_LINEAR, ETA, .outputs=1 },
 		{       1, CATS_ACT_SIGMOID },
@@ -185,7 +178,7 @@ int main()
 	// 訓練
 	int step = 0;
 	int repeat = SAMPLE/cat.batch;
-	real grad[BATCH];
+//	real grad[BATCH];
 	printf("Starting training...\n");
 	for (int n=cat.epoch; n<50; n++) {
 		_CatsEye_data_transfer(&cat, x, lreal, SAMPLE);
