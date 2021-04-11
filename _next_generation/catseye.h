@@ -620,18 +620,8 @@ static void CatsEye_convolutional_update(CatsEye_layer *l)
 		real *workspace = l->ksize!=1 ? l->workspace +l->ox*l->oy*l->ksize*l->ksize*l->ich *i : l->x +l->inputs*i;
 		// W = W - eta * dOut * x**T [A(m,k) B(k,n) C(m,n)]
 		gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, 1, l->dOut +l->outputs*i, workspace, 1, l->dw);
-//		SOLVER(gemm_rnt, l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, -l->eta, l->dOut +l->outputs*i, workspace, 1, l->w);
 	}
 	_SOLVER(l->ch*l->ksize*l->ksize*l->ich);
-	/*for (int i=0; i<l->ch*l->ksize*l->ksize*l->ich; i++) {
-//		l->w[i] -= l->eta * l->dw[i]/l->p->batch;
-
-//		real dw = l->dw[i]/l->p->batch;
-		real dw = l->dw[i];
-		l->g[i] = ADAM_BETA1 * l->g[i] + (1-ADAM_BETA1) * dw;\
-		l->s[i] = ADAM_BETA2 * l->s[i] + (1-ADAM_BETA2) * dw * dw;\
-		l->w[i] -= l->eta * l->g[i] / (sqrt(l->s[i] +1e-12));\
-	}*/
 #else
 	real *workspace = l->ksize!=1 ? l->workspace : l->x;
 //	gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*l->p->batch, -l->eta, l->dOut, workspace, 1, l->w);

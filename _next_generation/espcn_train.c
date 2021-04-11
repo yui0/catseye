@@ -14,8 +14,9 @@
 #define ETA		1e-3	// ADAM (batch 1,3)
 //#define ETA		1e-7	// SGD (batch 64)
 //#define ETA		1e-5	// SGD (batch 1)
-#define BATCH		1
+//#define BATCH		1
 //#define BATCH		3
+#define BATCH		8
 //#define BATCH		64
 //#define BATCH		256
 
