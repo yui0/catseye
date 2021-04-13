@@ -22,12 +22,14 @@
 #define NAME		"mnist_cgan"
 #define CLASS_NUM	10
 //#define ZDIM		100
-#define ZDIM		62
+//#define ZDIM		62
+#define ZDIM		10
 #define ZSIZE		(ZDIM + CLASS_NUM)
 #define DSIZE		(28*28 + CLASS_NUM)
 
 #define SAMPLE		60000
-#define BATCH		64
+//#define BATCH		64
+#define BATCH		128
 
 int main()
 {
@@ -124,7 +126,7 @@ int main()
 	int repeat = SAMPLE/cat.batch;
 //	real grad[BATCH];
 	printf("Starting training...\n");
-	for (int n=cat.epoch; n<40; n++) {
+	for (int n=cat.epoch; n<30; n++) {
 		_CatsEye_data_transfer(&cat, x, lreal, SAMPLE);
 		int base = cat.shuffle_base;
 		for (int r=0; r<repeat; r++) {
@@ -190,14 +192,15 @@ int main()
 				for (int i=discriminator; i<cat.layers; i++) cat.layer[i].fix = 0;
 			}
 //			if ((step % 100)==0) {
-				printf("Epoch: %d/40, Step: %d, D Loss: %f, G Loss: %f\n", n, step, loss, cat.loss);
+				printf("Epoch: %d/30, Step: %d, D Loss: %f, G Loss: %f\n", n, step, loss, cat.loss);
 //			}
 //			if ((step % 1000)==0) {
 			if ((step % 100)==0) {
 				uint8_t *pixels = calloc(1, size*100);
 				for (int i=0; i<100; i++) {
 					CatsEye_forward(&cat, noise+ZSIZE*i);
-					CatsEye_visualize(cat.layer[gan].z, size, 28, &pixels[(i/10)*size*10+(i%10)*28], 28*10, 1);
+//					CatsEye_visualize(cat.layer[gan].z, size, 28, &pixels[(i/10)*size*10+(i%10)*28], 28*10, 1);
+					_CatsEye_visualize(cat.layer[gan].z, size, 28, &pixels[(i/10)*size*10+(i%10)*28], 28*10, 1, -1, 1);
 				}
 //				printf("\n");
 				char buff[256];

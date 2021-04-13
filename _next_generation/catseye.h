@@ -349,7 +349,7 @@ typedef struct __CatsEye {
  #define _SOLVER(n)\
 {\
 	for (int i=(n)-1; i>=0; i--) {\
-		l->w[i] -= l->eta * l->dw;\
+		l->w[i] -= l->eta * l->dw[i];\
 	}\
 }
 #endif
