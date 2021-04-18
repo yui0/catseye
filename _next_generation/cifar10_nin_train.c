@@ -7,11 +7,21 @@
 // gcc cifar10_nin_train.c -o cifar10_nin_train -lm -Ofast -march=native -funroll-loops -fopenmp -lgomp
 // clang cifar10_nin_train.c -o cifar10_nin_train -lm -Ofast -march=native -funroll-loops
 
+#define CATS_USE_ADAM
+#define ADAM_BETA1	0.5
+#define ADAM_BETA2	0.999
 //#define CATS_USE_RMSPROP
-//#define ETA	0.001 // RMSProp
+//#define ETA		0.1
+#define ETA		0.001 // RMSProp: 48.9%(10), Adam: 45.9%(10)
+//#define ETA		0.00001 // RMSProp: 48.9%(10), Adam: 45.9%(10)
 
-#define ETA	0.01 // SGD
+//#define ETA		0.01 // SGD
+//#define BATCH		128
+//#define BATCH		16
+#define BATCH		1
 
+//#define CATS_OPENCL
+//#define CATS_OPENGL
 #define CATS_USE_FLOAT
 #include "catseye.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -36,6 +46,36 @@ int main()
 #endif
 
 	// Network in Network
+/*	CatsEye_layer u[] = { // https://gist.github.com/mavenlin/e56253735ef32c3c296d
+		{  size, CATS_CONV, ETA, .ksize=5, .stride=1, .padding=2, .ch=192, .ich=3, .sx=k, .sy=k, .name="conv1-1" },
+		{     0, CATS_ACT_RELU },
+		{     0, CATS_CONV, ETA, .ksize=1, .stride=1, .padding=0, .ch=160, .name="conv1-2" },
+		{     0, CATS_ACT_RELU },
+		{     0, CATS_CONV, ETA, .ksize=1, .stride=1, .padding=0, .ch=96, .name="conv1-3" },
+		{     0, CATS_ACT_RELU },
+		{     0, CATS_MAXPOOL, .ksize=3, .stride=2 },
+
+		{     0, CATS_CONV, ETA, .ksize=5, .stride=1, .padding=2, .ch=192, .name="conv2-1" },
+		{     0, CATS_ACT_RELU },
+		{     0, CATS_CONV, ETA, .ksize=1, .stride=1, .padding=0, .ch=192, .name="conv2-2" },
+		{     0, CATS_ACT_RELU },
+		{     0, CATS_CONV, ETA, .ksize=1, .stride=1, .padding=0, .ch=192, .name="conv2-3" },
+		{     0, CATS_ACT_RELU },
+		{     0, CATS_AVGPOOL, .ksize=3, .stride=2 },
+
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=0, .ch=192, .name="conv3-1" },
+		{     0, CATS_ACT_RELU },
+		{     0, CATS_CONV, ETA, .ksize=1, .stride=1, .padding=0, .ch=192, .name="conv3-2" },
+		{     0, CATS_ACT_RELU },
+		{     0, CATS_CONV, ETA, .ksize=1, .stride=1, .padding=0, .ch=10, .name="conv3-3" },
+		{     0, CATS_ACT_RELU },
+//		{     0, CATS_AVGPOOL, .ksize=8, .stride=1 },
+		{     0, CATS_GAP },
+
+		{ label, CATS_ACT_SOFTMAX },
+		{ label, CATS_SOFTMAX_CE },
+	};*/
+#if 0
 	CatsEye_layer u[] = { 	// 49.7%(10)
 		{  size, CATS_CONV, ETA, .ksize=7, .stride=1, .ch=96, .ich=3, .sx=k, .sy=k, .name="conv1-1" },
 		{     0, CATS_CONV, ETA, .ksize=1, .stride=1, .ch=96, .name="conv1-2" },
@@ -47,6 +87,39 @@ int main()
 		{ label, CATS_ACT_SOFTMAX },
 		{ label, CATS_SOFTMAX_CE },
 	};
+#endif
+#if 1
+	CatsEye_layer u[] = { 	// http://taka74k4.hatenablog.com/entry/2017/09/19/203748
+		{  size, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=96, .ich=3, .sx=k, .sy=k, .name="conv1-1" },
+//		{     0, CATS_ACT_RELU },
+		{     0, CATS_CONV, ETA, .ksize=1, .stride=1, .ch=96, .name="conv1-2" },
+//		{     0, CATS_ACT_RELU },
+		{     0, CATS_CONV, ETA, .ksize=1, .stride=1, .ch=96, .name="conv1-3" },
+//		{     0, CATS_ACT_RELU },
+		{     0, CATS_MAXPOOL, .ksize=3, .stride=2 },
+
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=192, .name="conv2-1" },
+//		{     0, CATS_ACT_RELU },
+		{     0, CATS_CONV, ETA, .ksize=1, .stride=1, .ch=192, .name="conv2-2" },
+//		{     0, CATS_ACT_RELU },
+		{     0, CATS_CONV, ETA, .ksize=1, .stride=1, .ch=192, .name="conv2-3" },
+//		{     0, CATS_ACT_RELU },
+//		{     0, CATS_MAXPOOL, .ksize=3, .stride=2 },
+		{     0, CATS_AVGPOOL, .ksize=3, .stride=2 },
+
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=192, .name="conv3-1" },
+//		{     0, CATS_ACT_RELU },
+		{     0, CATS_CONV, ETA, .ksize=1, .stride=1, .ch=192, .name="conv3-2" },
+//		{     0, CATS_ACT_RELU },
+		{     0, CATS_CONV, ETA, .ksize=1, .stride=1, .ch=10, .name="conv3-3" },
+//		{     0, CATS_ACT_RELU },
+
+		{     0, CATS_LINEAR, ETA, .outputs=label }, // 39.9%
+//		{     0, CATS_GAP }, // global average pooling: 29.65%(10)
+		{ label, CATS_ACT_SOFTMAX },
+		{ label, CATS_SOFTMAX_CE },
+	};
+#endif
 #if 0
 	CatsEye_layer u[] = { // http://taka74k4.hatenablog.com/entry/2017/09/19/203748
 		{  size, CATS_CONV, ETA, .ksize=7, .stride=1, .ch=96, .ich=3, .sx=k, .sy=k, .name="conv1-1" },
@@ -115,7 +188,7 @@ int main()
 		{ label, CATS_SOFTMAX_CE },
 	};
 #endif
-	CatsEye cat = { .batch=1 };
+	CatsEye cat = { .batch=BATCH };
 	CatsEye__construct(&cat, u);
 
 	// 訓練データの読み込み
@@ -129,7 +202,7 @@ int main()
 	printf("OK\n");
 
 	// 訓練
-	printf("Starting training using (stochastic) gradient descent\n");
+	printf("Starting training...\n");
 	CatsEye_train(&cat, x, t, sample, 10/*repeat*/, 1000/*random batch*/, sample/10/*verify*/);
 	printf("Training complete\n");
 
