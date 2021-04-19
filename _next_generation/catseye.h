@@ -1664,14 +1664,14 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		if (max < s) max = s;
 	}
 	this->mem = calloc(max*this->batch, sizeof(real));
-	uint64_t wmem = this->osize*this->batch+this->dsize*this->batch+this->wsize*3;
-	printf("Memory: %.1f MiB [%d B], Working Memory: %.1f MiB [%lu B]\n\n", this->wsize/1024/1024., this->wsize, wmem/1024/1024., wmem);
+	uint64_t wmem = sizeof(real) * this->osize*this->batch+this->dsize*this->batch+this->wsize*3;
+	printf("Memory: %.1f MiB [%lu B], Working Memory: %.1f MiB [%lu B]\n\n", sizeof(real)*this->wsize/1024/1024., sizeof(real)*this->wsize, wmem/1024/1024., wmem);
 
 	this->start = this->stop = 0;
 	this->end = this->layers-1;
 	this->slide = this->layer[0].inputs;
 
-	sgemm_init(wmem*2);
+	sgemm_init(wmem);
 	//sgemm_init(1024*1024*1024);
 }
 
