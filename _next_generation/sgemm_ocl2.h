@@ -199,11 +199,11 @@ int _ksz = sizeof(_kernel)/sizeof(_kernel[0]);
 
 void sgemm_ocl_init(int platform, int device, size_t size)
 {
-	_args[0].size = size;
-
-	oclSetup(platform, device);
+	_args[0].size = oclSetup(platform, device);
 	oclKernel(_kernel, _ksz, "-cl-denorms-are-zero -cl-finite-math-only -cl-fast-relaxed-math -Werror", sgemm_kcode);
 	oclKernelArgs(_kernel, _ksz);
+
+	if (size) _args[0].size = size;
 }
 static inline void sgemm_ocl(char ta, char tb, int m, int n, int k, float alpha, float *a, float *b, float beta, float *c)
 {

@@ -58,7 +58,7 @@
 #define gemm_rtn(m, n, k, alpha, a, b, beta, c)	sgemm_gl(GEMM1_RTN, m, n, k, alpha, a, b, beta, c)
 #elif defined(CATS_OPENCL)
 #include "sgemm_ocl2.h"
-#define sgemm_init(s)				sgemm_ocl_init(0, 0, (s))
+#define sgemm_init(s)				sgemm_ocl_init(0, 0, /*(s*3)*/0)
 #define sgemm_finish()				sgemm_ocl_finish()
 #define gemm_rnn(m, n, k, alpha, a, b, beta, c)	sgemm_ocl('N', 'N', m, n, k, alpha, a, b, beta, c)
 #define gemm_rnt(m, n, k, alpha, a, b, beta, c)	sgemm_ocl('N', 'T', m, n, k, alpha, a, b, beta, c)
@@ -1672,7 +1672,6 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 	this->slide = this->layer[0].inputs;
 
 	sgemm_init(wmem);
-	//sgemm_init(1024*1024*1024);
 }
 
 // deconstructor

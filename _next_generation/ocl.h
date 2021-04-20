@@ -139,7 +139,7 @@ inline int ceil_int(int i, int div)
 	return ceil_int_div(i, div) * div;
 }
 
-void oclSetup(int platform, int device)
+unsigned long oclSetup(int platform, int device)
 {
 	cl_platform_id platform_id[MAX_PLATFORMS];
 	cl_uint num_devices;
@@ -194,6 +194,7 @@ void oclSetup(int platform, int device)
 	cl_ulong maxMemAlloc;
 	clGetDeviceInfo(device_id[device], CL_DEVICE_MAX_MEM_ALLOC_SIZE, sizeof(cl_ulong), &maxMemAlloc, NULL);
 	printf("Maximum memory allocation size is %lu bytes\n", maxMemAlloc);
+	return maxMemAlloc;
 }
 
 void oclKernel(ocl_t *kernel, int n, char *opt, char *kernel_code)
@@ -247,6 +248,10 @@ void oclKernelArgs(ocl_t *kernel, int n)
 						printf("clCreateBuffer error!! %d\n", ret);
 						assert(!args->p);
 					}
+					args->s = clEnqueueMapBuffer(command_queue, args->p, CL_FALSE, CL_MAP_READ|CL_MAP_WRITE, 0, args->size, 0, NULL, NULL, &ret);
+					assert(!ret);
+					clFinish(command_queue);
+//					printf("%x: %zu\n", args->s, args->size);
 				} else if (args->flag==OCL_BUFFER && !args->p) {
 					args->p = clCreateBuffer(ocl_context, args->type, args->size, NULL, &ret);
 					if (!args->p) {
@@ -317,6 +322,7 @@ static inline void oclRead(cl_mem mem, size_t offset, size_t size, void *p)
 static inline void oclRun(ocl_t *kernel)
 {
 	int n = 0;
+	args_t *a = 0;
 	args_t *args = kernel->a;
 	while (args->size) {
 #ifdef _DEBUG
@@ -325,10 +331,10 @@ static inline void oclRun(ocl_t *kernel)
 		if (args->type>0) {
 			if (args->flag==OCL_SVM) {
 				checkOcl(clSetKernelArgSVMPointer(kernel->k, n++, (void*)&args->s));
-			/*} else if (args->type & CL_MEM_ALLOC_HOST_PTR) {
+			} else if (args->type & CL_MEM_ALLOC_HOST_PTR) {
 				clEnqueueUnmapMemObject(command_queue, args->p, args->s, 0, NULL, NULL);
 				checkOcl(clSetKernelArg(kernel->k, n++, sizeof(cl_mem), (void*)&args->p));
-				args->s = clEnqueueMapBuffer(command_queue, args->p, CL_FALSE, CL_MAP_READ|CL_MAP_WRITE, 0, args->size, 0, NULL, NULL, &ret);*/
+				a = args->s;
 			} else {
 				checkOcl(clSetKernelArg(kernel->k, n++, sizeof(cl_mem), (void*)&args->p));
 			}
@@ -342,6 +348,10 @@ static inline void oclRun(ocl_t *kernel)
 #ifdef _DEBUG
 	printf("clEnqueueNDRangeKernel (%zu/%zu,%zu/%zu,%zu/%zu)\n", kernel->local_size[0], kernel->global_size[0], kernel->local_size[1], kernel->global_size[1], kernel->local_size[2], kernel->global_size[2]);
 #endif
+
+	if (a) {
+		/*args->s =*/ clEnqueueMapBuffer(command_queue, a->p, CL_FALSE, CL_MAP_READ|CL_MAP_WRITE, 0, a->size, 0, NULL, NULL, /*&ret*/NULL);
+	}
 }
 
 void oclReleaseKernel(ocl_t *kernel, int n)
