@@ -124,8 +124,11 @@ $ ./sin
   - Neural Networks and Deep Learning [http://nnadl-ja.github.io/nnadl_site_ja/chap1.html]
   - Explain easy backpropagation in the universe [https://www.yukisako.xyz/entry/backpropagation]
   - Optimization algorithm with super easy explanation [https://qiita.com/omiita/items/1735c1d048fe5f611f80]
+  - Basic parts of calculation graph used for backpropagation method, etc. [https://qiita.com/t-tkd3a/items/031c0a4dbf25fd2866a3]
   - Automatic differentiation [https://tech-lab.sios.jp/archives/21072]
   - Machine learning [http://hokuts.com/category/%E3%83%97%E3%83%AD%E3%82%B0%E3%83%A9%E3%83%A0/%E6%A9%9F%E6%A2%B0%E5%AD%A6%E7%BF%92/]
+  - tiny-cnn [https://github.com/nyanp/tiny-cnn/wiki/%E5%AE%9F%E8%A3%85%E3%83%8E%E3%83%BC%E3%83%88]
+
   - CS231n Convolutional Neural Networks for Visual Recognition [http://cs231n.github.io/neural-networks-3/#anneal]
   - SVM [http://d.hatena.ne.jp/echizen_tm/20110627/1309188711]
   - Autoencoder
@@ -133,7 +136,6 @@ $ ./sin
     - Autoencoder [https://pc.atsuhiro-me.net/entry/2015/08/18/003402]
     - Autoencoder [https://www.slideshare.net/at_grandpa/chapter5-50042838]
   - Convolutional Neural Networks [http://blog.yusugomori.com/post/129688163130/%E6%95%B0%E5%BC%8F%E3%81%A7%E6%9B%B8%E3%81%8D%E4%B8%8B%E3%81%99-convolutional-neural-networks-cnn]
-  - tiny-cnn [https://github.com/nyanp/tiny-cnn/wiki/%E5%AE%9F%E8%A3%85%E3%83%8E%E3%83%BC%E3%83%88]
   - Backpropagation [http://postd.cc/2015-08-backprop/]
   - Perceptron [http://tkengo.github.io/blog/2015/08/21/visual-perceptron/]
 - Programing

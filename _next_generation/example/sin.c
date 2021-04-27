@@ -14,28 +14,32 @@
 #include "catseye.h"
 #include "pssub.h"
 
+#define ETA	1e-2
+
 int main()
 {
 	int sample = 360;
 
 /*	CatsEye_layer u[] = {
-		{   1, CATS_LINEAR, 0.01 }, // input layer
+		{   1, CATS_LINEAR, ETA }, // input layer
 		{ 100, CATS_ACT_SIGMOID },
-		{ 100, CATS_LINEAR, 0.01 }, // hidden layer
-		{   1, CATS_LOSS_MSE }, // output layer
-	};*/
-/*	CatsEye_layer u[] = {
-		{   1, CATS_LINEAR, 0.01 },
-		{  10, CATS_ACT_TANH },
-		{  10, CATS_LINEAR, 0.01 },
-		{   1, CATS_LOSS_MSE }, // 回帰なのでMSE
+		{ 100, CATS_LINEAR, ETA }, // hidden layer
+		{   1, CATS_LOSS_IDENTITY_MSE }, // 回帰なのでMSE
 	};*/
 	CatsEye_layer u[] = {
-		{   1, CATS_LINEAR, 0.01 },
+		{   1, CATS_LINEAR, ETA },
 		{  10, CATS_ACT_TANH },
-		{  10, CATS_LINEAR, 0.01 },
+		{  10, CATS_LINEAR, ETA },
 		{   1, CATS_LOSS_IDENTITY_MSE }, // 回帰なのでMSE
 	};
+/*	CatsEye_layer u[] = {
+		{   1, CATS_LINEAR, ETA },
+		{  10, CATS_ACT_RELU },
+		{  10, CATS_LINEAR, ETA },
+		{  10, CATS_ACT_RELU },
+		{  10, CATS_LINEAR, ETA },
+		{   1, CATS_LOSS_IDENTITY_MSE }, // 回帰なのでMSE
+	};*/
 	CatsEye cat = CATS_INIT;
 	CatsEye__construct(&cat, u);
 
