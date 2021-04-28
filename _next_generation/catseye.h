@@ -256,8 +256,8 @@ typedef struct __CatsEye_layer {
 	real beta_1, beta_2;	// Adam
 	real m1_beta_1;		// Adam
 	real m1_beta_2;		// Adam
-	real mu, var;		// Batch Normalization [average, variance]
-	real gamma, beta;	// Batch Normalization
+	real *mu, *var;		// Batch Normalization [average, variance]
+	real *gamma, *beta;	// Batch Normalization
 	real alpha, min, max;	// Leaky ReLU, RReLU
 
 	void (*forward)(struct __CatsEye_layer*);
@@ -316,13 +316,6 @@ typedef struct __CatsEye {
 // https://qiita.com/omiita/items/1735c1d048fe5f611f80
 #ifdef CATS_USE_MOMENTUM_SGD
  // MomentumSGD [ dw = u * dw - n * g ]
- /*#define SOLVER(gemm, m, n, k, alpha, a, b, beta, c)\
-{\
-	gemm(m, n, k, -l->eta, a, b, l->u.momentum, l->dw);\
-	for (int i=this->ws[i]-1; i>=0; i--) {\
-		c[i] += l->dw[i];\
-	}\
-}*/
  #define _SOLVER(n)\
 {\
 	for (int i=l->wsize-1; i>=0; i--) {\
@@ -333,14 +326,6 @@ typedef struct __CatsEye {
 
 #elif defined CATS_USE_ADAGRAD
  // adagrad [ g2[i] += g * g; w[i] -= eta * g / sqrt(g2[i]); ]
- /*#define SOLVER(gemm, m, n, k, alpha, a, b, beta, c)\
-{\
-	gemm(m, n, k, 1, a, b, 0, l->dw);\
-	for (int i=this->ws[i]-1; i>=0; i--) {\
-		l->s[i] += l->dw[i] * l->dw[i];\
-		c[i] -= l->eta * l->dw[i] / (sqrt(l->s[i]) +1e-12);\
-	}\
-}*/
  #define _SOLVER(n)\
 {\
 	for (int i=l->wsize-1; i>=0; i--) {\
@@ -350,14 +335,6 @@ typedef struct __CatsEye {
 }
 
 #elif defined CATS_USE_RMSPROP
- /*#define SOLVER(gemm, m, n, k, alpha, a, b, beta, c)\
-{\
-	gemm(m, n, k, 1, a, b, 0, l->dw);\
-	for (int i=this->ws[i]-1; i>=0; i--) {\
-		l->g[i] = l->u.rho * l->g[i] + (1 - l->u.rho) * l->dw[i] * l->dw[i];\
-		c[i] -= l->eta * l->dw[i] / (sqrt(l->g[i] +1e-12));\
-	}\
-}*/
  #define _SOLVER(n)\
 {\
 	for (int i=l->wsize-1; i>=0; i--) {\
@@ -367,15 +344,6 @@ typedef struct __CatsEye {
 }
 
 #elif defined CATS_USE_ADAM
- /*#define SOLVER(gemm, m, n, k, alpha, a, b, beta, c)\
-{\
-	gemm(m, n, k, 1, a, b, 0, l->dw);\
-	for (int i=0; i<m*n; i++) {\
-		l->g[i] = ADAM_BETA1 * l->g[i] + (1-ADAM_BETA1) * l->dw[i];\
-		l->s[i] = ADAM_BETA2 * l->s[i] + (1-ADAM_BETA2) * l->dw[i] * l->dw[i];\
-		c[i] -= l->eta * l->g[i] / (sqrt(l->s[i] +1e-12));\
-	}\
-}*/
  #define _SOLVER(n)\
 {\
 	for (int i=l->wsize-1; i>=0; i--) {\
@@ -396,7 +364,7 @@ typedef struct __CatsEye {
 }
 #endif
 
-// https://tech-lab.sios.jp/archives/21823#momentumSGD
+// https://tech-lab.sios.jp/archives/21823
 /*static void CatsEye_solver_SGD(CatsEye_layer *l)
 {
 	for (int i=l->wsize-1; i>=0; i--) {
@@ -641,11 +609,10 @@ static void CatsEye_convolutional_update(CatsEye_layer *l)
 //		gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, -l->eta, l->dOut +l->outputs*i, workspace, 1, l->w);
 		SOLVER(gemm_rnt, l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, -l->eta, l->dOut +l->outputs*i, workspace, 1, l->w);
 	}*/
-	real *workspace = l->ksize!=1 ? l->workspace : l->x;
-	gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, 1, l->dOut, workspace, 0, l->dw);
-//	real *workspace = l->ksize!=1 ? l->workspace +l->ox*l->oy*l->ksize*l->ksize*l->ich *1 : l->x +l->inputs*1;
-//	gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, 1, l->dOut +l->outputs*1, workspace, 0, l->dw);
-	for (int i=1; i<l->p->batch; i++) {
+	memset(l->dw, 0, sizeof(real)* l->ch*l->ksize*l->ksize*l->ich);
+//	real *workspace = l->ksize!=1 ? l->workspace : l->x;
+//	gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, 1, l->dOut, workspace, 0, l->dw);
+	for (int i=0; i<l->p->batch; i++) {
 		real *workspace = l->ksize!=1 ? l->workspace +l->ox*l->oy*l->ksize*l->ksize*l->ich *i : l->x +l->inputs*i;
 		// W = W - eta * dOut * x**T [A(m,k) B(k,n) C(m,n)]
 		gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, 1, l->dOut +l->outputs*i, workspace, 1, l->dw);
@@ -878,68 +845,84 @@ static void CatsEye_padding_backward(CatsEye_layer *l)
 	}
 }
 
-// https://deepnotes.io/batchnorm
+// https://qiita.com/t-tkd3a/items/14950dbf55f7a3095600
 static void CatsEye_BatchNormalization_forward(CatsEye_layer *l)
 {
-	int len = l->inputs *l->p->batch;
-
-	// average
+	int len = l->p->batch;
 	real *x = l->x;
-	real avg = 0;
-	for (int i=0; i<len; i++) avg += *x++;
-	avg /= len;
-
-	// variance
-	x = l->x;
-	real var = 0;
 	real *z = l->z;
-	for (int i=0; i<len; i++) {
-		*z = *x++ -avg;
-		var += (*z) * (*z);
+
+	for (int n=0; n<l->inputs; n++) {
+		// average/mean
+		real avg = 0;
+		for (int i=0; i<len; i++) avg += x[i*l->inputs];
+		avg /= len;
+
+		// variance
+		real var = 0;
+		for (int i=0; i<len; i++) {
+			z[i*l->inputs] = x[i*l->inputs] -avg;
+			var += z[i*l->inputs] * z[i*l->inputs];
+		}
+		var /= len;
+		real sigma = sqrt(var + 1e-8);
+
+		// normalize, scale and shift
+		for (int i=0; i<len; i++) {
+			z[i*l->inputs] = (z[i*l->inputs] / sigma) * l->gamma[n] + l->beta[n];
+		}
+
+		l->mu[n] = avg;
+		l->var[n] = var;
+
+		x++;
 		z++;
 	}
-	var /= len;
-	real sigma = sqrt(var + 1e-8);
-
-	z = l->z;
-	for (int i=0; i<len; i++) {
-		*z = (*z / sigma) * l->gamma + l->beta;
-		z++;
-	}
-
-	l->mu = avg;
-	l->var = var;
 }
+// https://deepnotes.io/batchnorm
 static void CatsEye_BatchNormalization_backward(CatsEye_layer *l)
 {
-	int len = l->inputs *l->p->batch;
+	int len = l->p->batch;
 	real *x = l->x;
 	real *delta = l->dOut;
 	real *d = l->dIn;
-	real sigma = sqrt(l->var + 1e-8);
-//	real dbeta = 0;
-	real dvar = 0;
-	real dmu = 0;
-	real dmu2 = 0;
-	for (int i=0; i<len; i++) {
-//		dbeta += delta[i];
 
-		real X_mu = *x++ - l->mu;
-		real dX_norm = *delta++ * l->gamma;
-		*d = dX_norm / sigma;
-		dvar += dX_norm * X_mu;
-		dmu += - *d++; //dX_norm / -sigma;
-		dmu2 += -2.0 * X_mu;
-	}
-	dvar *= -0.5 * pow(l->var + 1e-8, -3.0/2.0);
-	dmu += dvar / len * dmu2;
+	real dgamma = 0;
+	real dbeta = 0;
 
-	x = l->x;
-	d = l->dIn;
-	real a = dmu / len;
-	real b = dvar * 2.0 / len;
-	for (int i=0; i<len; i++) {
-		*d++ += a + b * (*x++ - l->mu);
+	for (int n=0; n<l->inputs; n++) {
+		real sigma = sqrt(l->var[n] + 1e-8);
+		real dvar = 0;
+		real dmu = 0;
+		real dmu2 = 0;
+
+		for (int i=0; i<len; i++) {
+			real X_mu = x[i*l->inputs] - l->mu[n];
+
+			real dX_norm = delta[i*l->inputs] * l->gamma[n];
+			dvar += dX_norm * X_mu;
+			d[i*l->inputs] = dX_norm / sigma;
+			dmu += - d[i*l->inputs]; //dX_norm / -sigma;
+			dmu2 += -2.0 * X_mu;
+
+			dbeta += delta[i*l->inputs];
+			dgamma = delta[i*l->inputs] * (x[i*l->inputs] -l->mu[n]) /sqrt(l->var[n] + 1e-8);
+		}
+		dvar *= -0.5 * pow(l->var[n] + 1e-8, -3.0/2.0);
+		dmu += dvar * dmu2/len;
+
+		real a = dmu / len;
+		real b = dvar * 2.0 / len;
+		for (int i=0; i<len; i++) {
+			d[i*l->inputs] += a + b * (x[i*l->inputs] - l->mu[n]);
+		}
+
+		l->beta[n] -= l->eta * dbeta;
+		l->gamma[n] -= l->eta * dgamma;
+
+		x++;
+		delta++;
+		d++;
 	}
 }
 
@@ -1531,12 +1514,14 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			break;
 
 		case CATS_BATCHNORMAL:
-			l->gamma = 1.0;
-			l->beta = 0;
+//			l->gamma = 1.0; //FIXME
+//			l->beta = 0;
 			l->ch = l->ich;
 			l->outputs = l->inputs;
 			l->ox = l->sx;
 			l->oy = l->sy;
+			n[i] = l->inputs;
+			m[i] = 4; // mu, var, gamma, beta
 			printf("%3d %-12s %10d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
@@ -1614,6 +1599,11 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		l->dw = this->wdata + this->wsize + wsize[i];
 		l->g = this->wdata + this->wsize*2 + wsize[i];
 		l->s = this->wdata + this->wsize*3 + wsize[i];
+
+		l->mu = this->wdata;			// batch norm
+		l->var = this->wdata + l->inputs;	// batch norm
+		l->gamma = this->wdata + l->inputs*2;	// batch norm
+		l->beta = this->wdata + l->inputs*3;	// batch norm
 
 //		this->o[i] = this->odata + osize[i];	// input
 //		this->d[i] = this->ddata + dsize[i];

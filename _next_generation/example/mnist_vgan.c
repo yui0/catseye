@@ -23,6 +23,7 @@
 #define ZDIM	10
 
 #define SAMPLE	60000
+//#define BATCH	1
 #define BATCH	64
 
 int main()
@@ -82,8 +83,8 @@ int main()
 	}
 	fread(data, 16, 1, fp);		// header
 	fread(data, size, sample, fp);	// data
-	for (int i=0; i<sample*size; i++) x[i] = data[i] / 255.0;
-//	for (int i=0; i<sample*size; i++) x[i] = data[i] /255.0 *2 -1; // [0,1] => [-1,1]
+//	for (int i=0; i<sample*size; i++) x[i] = data[i] / 255.0;
+	for (int i=0; i<sample*size; i++) x[i] = data[i] /255.0 *2 -1; // [0,1] => [-1,1]
 	fclose(fp);
 	free(data);
 	printf("OK\n");
@@ -100,7 +101,7 @@ int main()
 	// 訓練
 	int step = 0;
 	int repeat = SAMPLE/cat.batch;
-	real grad[BATCH];
+//	real grad[BATCH];
 	printf("Starting training...\n");
 	for (int n=cat.epoch; n<40; n++) {
 		_CatsEye_data_transfer(&cat, x, lreal, SAMPLE);
@@ -156,14 +157,15 @@ int main()
 				for (int i=discriminator; i<cat.layers; i++) cat.layer[i].fix = 0;
 			}
 //			if ((step % 100)==0) {
-				printf("Epoch: %d/50, Step: %d, D Loss: %f, G Loss: %f\n", n, step, loss, cat.loss);
+				printf("Epoch: %d/40, Step: %d, D Loss: %f, G Loss: %f\n", n, step, loss, cat.loss);
 //			}
 //			if ((step % 1000)==0) {
 			if ((step % 100)==0) {
 				uint8_t *pixels = calloc(1, size*100);
 				for (int i=0; i<100; i++) {
 					CatsEye_forward(&cat, noise+ZDIM*i);
-					CatsEye_visualize(cat.layer[discriminator].x, size, 28, &pixels[(i/10)*size*10+(i%10)*28], 28*10, 1);
+					//CatsEye_visualize(cat.layer[discriminator].x, size, 28, &pixels[(i/10)*size*10+(i%10)*28], 28*10, 1);
+					_CatsEye_visualize(cat.layer[discriminator].x, size, 28, &pixels[(i/10)*size*10+(i%10)*28], 28*10, 1, -1, 1);
 				}
 //				printf("\n");
 				char buff[256];
