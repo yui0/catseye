@@ -257,7 +257,8 @@ typedef struct __CatsEye_layer {
 	real m1_beta_1;		// Adam
 	real m1_beta_2;		// Adam
 	real *mu, *var;		// Batch Normalization [average, variance]
-	real *gamma, *beta;	// Batch Normalization
+//	real *gamma, *beta;	// Batch Normalization
+	real gamma, beta;	// Batch Normalization
 	real alpha, min, max;	// Leaky ReLU, RReLU
 
 	void (*forward)(struct __CatsEye_layer*);
@@ -316,7 +317,7 @@ typedef struct __CatsEye {
 // https://qiita.com/omiita/items/1735c1d048fe5f611f80
 #ifdef CATS_USE_MOMENTUM_SGD
  // MomentumSGD [ dw = u * dw - n * g ]
- #define _SOLVER(n)\
+ #define _SOLVER()\
 {\
 	for (int i=l->wsize-1; i>=0; i--) {\
 		l->g[i] = l->u.momentum * l->g[i] -l->eta * l->dw[i];\
@@ -326,7 +327,7 @@ typedef struct __CatsEye {
 
 #elif defined CATS_USE_ADAGRAD
  // adagrad [ g2[i] += g * g; w[i] -= eta * g / sqrt(g2[i]); ]
- #define _SOLVER(n)\
+ #define _SOLVER()\
 {\
 	for (int i=l->wsize-1; i>=0; i--) {\
 		l->s[i] += l->dw[i] * l->dw[i];\
@@ -335,7 +336,7 @@ typedef struct __CatsEye {
 }
 
 #elif defined CATS_USE_RMSPROP
- #define _SOLVER(n)\
+ #define _SOLVER()\
 {\
 	for (int i=l->wsize-1; i>=0; i--) {\
 		l->g[i] = l->u.rho * l->g[i] + (1 - l->u.rho) * l->dw[i] * l->dw[i];\
@@ -344,7 +345,7 @@ typedef struct __CatsEye {
 }
 
 #elif defined CATS_USE_ADAM
- #define _SOLVER(n)\
+ #define _SOLVER()\
 {\
 	for (int i=l->wsize-1; i>=0; i--) {\
 		l->g[i] = l->beta_1 * l->g[i] + l->m1_beta_1 * l->dw[i];\
@@ -356,7 +357,7 @@ typedef struct __CatsEye {
 
 #else // SGD
  //#define SOLVER(gemm, m, n, k, alpha, a, b, beta, c) gemm(m, n, k, alpha, a, b, beta, c)
- #define _SOLVER(n)\
+ #define _SOLVER()\
 {\
 	for (int i=l->wsize-1; i>=0; i--) {\
 		l->w[i] -= l->eta * l->dw[i];\
@@ -451,7 +452,7 @@ static void CatsEye_linear_update(CatsEye_layer *l)
 #else
 	// W := W - eta * dOutT * x
 	gemm_rtn(l->outputs, l->inputs, l->p->batch, 1, l->dOut, l->x, 0, l->dw);
-	_SOLVER(l->inputs*l->outputs);
+	_SOLVER();
 	for (int n=0; n<l->p->batch; n++) {
 		for (int i=0; i<l->outputs; i++) l->w[l->inputs*l->outputs +i] -= l->eta * l->dOut[n*l->outputs +i]; // bias!!
 	}
@@ -608,21 +609,27 @@ static void CatsEye_convolutional_update(CatsEye_layer *l)
 		// W = W - eta * dOut * x**T [A(m,k) B(k,n) C(m,n)]
 //		gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, -l->eta, l->dOut +l->outputs*i, workspace, 1, l->w);
 		SOLVER(gemm_rnt, l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, -l->eta, l->dOut +l->outputs*i, workspace, 1, l->w);
+//		gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, 1, l->dOut +l->outputs*i, workspace, 0, l->dw);
+//		_SOLVER();
 	}*/
 	memset(l->dw, 0, sizeof(real)* l->ch*l->ksize*l->ksize*l->ich);
-//	real *workspace = l->ksize!=1 ? l->workspace : l->x;
-//	gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, 1, l->dOut, workspace, 0, l->dw);
 	for (int i=0; i<l->p->batch; i++) {
+//	for (int i=0; i<1; i++) {
 		real *workspace = l->ksize!=1 ? l->workspace +l->ox*l->oy*l->ksize*l->ksize*l->ich *i : l->x +l->inputs*i;
 		// W = W - eta * dOut * x**T [A(m,k) B(k,n) C(m,n)]
 		gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, 1, l->dOut +l->outputs*i, workspace, 1, l->dw);
+//		gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, 1.0/l->p->batch, l->dOut +l->outputs*i, workspace, 1, l->dw);
+//		for (int i=0; i<10; i++) printf("%f ", l->dw[i]);
 	}
+	for (int i=0; i<l->wsize; i++) l->dw[i] /= l->p->batch; // avg
 //	for (int i=0; i<10; i++) printf("%f ", l->dOut[i +l->outputs*(l->p->batch-1)]);
-	_SOLVER(l->ch*l->ksize*l->ksize*l->ich);
+//	for (int i=0; i<10; i++) printf("%f ", l->dw[i]);
+//	printf("w:%d %d\n", l->wsize, l->ch*l->ksize*l->ksize*l->ich);
+	_SOLVER();
 #else
 	real *workspace = l->ksize!=1 ? l->workspace : l->x;
-//	gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*l->p->batch, -l->eta, l->dOut, workspace, 1, l->w);
-	SOLVER(gemm_rnt, l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*l->p->batch, -l->eta, l->dOut, workspace, 1, l->w);
+	gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*l->p->batch, -l->eta, l->dOut, workspace, 0, l->dw);
+//	SOLVER(gemm_rnt, l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*l->p->batch, -l->eta, l->dOut, workspace, 1, l->w);
 #endif
 }
 
@@ -846,43 +853,52 @@ static void CatsEye_padding_backward(CatsEye_layer *l)
 }
 
 // https://qiita.com/t-tkd3a/items/14950dbf55f7a3095600
+// https://qiita.com/omiita/items/01855ff13cc6d3720ea4
 static void CatsEye_BatchNormalization_forward(CatsEye_layer *l)
 {
-	int len = l->p->batch;
+	int len = l->p->batch *l->inputs;
 	real *x = l->x;
 	real *z = l->z;
 
-	for (int n=0; n<l->inputs; n++) {
+//	for (int n=0; n<l->inputs; n++) {
 		// average/mean
 		real avg = 0;
-		for (int i=0; i<len; i++) avg += x[i*l->inputs];
+//		for (int i=0; i<len; i++) avg += x[i*l->inputs];
+		for (int i=0; i<len; i++) avg += x[i];
 		avg /= len;
 
 		// variance
 		real var = 0;
 		for (int i=0; i<len; i++) {
-			z[i*l->inputs] = x[i*l->inputs] -avg;
-			var += z[i*l->inputs] * z[i*l->inputs];
+//			z[i*l->inputs] = x[i*l->inputs] -avg;
+//			var += z[i*l->inputs] * z[i*l->inputs];
+			z[i] = x[i] -avg;
+			var += z[i] * z[i];
 		}
 		var /= len;
 		real sigma = sqrt(var + 1e-8);
 
 		// normalize, scale and shift
 		for (int i=0; i<len; i++) {
-			z[i*l->inputs] = (z[i*l->inputs] / sigma) * l->gamma[n] + l->beta[n];
+//			z[i*l->inputs] = (z[i*l->inputs] / sigma) * l->gamma[n] + l->beta[n];
+//			z[i*l->inputs] = (z[i*l->inputs] / sigma) * l->gamma + l->beta;
+			z[i] = (z[i] / sigma) * l->gamma + l->beta;
 		}
 
-		l->mu[n] = avg;
+		l->mu[0] = avg;
+		l->var[0] = var;
+/*		l->mu[n] = avg;
 		l->var[n] = var;
 
 		x++;
 		z++;
-	}
+	}*/
 }
 // https://deepnotes.io/batchnorm
 static void CatsEye_BatchNormalization_backward(CatsEye_layer *l)
 {
-	int len = l->p->batch;
+	int len = l->p->batch *l->inputs;
+//	int len = l->p->batch;
 	real *x = l->x;
 	real *delta = l->dOut;
 	real *d = l->dIn;
@@ -890,40 +906,52 @@ static void CatsEye_BatchNormalization_backward(CatsEye_layer *l)
 	real dgamma = 0;
 	real dbeta = 0;
 
-	for (int n=0; n<l->inputs; n++) {
-		real sigma = sqrt(l->var[n] + 1e-8);
+//	for (int n=0; n<l->inputs; n++) {
+//		real sigma = sqrt(l->var[n] + 1e-8);
+		real sigma = sqrt(l->var[0] + 1e-8);
 		real dvar = 0;
 		real dmu = 0;
 		real dmu2 = 0;
 
 		for (int i=0; i<len; i++) {
-			real X_mu = x[i*l->inputs] - l->mu[n];
+//			real X_mu = x[i*l->inputs] - l->mu[n];
+			real X_mu = x[i] - l->mu[0];
 
-			real dX_norm = delta[i*l->inputs] * l->gamma[n];
+//			real dX_norm = delta[i*l->inputs] * l->gamma[n];
+//			real dX_norm = delta[i*l->inputs] * l->gamma;
+			real dX_norm = delta[i] * l->gamma;
 			dvar += dX_norm * X_mu;
-			d[i*l->inputs] = dX_norm / sigma;
-			dmu += - d[i*l->inputs]; //dX_norm / -sigma;
+//			d[i*l->inputs] = dX_norm / sigma;
+			d[i] = dX_norm / sigma;
+//			dmu += - d[i*l->inputs]; //dX_norm / -sigma;
+			dmu += - d[i]; //dX_norm / -sigma;
 			dmu2 += -2.0 * X_mu;
 
-			dbeta += delta[i*l->inputs];
-			dgamma = delta[i*l->inputs] * (x[i*l->inputs] -l->mu[n]) /sqrt(l->var[n] + 1e-8);
+//			dbeta += delta[i*l->inputs];
+//			dgamma = delta[i*l->inputs] * (x[i*l->inputs] -l->mu[n]) /sqrt(l->var[n] + 1e-8);
+			dbeta += delta[i];
+			dgamma = delta[i] * (x[i] -l->mu[0]) /sqrt(l->var[0] + 1e-8);
 		}
-		dvar *= -0.5 * pow(l->var[n] + 1e-8, -3.0/2.0);
+//		dvar *= -0.5 * pow(l->var[n] + 1e-8, -3.0/2.0);
+		dvar *= -0.5 * pow(l->var[0] + 1e-8, -3.0/2.0);
 		dmu += dvar * dmu2/len;
 
 		real a = dmu / len;
 		real b = dvar * 2.0 / len;
 		for (int i=0; i<len; i++) {
-			d[i*l->inputs] += a + b * (x[i*l->inputs] - l->mu[n]);
+//			d[i*l->inputs] += a + b * (x[i*l->inputs] - l->mu[n]);
+			d[i] += a + b * (x[i] - l->mu[0]);
 		}
 
-		l->beta[n] -= l->eta * dbeta;
-		l->gamma[n] -= l->eta * dgamma;
+//		l->beta[n] -= l->eta * dbeta;
+//		l->gamma[n] -= l->eta * dgamma;
+		/*l->beta -= l->eta * dbeta;
+		l->gamma -= l->eta * dgamma;*/
 
-		x++;
+/*		x++;
 		delta++;
 		d++;
-	}
+	}*/
 }
 
 static void CatsEye_concat_forward(CatsEye_layer *l)
@@ -1514,14 +1542,16 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			break;
 
 		case CATS_BATCHNORMAL:
-//			l->gamma = 1.0; //FIXME
-//			l->beta = 0;
+			l->gamma = 1.0; //FIXME
+			l->beta = 0;
 			l->ch = l->ich;
 			l->outputs = l->inputs;
 			l->ox = l->sx;
 			l->oy = l->sy;
 			n[i] = l->inputs;
-			m[i] = 4; // mu, var, gamma, beta
+			m[i] = 2; // mu, var, gamma, beta
+//			m[i] = 4; // mu, var, gamma, beta
+			l->wsize = n[i] * m[i];
 			printf("%3d %-12s %10d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
@@ -1595,21 +1625,22 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		if (i>0) l->dIn = (l-1)->dOut;
 		l->dOut = this->ddata + dsize[i]*this->batch;
 		l->bias = this->wdata + wsize[i] +n[i]*m[i]; // FIXME: for bias
-		l->w = this->wdata + wsize[i];
-		l->dw = this->wdata + this->wsize + wsize[i];
-		l->g = this->wdata + this->wsize*2 + wsize[i];
-		l->s = this->wdata + this->wsize*3 + wsize[i];
+		l->w = this->wdata +wsize[i];
+		l->dw = this->wdata +this->wsize +wsize[i]; // stack +1
+		l->g = this->wdata +this->wsize*2 +wsize[i];// stack +2
+		l->s = this->wdata +this->wsize*3 +wsize[i];// stack +3
 
-		l->mu = this->wdata;			// batch norm
-		l->var = this->wdata + l->inputs;	// batch norm
-		l->gamma = this->wdata + l->inputs*2;	// batch norm
-		l->beta = this->wdata + l->inputs*3;	// batch norm
+		l->mu = l->w;			// batch norm
+		l->var = l->w + l->inputs;	// batch norm
+//		l->gamma = l->w + l->inputs*2;	// batch norm
+//		l->beta = l->w + l->inputs*3;	// batch norm
 
-//		this->o[i] = this->odata + osize[i];	// input
-//		this->d[i] = this->ddata + dsize[i];
 		this->o[i] = l->x;
 		this->d[i] = l->dOut;
-		this->w[i] = this->wdata + wsize[i];
+		this->w[i] = l->w; //this->wdata + wsize[i];
+
+//		l->eta /= this->batch;
+//		this->o[i][l->outputs] = 1;	// FIXME: bias
 
 		if (i==this->layers-1) {
 			if ((l->type==CATS_SOFTMAX_CE && (l-1)->type==CATS_ACT_SOFTMAX) ||
@@ -1621,9 +1652,14 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			}
 			break;
 		}
-
-//		l->eta /= this->batch;
-//		this->o[i][l->outputs] = 1;	// FIXME: bias
+/*		if (l->type == CATS_BATCHNORMAL) {
+			printf("+!\n");
+			for (int n=0; n<l->inputs; n++) {
+			printf("%d\n",n);
+				l->gamma[n] = 1.0;
+				l->beta[n] = 0;
+			}
+		}*/
 
 		// initialize weights, range depends on the research of Y. Bengio et al. (2010)
 		// http://jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf
@@ -1648,7 +1684,7 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 	uint64_t max = 0;
 	for (int i=0; i<this->layers; i++) {
 		CatsEye_layer *l = &this->layer[i];
-		printf("L%02d in:%d out:%d (x:%ld-z:%ld-d:%ld-w:%ld)\n", i+1, l->inputs, l->outputs, l->x-this->odata, l->z-this->odata, this->d[i]-this->ddata, this->w[i]-this->wdata);
+		printf("L%02d in:%d out:%d weight:%d (x:%ld-z:%ld-d:%ld-w:%ld)\n", i+1, l->inputs, l->outputs, l->wsize, l->x-this->odata, l->z-this->odata, this->d[i]-this->ddata, this->w[i]-this->wdata);
 
 		uint64_t s = l->ox*l->oy*l->ksize*l->ksize*l->ich; // col2im
 		if (max < s) max = s;
