@@ -508,6 +508,9 @@ static inline void im2col(const real *im, const int channels,
 		int w_offset = c % kernel_w;
 		int h_offset = (c / kernel_w) % kernel_h;
 		int c_im = c / kernel_h / kernel_w;
+/*		int w_offset = 0;
+		int h_offset = 0;
+		int c_im = c;*/
 		for (int h=0; h<height_col; h++) {
 			for (int w=0; w<width_col; w++) {
 				int h_pad = h * stride_h - pad_h + h_offset;
@@ -530,12 +533,12 @@ static inline void col2im(const real *col, const int channels,
 	int width_col = (width + 2 * pad_w - patch_w) / stride_w + 1;
 	int channels_col = channels * patch_h * patch_w;
 
-	for (int c = 0; c < channels_col; ++c) {
+	for (int c=0; c<channels_col; ++c) {
 		int w_offset = c % patch_w;
 		int h_offset = (c / patch_w) % patch_h;
 		int c_im = c / patch_h / patch_w;
-		for (int h = 0; h < height_col; ++h) {
-			for (int w = 0; w < width_col; ++w) {
+		for (int h=0; h<height_col; ++h) {
+			for (int w=0; w<width_col; ++w) {
 				int h_pad = h * stride_h - pad_h + h_offset;
 				int w_pad = w * stride_w - pad_w + w_offset;
 				if (h_pad >= 0 && h_pad < height && w_pad >= 0 && w_pad < width)
@@ -617,11 +620,11 @@ static void CatsEye_convolutional_update(CatsEye_layer *l)
 //	for (int i=0; i<1; i++) {
 		real *workspace = l->ksize!=1 ? l->workspace +l->ox*l->oy*l->ksize*l->ksize*l->ich *i : l->x +l->inputs*i;
 		// W = W - eta * dOut * x**T [A(m,k) B(k,n) C(m,n)]
-		gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, 1, l->dOut +l->outputs*i, workspace, 1, l->dw);
-//		gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, 1.0/l->p->batch, l->dOut +l->outputs*i, workspace, 1, l->dw);
+//		gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, 1, l->dOut +l->outputs*i, workspace, 1, l->dw);
+		gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, 1.0/l->p->batch, l->dOut +l->outputs*i, workspace, 1, l->dw);
 //		for (int i=0; i<10; i++) printf("%f ", l->dw[i]);
 	}
-	for (int i=0; i<l->wsize; i++) l->dw[i] /= l->p->batch; // avg
+//	for (int i=0; i<l->wsize; i++) l->dw[i] /= l->p->batch; // avg
 //	for (int i=0; i<10; i++) printf("%f ", l->dOut[i +l->outputs*(l->p->batch-1)]);
 //	for (int i=0; i<10; i++) printf("%f ", l->dw[i]);
 //	printf("w:%d %d\n", l->wsize, l->ch*l->ksize*l->ksize*l->ich);
@@ -782,13 +785,14 @@ static void CatsEye_global_avgpooling_backward(CatsEye_layer *l)
 static void CatsEye_PixelShuffler_forward(CatsEye_layer *l)
 {
 	int ch = l->ich / l->ch;
+	real *x = l->x;
 	for (int i=0; i<l->p->batch; i++) {
 		for (int c=0; c<l->ch; c++) { // out
-			real *xx = l->x + c*ch*l->sx*l->sy +l->inputs*i;
+//			real *xx = l->x + c*ch*l->sx*l->sy +l->inputs*i;
 			real *o = l->z + c*l->ox*l->oy +l->outputs*i;
 
 			for (int cc=0; cc<ch; cc++) { // in
-				real *x = xx + cc*l->sx*l->sy;
+//				real *x = xx + cc*l->sx*l->sy;
 				int px = cc%l->r;
 				int py = cc/l->r;
 				for (int n=0; n<l->sy; n++) {
@@ -803,13 +807,14 @@ static void CatsEye_PixelShuffler_forward(CatsEye_layer *l)
 static void CatsEye_PixelShuffler_backward(CatsEye_layer *l)
 {
 	int ch = l->ich / l->ch;
+	real *x = l->dIn;
 	for (int i=0; i<l->p->batch; i++) {
 		for (int c=0; c<l->ch; c++) { // out
-			real *d = l->dIn + c*ch*l->sx*l->sy +l->inputs*i;
+//			real *d = l->dIn + c*ch*l->sx*l->sy +l->inputs*i;
 			real *delta = l->dOut + c*l->ox*l->oy +l->outputs*i;
 
 			for (int cc=0; cc<ch; cc++) { // in
-				real *x = d + cc*l->sx*l->sy;
+//				real *x = d + cc*l->sx*l->sy;
 				int px = cc%l->r;
 				int py = cc/l->r;
 				for (int n=0; n<l->sy; n++) {
@@ -1427,14 +1432,12 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		if (i>=this->layers-1) { // last layer
 			if (!l->outputs) l->outputs = 0;//1; // FIXME
 		}
-		//osize[i] = 0;
 		if (i>0) { // NOT first layer
 			if (!l->ich) l->ich = (l-1)->ch;
 			if (!l->inputs) {
 				l->inputs = (l-1)->outputs;
 			} else if (l->inputs<0) { // select the layer
 				l->inputs = (l+l->inputs)->outputs;
-				//osize[i] = osize[i+l->inputs];
 			}
 //			if (l->inputs<=0) l->inputs = (l-1+l->inputs)->outputs;
 		} else { // first layer
