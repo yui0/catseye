@@ -132,6 +132,7 @@ $ ./sin
   - CS231n Convolutional Neural Networks for Visual Recognition [http://cs231n.github.io/neural-networks-3/#anneal]
   - SVM [http://d.hatena.ne.jp/echizen_tm/20110627/1309188711]
   - Autoencoder
+    - Summary of research on VAE [https://www.hiro877.com/entry/vae-research]
     - Hello Autoencoder [https://kiyukuta.github.io/2013/08/20/hello_autoencoder.html]
     - Autoencoder [https://pc.atsuhiro-me.net/entry/2015/08/18/003402]
     - Autoencoder [https://www.slideshare.net/at_grandpa/chapter5-50042838]
