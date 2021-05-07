@@ -1447,7 +1447,7 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			m[i] = l->ch * l->ich;		// channel
 			l->wsize = n[i] * m[i];
 			l->workspace = malloc(sizeof(real)* l->ox*l->oy*l->ksize*l->ksize*l->ich *this->batch);
-			printf("%3d %-12s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
+			printf("%3d %-12s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			if ((l->sx +2*l->padding -l->ksize) % l->stride > 0) printf("\t↑ warning: stride is strange!\n");
 			break;
 		case CATS_DECONV: // https://blog.shikoan.com/pytorch-convtranspose2d/
@@ -1461,7 +1461,7 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			m[i] = l->ch * l->ich;		// channel
 			l->wsize = n[i] * m[i];
 			l->workspace = malloc(sizeof(real)* l->ox*l->oy*l->ksize*l->ksize*l->ich *this->batch);
-			printf("%3d %-12s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
+			printf("%3d %-12s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
 		case CATS_AVGPOOL:
@@ -1475,14 +1475,14 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			if (l->type == CATS_MAXPOOL) {
 				l->workspace = malloc(sizeof(int)* l->outputs *this->batch);
 			}
-			printf("%3d %-12s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
+			printf("%3d %-12s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			if ((l->sx +2*l->padding -l->ksize) % l->stride > 0) printf("\t↑ warning: kernel or stride is strange!\n");
 			break;
 		case CATS_GAP:
 			l->outputs = l->ch = l->ich;
 			l->ox = 1;
 			l->oy = 1;
-			printf("%3d %-12s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
+			printf("%3d %-12s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
 		case CATS_PIXELSHUFFLER:
@@ -1493,7 +1493,7 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			l->ox = l->sx * l->r;
 			l->oy = l->sy * l->r;
 			l->outputs = l->ch * l->ox * l->oy;
-			printf("%3d %-12s %10d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
+			printf("%3d %-12s %10d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
 		/*case CATS_RECURRENT:
@@ -1517,7 +1517,7 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 //			n[i] = l->hiddens;
 			n[i] = l->inputs;
 			m[i] = l->hiddens;
-			printf("%3d %-12s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
+			printf("%3d %-12s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;*/
 
 		case CATS_PADDING:
@@ -1525,7 +1525,7 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			l->ox = l->sx + l->padding*2;
 			l->oy = l->sy + l->padding*2;
 			l->outputs = l->ch * l->ox * l->oy;
-			printf("%3d %-12s %4d     %d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->ch, l->padding, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
+			printf("%3d %-12s %4d     %d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->ch, l->padding, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
 		case CATS_BATCHNORMAL:
@@ -1540,7 +1540,7 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			m[i] = 2; // mu, var, gamma, beta
 //			m[i] = 4; // mu, var, gamma, beta
 			l->wsize = n[i] * m[i];
-			printf("%3d %-12s %10d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
+			printf("%3d %-12s %10d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
 		case CATS_ACT_RRELU:
@@ -1556,7 +1556,7 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			l->outputs = l->inputs;
 			l->ox = l->sx;
 			l->oy = l->sy;
-			printf("%3d %-12s %10d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
+			printf("%3d %-12s %10d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
 		case CATS_CONCAT:
@@ -1581,15 +1581,17 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 				l->ox = l->oy = 1;
 				l->ch = l->outputs;
 			}
-			printf("%3d %-12s %10d %4d x%4d x%4d -> %4d x%4d x%4d\n", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
-//			printf("%3d %-12s %10d %4d x%4d x%4d -> loss\n", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich);
-		}
-		if (!l->inputs) {
-			printf("\t↑ warning: input is strange!\n");
+			printf("%3d %-12s %10d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
+//			printf("%3d %-12s %10d %4d x%4d x%4d -> loss", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich);
 		}
 		if (l->name) {
 //			printf("%3d <%s>\n", i+1, l->name);
-			printf("  _ <%s>\n", l->name);
+			printf(" <%s>\n", l->name);
+		} else {
+			printf("\n");
+		}
+		if (!l->inputs) {
+			printf("\t↑ warning: input is strange!\n");
 		}
 		wsize[i] = this->wsize;
 		this->ws[i] = (n[i]+b[i])*m[i];
@@ -1831,17 +1833,29 @@ static inline void _CatsEye_forward(CatsEye *this)
 	}*/
 
 	for (int i=this->start; i<=this->end; i++) {
+//		struct timeval start, stop;
+//		gettimeofday(&start, NULL);
+
 		l->forward(l);
 		l++;
+
+//		gettimeofday(&stop, NULL);
+//		printf("#%d %.8fs F\r", i+1, (stop.tv_sec - start.tv_sec) + (stop.tv_usec - start.tv_usec)*0.001*0.001);
 	}
 }
 static inline void _CatsEye_backward(CatsEye *this)
 {
 	CatsEye_layer *l = &this->layer[this->end];
 	for (int i=this->end; i>=this->start; i--) {
+//		struct timeval start, stop;
+//		gettimeofday(&start, NULL);
+
 		if (/*!(l->fix&2)*/i>this->stop) l->backward(l);
 		if (!(l->fix&1)) l->update(l);
 		l--;
+
+//		gettimeofday(&stop, NULL);
+//		printf("#%d %.8fs B\r", i+1, (stop.tv_sec - start.tv_sec) + (stop.tv_usec - start.tv_usec)*0.001*0.001);
 	}
 }
 int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random, int verify)
