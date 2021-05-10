@@ -17,7 +17,7 @@
 //#define ETA 0.01	// batch 1
 #define ETA 0.001	// batch 64
 //#define ETA 0.0001	// batch 1500
-//#define ETA 0.00003	// batch 1500 (91.37%)
+//#define ETA 0.00003	// batch 1500 (91.95%)
 
 int main()
 {
@@ -41,8 +41,8 @@ int main()
 		{ label, CATS_ACT_SOFTMAX },
 		{ label, CATS_SOFTMAX_CE },
 	};
-	CatsEye cat = { .batch=64 };	// 95%
-//	CatsEye cat = { .batch=1500 };	// 91%
+	CatsEye cat = { .batch=64 };	// 99.27%
+//	CatsEye cat = { .batch=1500 };	// 91.95%
 //	CatsEye cat = { .batch=1 };	// 99% (1 * 1500)
 	CatsEye__construct(&cat, u);
 

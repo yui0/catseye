@@ -8,9 +8,14 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <time.h>
 #include <math.h>
+
+#include <time.h>
 #include <sys/time.h>
+inline float time_diff(struct timespec *start, struct timespec *end)
+{
+	return (end->tv_sec - start->tv_sec) + 1e-9*(end->tv_nsec - start->tv_nsec);
+}
 
 #define _debug(...)	{ printf("%s(%d):", __func__, __LINE__); printf(__VA_ARGS__); }
 
@@ -208,6 +213,10 @@ typedef struct __CatsEye_layer {
 	int inputs;		// input size
 	int type;		// layer type
 	real eta;		// learning rate
+	int fix;		// training / no training
+
+	int wtype;		// weight init type
+	real wrange;		// weight init
 
 	int ksize;		// CNN
 	int stride;		// CNN
@@ -223,10 +232,20 @@ typedef struct __CatsEye_layer {
 	int offset;		// concat
 //	int size;		// concat
 
-	int fix;		// training / no training
-
 //	int hiddens;		// RNN
 //	int truncatedTime;	// RNN
+
+	union {
+		real momentum;	// SGD with momentum
+		real rho;	// RMSProp RHO
+	} u;
+	real beta_1, beta_2;	// Adam
+	real m1_beta_1;		// Adam
+	real m1_beta_2;		// Adam
+	real *mu, *var;		// Batch Normalization [average, variance]
+//	real *gamma, *beta;	// Batch Normalization
+	real gamma, beta;	// Batch Normalization
+	real alpha, min, max;	// Leaky ReLU, RReLU
 
 	// auto config
 	int outputs;		// output size
@@ -250,17 +269,9 @@ typedef struct __CatsEye_layer {
 //	real (*act2)(real x);	// RNN
 //	real (*dact2)(real x);	// RNN
 
-	union {
-		real momentum;	// SGD with momentum
-		real rho;	// RMSProp RHO
-	} u;
-	real beta_1, beta_2;	// Adam
-	real m1_beta_1;		// Adam
-	real m1_beta_2;		// Adam
-	real *mu, *var;		// Batch Normalization [average, variance]
-//	real *gamma, *beta;	// Batch Normalization
-	real gamma, beta;	// Batch Normalization
-	real alpha, min, max;	// Leaky ReLU, RReLU
+	// research
+	real time;
+	int count[10];
 
 	void (*forward)(struct __CatsEye_layer*);
 	void (*backward)(struct __CatsEye_layer*);
@@ -472,30 +483,6 @@ static void CatsEye_linear_update(CatsEye_layer *l)
 #endif
 }
 
-#if 0
-static void CatsEye_bias_forward(CatsEye_layer *l)
-{
-	for (int n=0; n<l->p->batch; n++) {
-//		gemm_rnt(1, l->outputs, l->inputs, 1, l->x+l->inputs*n, l->w, 0, l->z+l->outputs*n);
-		for (int i=0; i<l->outputs; i++) l->z[n*l->outputs +i] += l->w[i];
-	}
-}
-/*static void CatsEye_bias_backward(CatsEye_layer *l)
-{
-	for (int n=0; n<l->p->batch; n++) {
-//		gemm_rnn(1, l->inputs, l->outputs, 1, l->dOut+l->outputs*n, l->w, 0, l->dIn+l->inputs*n);
-		for (int i=0; i<l->outputs; i++) l->dIn[n*l->inputs] += l->dOut[n*l->outputs +i] * l->w[i];
-	}
-}*/
-static void CatsEye_bias_update(CatsEye_layer *l)
-{
-	for (int n=0; n<l->p->batch; n++) {
-//		gemm_rtn(l->outputs, l->inputs, 1, -l->eta, l->dOut+l->outputs*n, l->x+l->inputs*n, 1, l->w);
-		for (int i=0; i<l->outputs; i++) l->w[i] -= l->eta * l->dOut[n*l->outputs +i];
-	}
-}
-#endif
-
 // convolution [https://github.com/hiroyam/dnn-im2col, https://github.com/pjreddie/darknet]
 static inline void im2col(const real *im, const int channels,
 	const int height, const int width, const int kernel_h, const int kernel_w,
@@ -509,9 +496,6 @@ static inline void im2col(const real *im, const int channels,
 		int w_offset = c % kernel_w;
 		int h_offset = (c / kernel_w) % kernel_h;
 		int c_im = c / kernel_h / kernel_w;
-/*		int w_offset = 0;
-		int h_offset = 0;
-		int c_im = c;*/
 		for (int h=0; h<height_col; h++) {
 			for (int w=0; w<width_col; w++) {
 				int h_pad = h * stride_h - pad_h + h_offset;
@@ -814,11 +798,9 @@ static void CatsEye_PixelShuffler_backward(CatsEye_layer *l)
 	real *x = l->dIn;
 	for (int i=0; i<l->p->batch; i++) {
 		for (int c=0; c<l->ch; c++) { // out
-//			real *d = l->dIn + c*ch*l->sx*l->sy +l->inputs*i;
 			real *delta = l->dOut + c*l->ox*l->oy +l->outputs*i;
 
 			for (int cc=0; cc<ch; cc++) { // in
-//				real *x = d + cc*l->sx*l->sy;
 				int px = cc%l->r;
 				int py = cc/l->r;
 				for (int n=0; n<l->sy; n++) {
@@ -1652,20 +1634,39 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 
 		// initialize weights, range depends on the research of Y. Bengio et al. (2010)
 		// http://jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf
+		// https://ntacoffee.com/xavier-initialization/
 		xor128_init(time(0));
 		xoroshiro128plus_init(time(0));
-		real range = sqrt(6)/sqrt(n[i]+m[i]+2);
-		if (l->type == CATS_LINEAR) {
-			range = sqrt(2)/sqrt(n[i]+m[i]);
+		real range = sqrt(2)/sqrt(n[i]+m[i]+1e-4);
+typedef enum {
+	CATS_GLOROT_UNIFORM/*Xavier*/, CATS_GLOROT_NORMAL, CATS_HE_UNIFORM/*Kaiming*/, CATS_HE_NORMAL, CATS_UNIFORM, CATS_RAND,
+} CATS_WEIGHT;
+		if (l->wrange!=0) range = l->wrange;
+		switch (l->wtype) {
+		case CATS_GLOROT_UNIFORM: // linear, sigmoid, tanh
+			range = sqrt(6)/sqrt(n[i]+m[i]+1e-4);
+			for (int n=0; n<l->wsize; n++) l->w[n] = 2.0*range*frand()-range; // uniform
+			break;
+		case CATS_GLOROT_NORMAL: // linear, sigmoid, tanh
+			range = sqrt(2)/sqrt(n[i]+m[i]+1e-4);
+			for (int n=0; n<l->wsize; n++) l->w[n] = rand_normal(0, range); // normal
+			break;
+		case CATS_HE_UNIFORM: // ReLU
+			range = sqrt(6)/sqrt(n[i]+1e-4);
+			for (int n=0; n<l->wsize; n++) l->w[n] = 2.0*range*frand()-range; // uniform
+			break;
+		case CATS_HE_NORMAL: // ReLU
+			range = sqrt(2)/sqrt(n[i]+1e-4);
+			for (int n=0; n<l->wsize; n++) l->w[n] = rand_normal(0, range); // normal
+			break;
+		case CATS_UNIFORM:
+			range = sqrt(6)/sqrt(n[i]+m[i]+1e-4);
+			for (int n=0; n<l->wsize; n++) l->w[n] = 2.0*range*frand()-range; // uniform
+			break;
+		default:
+			for (int n=0; n<l->wsize; n++) l->w[n] = rand_normal(0, range); // normal sigma:0.02
 		}
-		for (int j=0; j<this->ws[i]; j++) {
-#ifdef CATS_WEIGHT_UNIFORM
-			this->w[i][j] = 2.0*range*frand()-range; // uniform
-#else
-			this->w[i][j] = rand_normal(0, range); // normal sigma:0.02
-#endif
-		}
-//		memcpy(&this->wdata[this->wsize], this->wdata, this->wsize*sizeof(real));	// for debug
+//		memcpy(&this->wdata[this->wsize], this->wdata, this->wsize*sizeof(real)); // for debug
 	}
 	this->clasify = (int16_t*)this->layer[this->layers-1].z;
 	this->label = this->layer[this->layers-1].z;
@@ -1833,29 +1834,31 @@ static inline void _CatsEye_forward(CatsEye *this)
 	}*/
 
 	for (int i=this->start; i<=this->end; i++) {
-//		struct timeval start, stop;
-//		gettimeofday(&start, NULL);
+//		struct timespec start, stop;
+//		clock_gettime(CLOCK_REALTIME, &start);
 
 		l->forward(l);
 		l++;
 
-//		gettimeofday(&stop, NULL);
-//		printf("#%d %.8fs F\r", i+1, (stop.tv_sec - start.tv_sec) + (stop.tv_usec - start.tv_usec)*0.001*0.001);
+//		clock_gettime(CLOCK_REALTIME, &stop);
+//		l->forward_time = time_diff(&start, &stop);
+//		printf("#%d %.8fs F\r", i+1, time_diff(&start, &end));
 	}
 }
 static inline void _CatsEye_backward(CatsEye *this)
 {
 	CatsEye_layer *l = &this->layer[this->end];
 	for (int i=this->end; i>=this->start; i--) {
-//		struct timeval start, stop;
-//		gettimeofday(&start, NULL);
+//		struct timespec start, stop;
+//		clock_gettime(CLOCK_REALTIME, &start);
 
 		if (/*!(l->fix&2)*/i>this->stop) l->backward(l);
 		if (!(l->fix&1)) l->update(l);
 		l--;
 
-//		gettimeofday(&stop, NULL);
-//		printf("#%d %.8fs B\r", i+1, (stop.tv_sec - start.tv_sec) + (stop.tv_usec - start.tv_usec)*0.001*0.001);
+//		clock_gettime(CLOCK_REALTIME, &stop);
+//		l->backward_time = time_diff(&start, &stop);
+//		printf("#%d %.8fs B\r", i+1, time_diff(&start, &end));
 	}
 }
 int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random, int verify)
@@ -1872,8 +1875,8 @@ int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random,
 	}
 	printf("epoch    loss     elapsed time\n");
 
-	struct timeval start, stop;
-	gettimeofday(&start, NULL);
+	struct timespec start, stop;
+	clock_gettime(CLOCK_REALTIME, &start);
 	for (int times=0; times<epoch; times++) {
 		_CatsEye_data_transfer(this, x, t, N);
 		for (int n=0; n<repeat; n++) {
@@ -1897,8 +1900,8 @@ int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random,
 		for (int i=0; i<this->batch * l->inputs; i++) err += l->dIn[i] * l->dIn[i];
 		err /= (this->batch * l->inputs);*/
 
-		gettimeofday(&stop, NULL);
-		printf("%7d, %f %f [%.2fs]", times, this->loss, err, (stop.tv_sec - start.tv_sec) + (stop.tv_usec - start.tv_usec)*0.001*0.001);
+		clock_gettime(CLOCK_REALTIME, &stop);
+		printf("%7d, %f %f [%.2fs]", times, this->loss, err, time_diff(&start, &stop));
 
 		if (verify) {
 			int r = CatsEye_accuracy(this, x+this->layer[0].inputs*N, (int16_t*)t+N, verify);
