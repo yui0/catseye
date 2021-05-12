@@ -19,6 +19,7 @@
 int main(int argc,char *argv[])
 {
 	const int k = 96;
+	const int k2 = k/2;
 	const int size = k*k*3;
 	const int sample = 946-1;
 
@@ -65,41 +66,33 @@ int main(int argc,char *argv[])
 	int width, height, bpp;
 	pixels = stbi_load(argv[1], &width, &height, &bpp, 3);
 	if (!pixels) return 0;
-/*	real *p = malloc(width*height*3*sizeof(real));
-	for (int i=0; i<height; i++) {
-		for (int j=0; j<width; j++) {
-			p[(i*width+j)*3  ] = pixels[(i*width+j)*3  ] / 255.0 ;//*2-1; // -1,1
-			p[(i*width+j)*3+1] = pixels[(i*width+j)*3+1] / 255.0 ;//*2-1;
-			p[(i*width+j)*3+2] = pixels[(i*width+j)*3+2] / 255.0 ;//*2-1;
-		}
-	}
-	free(pixels);*/
+	printf("%dx%d\n", width, height);
 
-	// 結果の表示
 	uint8_t *pix = calloc(3, width*height*3 *2*2);
 	int c = 0;
 	int r = 0;
-	for (int sy=0; sy<height; sy+=k/2) {
-		for (int sx=0; sx<width; sx+=k/2) {
-			real p[k/2*k/2*3];
-			for (int i=0; i<k/2; i++) {
-				for (int j=0; j<k/2; j++) {
-					p[i*k/2+j] = pixels[((sy+i)*width+sx +j)*3  ] / 255.0;
-					p[i*k/2+j+k/2*k/2] = pixels[((sy+i)*width+sx +j)*3+1] / 255.0;
-					p[i*k/2+j+k/2*k/2*2] = pixels[((sy+i)*width+sx +j)*3+2] / 255.0;
+	for (int sy=0; sy<height; sy+=k2-2) {
+		for (int sx=0; sx<width; sx+=k2-2) {
+			//printf("%d,%d\n",sx,sy);
+			real p[k2*k2*3];
+			for (int i=0; i<k2; i++) {
+				for (int j=0; j<k2; j++) {
+//					if (sx+j>width || sy+i>height) continue;
+					int n = (sy+i)*width+sx +j;
+					if (n>width*height) continue;
+					p[i*k2+j] = pixels[n*3  ] / 255.0;
+					p[i*k2+j+k2*k2] = pixels[n*3+1] / 255.0;
+					p[i*k2+j+k2*k2*2] = pixels[n*3+2] / 255.0;
 				}
 			}
 			CatsEye_forward(&cat, p);
-//			CatsEye_forward(&cat, p+sy*width+sx);
-//			CatsEye_visualize(cat.layer[output].z, k*k, k, &pix[y*2*width+x*2], k*10, 3);
+
 			for (int y=0; y<k; y++) {
 				for (int x=0; x<k; x++) {
-/*					pix[((sy*2+y)*width*2+sx*2 +x)*3  ] = (uint8_t)(cat.layer[output].z[y*k+x] *255);
-					pix[((sy*2+y)*width*2+sx*2 +x)*3+1] = (uint8_t)(cat.layer[output].z[(y*k+x)+k*k] *255);
-					pix[((sy*2+y)*width*2+sx*2 +x)*3+2] = (uint8_t)(cat.layer[output].z[(y*k+x)+k*k*2] *255);*/
-					uint8_t r = (uint8_t)(cat.layer[output].z[y*k+x] *255);
-					uint8_t g = (uint8_t)(cat.layer[output].z[(y*k+x)+k*k] *255);
-					uint8_t b = (uint8_t)(cat.layer[output].z[(y*k+x)+k*k*2] *255);
+					if (sx+x>width*2 || sy+y>height*2) continue;
+					int r = (int)(cat.layer[output].z[y*k+x] *255);
+					int g = (int)(cat.layer[output].z[(y*k+x)+k*k] *255);
+					int b = (int)(cat.layer[output].z[(y*k+x)+k*k*2] *255);
 					pix[((sy*2+y)*width*2+sx*2 +x)*3  ] = r>255 ? 255 : r<0 ? 0 : r;
 					pix[((sy*2+y)*width*2+sx*2 +x)*3+1] = g>255 ? 255 : g<0 ? 0 : g;
 					pix[((sy*2+y)*width*2+sx*2 +x)*3+2] = b>255 ? 255 : b<0 ? 0 : b;
@@ -110,7 +103,6 @@ int main(int argc,char *argv[])
 	stbi_write_png(NAME".png", width*2, height*2, 3, pix, 0);
 	free(pix);
 
-//	free(p);
 	CatsEye__destruct(&cat);
 
 	return 0;

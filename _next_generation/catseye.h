@@ -776,11 +776,9 @@ static void CatsEye_PixelShuffler_forward(CatsEye_layer *l)
 	real *x = l->x;
 	for (int i=0; i<l->p->batch; i++) {
 		for (int c=0; c<l->ch; c++) { // out
-//			real *xx = l->x + c*ch*l->sx*l->sy +l->inputs*i;
 			real *o = l->z + c*l->ox*l->oy +l->outputs*i;
 
 			for (int cc=0; cc<ch; cc++) { // in
-//				real *x = xx + cc*l->sx*l->sy;
 				int px = cc%l->r;
 				int py = cc/l->r;
 				for (int n=0; n<l->sy; n++) {
@@ -847,11 +845,13 @@ static void CatsEye_padding_backward(CatsEye_layer *l)
 // https://qiita.com/omiita/items/01855ff13cc6d3720ea4
 static void CatsEye_BatchNormalization_forward(CatsEye_layer *l)
 {
-	int len = l->p->batch *l->inputs /l->r;
+	if (l->p->batch<4) return;
+
+	int len = l->p->batch *l->inputs /l->r/*ch*/;
 	real *x = l->x;
 	real *z = l->z;
 
-	for (int n=0; n<l->ch; n++) {
+	for (int n=0; n<l->r; n++) {
 		// average/mean
 		real avg = 0;
 		for (int i=0; i<len; i++) avg += x[i];
@@ -881,6 +881,8 @@ static void CatsEye_BatchNormalization_forward(CatsEye_layer *l)
 // https://deepnotes.io/batchnorm
 static void CatsEye_BatchNormalization_backward(CatsEye_layer *l)
 {
+	if (l->p->batch<4) return;
+
 	int len = l->p->batch *l->inputs /l->r;
 	real *x = l->x;
 	real *delta = l->dOut;
@@ -918,8 +920,8 @@ static void CatsEye_BatchNormalization_backward(CatsEye_layer *l)
 
 //		l->beta[n] -= l->eta * dbeta;
 //		l->gamma[n] -= l->eta * dgamma;
-		/*l->beta -= l->eta * dbeta;
-		l->gamma -= l->eta * dgamma;*/
+		l->beta -= l->eta * dbeta;
+		l->gamma -= l->eta * dgamma;
 
 		x += len;
 		delta += len;
