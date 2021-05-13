@@ -8,11 +8,10 @@
 // clang mnist_gan.c -o mnist_gan -lm -Ofast
 
 #define CATS_USE_ADAM
+//#define ADAM_BETA1	0.1
 #define ADAM_BETA1	0.5
 #define ADAM_BETA2	0.999
-//#define ETA		0.001 // zdim:10, batch:64
 
-//#define ADAM_BETA1	0.1
 //#define ETA		1e-3 // nan
 //#define ETA		8e-4 //
 //#define ETA		2e-4 // OK
@@ -52,7 +51,8 @@
 #define NAME	"mnist_dcgan_48"
 #define SAMPLE	(946-1)
 #define CH	3
-#define ZDIM	100
+//#define ZDIM	100
+#define ZDIM	50
 
 #else
 
@@ -72,67 +72,6 @@
 int main()
 {
 #if 0
-	// https://aidiary.hatenablog.com/entry/20180311/1520762446
-	CatsEye_layer u[] = {
-		// generator
-		{    ZDIM, CATS_LINEAR, ETA, .outputs=128*14*14/*512*/ },
-		{       0, CATS_ACT_RELU },
-
-		{       0, CATS_CONV, ETA, .ksize=1, .stride=1, .padding=0, .ich=128, .sx=14, .sy=14, .ch=4 },
-
-		{       0, CATS_PIXELSHUFFLER, .r=2/*4*/, .ch=1 },
-		{    size, CATS_ACT_TANH },	// [-1,1]
-
-		// discriminator
-		{    size, CATS_CONV, ETA, .ksize=4, .stride=2, .padding=1, .ch=64, .name="Discriminator" },
-		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
-		{       0, CATS_CONV, ETA, .ksize=4, .stride=2, .padding=1, .ch=128 },
-		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
-
-		{       0, CATS_LINEAR, ETA, .outputs=1024 },
-		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
-//		{       0, CATS_GAP }, // 7x7x128 -> 128
-		{       0, CATS_LINEAR, ETA, .outputs=1 },
-		{       1, CATS_ACT_SIGMOID },
-
-		{       1, CATS_SIGMOID_BCE },
-	};
-#else
-	// https://elix-tech.github.io/ja/2017/02/06/gan.html
-/*	CatsEye_layer u[] = {
-		// generator
-		{    ZDIM, CATS_LINEAR, ETA, .outputs=1024 },
-		{       0, CATS_ACT_RELU },
-		{       0, CATS_LINEAR, ETA, .outputs=K4*K4*128 },
-		{       0, CATS_ACT_RELU },
-
-		// 7 -> 14
-		{       0, CATS_PIXELSHUFFLER, .r=2, .ch=32, .ich=128 },
-		{       0, CATS_CONV, ETA, .ksize=1, .stride=1, .ch=64, .sx=K2, .sy=K2, .ich=32 },
-		{       0, CATS_ACT_RELU },
-
-		// 14 -> 28
-		{       0, CATS_PIXELSHUFFLER, .r=2, .ch=16, .ich=64 },
-		{       0, CATS_CONV, ETA, .ksize=1, .stride=1, .ch=1*CH },
-		{    SIZE, CATS_ACT_TANH },	// [-1,1]
-
-		// discriminator
-		// 28 -> 14
-		{    SIZE, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=64, .name="Discriminator" },
-		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
-		// 14 -> 7
-		{       0, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=128 },
-		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
-//		{       0, CATS_GAP }, // 7x7x128 -> 128
-
-		{       0, CATS_LINEAR, ETA, .outputs=256 },
-		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
-
-		{       0, CATS_LINEAR, ETA, .outputs=1 },
-		{       1, CATS_ACT_SIGMOID },
-
-		{       1, CATS_SIGMOID_BCE },
-	};*/
 	// https://lionbridge.ai/ja/articles/pytorch-gan-anime-character/
 	CatsEye_layer u[] = {
 		// generator
@@ -181,6 +120,57 @@ int main()
 
 		{       0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=0, .ch=1 },
 //		{       0, CATS_LINEAR, ETA, .outputs=1 },
+		{       1, CATS_ACT_SIGMOID },
+		{       1, CATS_SIGMOID_BCE },
+	};
+#else
+	// https://github.com/musyoku/LSGAN/blob/master/train_animeface/model.py
+	CatsEye_layer u[] = {
+		// generator
+		{    ZDIM, CATS_LINEAR, ETA, .outputs=3*3*512 },
+		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+//		{       0, CATS_BATCHNORMAL },
+		{       0, CATS_PIXELSHUFFLER, .r=2, .ch=128, .sx=3, .sy=3, .ich=512 },
+
+		// 6 -> 12
+		{       0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=256 },
+//		{       0, CATS_BATCHNORMAL },
+		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+		{       0, CATS_PIXELSHUFFLER, .r=2, .ch=64 },
+
+		// 12 -> 24
+		{       0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=128 },
+//		{       0, CATS_BATCHNORMAL },
+		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+		{       0, CATS_PIXELSHUFFLER, .r=2, .ch=32 },
+
+		// 24 -> 48
+		{       0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=64 },
+//		{       0, CATS_BATCHNORMAL },
+		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+		{       0, CATS_PIXELSHUFFLER, .r=2, .ch=16 },
+		{       0, CATS_CONV, ETA, .ksize=1, .stride=1, .ch=3 },
+		{    SIZE, CATS_ACT_TANH, .name="Generator" },	// [-1,1]
+
+		// discriminator
+		// 48 -> 24
+		{    SIZE, CATS_CONV, ETA, .ksize=4, .stride=2, .padding=1, .ch=32, .name="Discriminator" },
+//		{       0, CATS_BATCHNORMAL },
+		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+		// 24 -> 12
+		{       0, CATS_CONV, ETA, .ksize=4, .stride=2, .padding=1, .ch=64 },
+//		{       0, CATS_BATCHNORMAL },
+		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+		// 12 -> 6
+		{       0, CATS_CONV, ETA, .ksize=4, .stride=2, .padding=1, .ch=128 },
+//		{       0, CATS_BATCHNORMAL },
+		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+		// 6 -> 3
+		{       0, CATS_CONV, ETA, .ksize=4, .stride=2, .padding=1, .ch=256 },
+//		{       0, CATS_BATCHNORMAL },
+		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+
+		{       0, CATS_LINEAR, ETA, .outputs=1 },
 		{       1, CATS_ACT_SIGMOID },
 		{       1, CATS_SIGMOID_BCE },
 	};

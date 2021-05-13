@@ -217,6 +217,7 @@ typedef struct __CatsEye_layer {
 
 	int wtype;		// weight init type
 	real wrange;		// weight init
+	real wgain;		// weight init
 
 	int ksize;		// CNN
 	int stride;		// CNN
@@ -270,8 +271,9 @@ typedef struct __CatsEye_layer {
 //	real (*dact2)(real x);	// RNN
 
 	// research
-	real time;
-	int count[10];
+	real forward_time;
+	real backward_time;
+//	int count[20];		// -1,0
 
 	void (*forward)(struct __CatsEye_layer*);
 	void (*backward)(struct __CatsEye_layer*);
@@ -976,7 +978,7 @@ static void CatsEye_dact_##type(CatsEye_layer *l)\
 	}\
 }
 //	for (int b=0; b<l->p->batch; b++) for (int n=0; n<10; n++) printf("%f[%f] ", l->dIn[b*l->inputs +l->inputs-1-n], l->z[b*l->inputs +l->inputs-1-n]);\
-//	printf("\n");\
+//	printf("%d\n", l->wsize);\
 
 #define sigmoid_gain			1//0.1
 #define CATS_ACT_sigmoid(x, l)		(1.0 / (1.0 + exp(-(x) * sigmoid_gain)))
@@ -1568,12 +1570,8 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			printf("%3d %-12s %10d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 //			printf("%3d %-12s %10d %4d x%4d x%4d -> loss", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich);
 		}
-		if (l->name) {
-//			printf("%3d <%s>\n", i+1, l->name);
-			printf(" <%s>\n", l->name);
-		} else {
-			printf("\n");
-		}
+		if (l->name) printf(" <%s>\n", l->name);
+		else printf("\n");
 		if (!l->inputs) {
 			printf("\t↑ warning: input is strange!\n");
 		}
@@ -1634,37 +1632,57 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			}
 		}*/
 
+		// https://pytorch.org/docs/stable/nn.init.html
+		real gain = 1;
+		if (i<this->layers-1) {
+			switch ((l+1)->type) {
+			case CATS_ACT_TANH:
+				gain = 5.0/3.0;
+				break;
+			case CATS_ACT_RELU:
+				gain = sqrt(2);
+				break;
+			case CATS_ACT_LEAKY_RELU:
+				gain = sqrt(2/(1 +l->alpha*l->alpha));
+				break;
+	/*		case CATS_ACT_SELU:
+				gain = 3.0/4.0;*/
+			}
+		}
 		// initialize weights, range depends on the research of Y. Bengio et al. (2010)
 		// http://jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf
 		// https://ntacoffee.com/xavier-initialization/
+typedef enum {
+	CATS_GLOROT_UNIFORM/*Xavier*/, CATS_GLOROT_NORMAL, CATS_HE_UNIFORM/*Kaiming*/, CATS_HE_NORMAL, /*CATS_UNIFORM, CATS_RAND,*/
+} CATS_WEIGHT;
 		xor128_init(time(0));
 		xoroshiro128plus_init(time(0));
-		real range = sqrt(2)/sqrt(n[i]+m[i]+1e-4);
-typedef enum {
-	CATS_GLOROT_UNIFORM/*Xavier*/, CATS_GLOROT_NORMAL, CATS_HE_UNIFORM/*Kaiming*/, CATS_HE_NORMAL, CATS_UNIFORM, CATS_RAND,
-} CATS_WEIGHT;
+		real range = gain * sqrt(2)/sqrt(l->inputs+l->outputs);
+		if (l->type==CATS_CONV) range = gain * sqrt(2)/sqrt(l->inputs/l->ich);
 		if (l->wrange!=0) range = l->wrange;
 		switch (l->wtype) {
 		case CATS_GLOROT_UNIFORM: // linear, sigmoid, tanh
-			range = sqrt(6)/sqrt(n[i]+m[i]+1e-4);
+			range = gain * sqrt(6)/sqrt(l->inputs+l->outputs);
 			for (int n=0; n<l->wsize; n++) l->w[n] = 2.0*range*frand()-range; // uniform
 			break;
 		case CATS_GLOROT_NORMAL: // linear, sigmoid, tanh
-			range = sqrt(2)/sqrt(n[i]+m[i]+1e-4);
+			range = gain * sqrt(2)/sqrt(l->inputs+l->outputs);
 			for (int n=0; n<l->wsize; n++) l->w[n] = rand_normal(0, range); // normal
 			break;
 		case CATS_HE_UNIFORM: // ReLU
-			range = sqrt(6)/sqrt(n[i]+1e-4);
+			range = gain * sqrt(6 / l->inputs);
+//			range = gain * sqrt(3 / l->inputs);
 			for (int n=0; n<l->wsize; n++) l->w[n] = 2.0*range*frand()-range; // uniform
 			break;
 		case CATS_HE_NORMAL: // ReLU
-			range = sqrt(2)/sqrt(n[i]+1e-4);
+			range = gain * sqrt(2 / (l->inputs/l->ich));
+//			range = gain / sqrt(l->inputs/l->ich);
 			for (int n=0; n<l->wsize; n++) l->w[n] = rand_normal(0, range); // normal
 			break;
-		case CATS_UNIFORM:
-			range = sqrt(6)/sqrt(n[i]+m[i]+1e-4);
+/*		case CATS_UNIFORM:
+			range = sqrt(6)/sqrt(l->inputs+l->outputs);
 			for (int n=0; n<l->wsize; n++) l->w[n] = 2.0*range*frand()-range; // uniform
-			break;
+			break;*/
 		default:
 			for (int n=0; n<l->wsize; n++) l->w[n] = rand_normal(0, range); // normal sigma:0.02
 		}
@@ -1836,31 +1854,55 @@ static inline void _CatsEye_forward(CatsEye *this)
 	}*/
 
 	for (int i=this->start; i<=this->end; i++) {
-//		struct timespec start, stop;
-//		clock_gettime(CLOCK_REALTIME, &start);
-
+#ifdef CATS_CHECK
+		struct timespec start, stop;
+		clock_gettime(CLOCK_REALTIME, &start);
+#endif
 		l->forward(l);
-		l++;
-
-//		clock_gettime(CLOCK_REALTIME, &stop);
-//		l->forward_time = time_diff(&start, &stop);
+#ifdef CATS_CHECK
+		clock_gettime(CLOCK_REALTIME, &stop);
+		l->forward_time = time_diff(&start, &stop);
 //		printf("#%d %.8fs F\r", i+1, time_diff(&start, &end));
+
+		int count[20];
+		memset(count, 0, 20*sizeof(int));
+		for (int n=0; n<l->outputs; n++) {
+			int a = (int)(l->z[n]*10 +10);
+			a = a<0 ? 0 : a>20 ? 19 : a;
+			count[a]++;
+		}
+		int max = 0;
+		max = count[0];
+		for (int n=1; n<20; n++) if (max < count[n]) max = count[n];
+		for (int n=0; n<20; n++) count[n] = (int)(count[n]*19.0 / max);
+		char name[30];
+		sprintf(name, "/tmp/%02d.png", i+1);
+		uint8_t z[20*20];
+		memset(z, 0, 20*20);
+		for (int x=0; x<20; x++) {
+			for (int y=0; y<count[x]; y++) z[x+(19-y)*20] = 255;
+		}
+		stbi_write_png(name, 20, 20, 1, z, 0);
+#endif
+		l++;
 	}
 }
 static inline void _CatsEye_backward(CatsEye *this)
 {
 	CatsEye_layer *l = &this->layer[this->end];
 	for (int i=this->end; i>=this->start; i--) {
-//		struct timespec start, stop;
-//		clock_gettime(CLOCK_REALTIME, &start);
-
+#ifdef CATS_CHECK
+		struct timespec start, stop;
+		clock_gettime(CLOCK_REALTIME, &start);
+#endif
 		if (/*!(l->fix&2)*/i>this->stop) l->backward(l);
 		if (!(l->fix&1)) l->update(l);
 		l--;
-
-//		clock_gettime(CLOCK_REALTIME, &stop);
-//		l->backward_time = time_diff(&start, &stop);
+#ifdef CATS_CHECK
+		clock_gettime(CLOCK_REALTIME, &stop);
+		l->backward_time = time_diff(&start, &stop);
 //		printf("#%d %.8fs B\r", i+1, time_diff(&start, &end));
+#endif
 	}
 }
 int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random, int verify)
