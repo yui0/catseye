@@ -217,7 +217,6 @@ typedef struct __CatsEye_layer {
 
 	int wtype;		// weight init type
 	real wrange;		// weight init
-	real wgain;		// weight init
 
 	int ksize;		// CNN
 	int stride;		// CNN
@@ -847,7 +846,7 @@ static void CatsEye_padding_backward(CatsEye_layer *l)
 // https://qiita.com/omiita/items/01855ff13cc6d3720ea4
 static void CatsEye_BatchNormalization_forward(CatsEye_layer *l)
 {
-	if (l->p->batch<4) return;
+//	if (l->p->batch<4) return;
 
 	int len = l->p->batch *l->inputs /l->r/*ch*/;
 	real *x = l->x;
@@ -883,7 +882,7 @@ static void CatsEye_BatchNormalization_forward(CatsEye_layer *l)
 // https://deepnotes.io/batchnorm
 static void CatsEye_BatchNormalization_backward(CatsEye_layer *l)
 {
-	if (l->p->batch<4) return;
+//	if (l->p->batch<4) return;
 
 	int len = l->p->batch *l->inputs /l->r;
 	real *x = l->x;
@@ -985,6 +984,11 @@ static void CatsEye_dact_##type(CatsEye_layer *l)\
 #define CATS_DACT_sigmoid(y, l)		((1.0-(y))*(y) * sigmoid_gain)
 CATS_ACT_ARRAY(sigmoid);
 CATS_DACT_ARRAY(sigmoid);
+
+/*#define CATS_ACT_swish(x, l)		((x) / (1.0 + exp(-(x))))
+#define CATS_DACT_swish(y, l)		((y) + (1.0-(y))*(y))
+CATS_ACT_ARRAY(swish);
+CATS_DACT_ARRAY(swish);*/
 
 #define CATS_ACT_log(x, l)		(log(x))
 #define CATS_DACT_log(y, l)		(1.0/y)
@@ -1632,23 +1636,6 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			}
 		}*/
 
-		// https://pytorch.org/docs/stable/nn.init.html
-		real gain = 1;
-		if (i<this->layers-1) {
-			switch ((l+1)->type) {
-			case CATS_ACT_TANH:
-				gain = 5.0/3.0;
-				break;
-			case CATS_ACT_RELU:
-				gain = sqrt(2);
-				break;
-			case CATS_ACT_LEAKY_RELU:
-				gain = sqrt(2/(1 +l->alpha*l->alpha));
-				break;
-	/*		case CATS_ACT_SELU:
-				gain = 3.0/4.0;*/
-			}
-		}
 		// initialize weights, range depends on the research of Y. Bengio et al. (2010)
 		// http://jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf
 		// https://ntacoffee.com/xavier-initialization/
@@ -1657,8 +1644,29 @@ typedef enum {
 } CATS_WEIGHT;
 		xor128_init(time(0));
 		xoroshiro128plus_init(time(0));
-		real range = gain * sqrt(2)/sqrt(l->inputs+l->outputs);
-		if (l->type==CATS_CONV) range = gain * sqrt(2)/sqrt(l->inputs/l->ich);
+		real range = sqrt(2)/sqrt(l->inputs+l->outputs);
+		// https://pytorch.org/docs/stable/nn.init.html
+		real gain = 1;
+		if (i<this->layers-1) {
+			int n = (l+1)->type==CATS_BATCHNORMAL ? 2 : 1;
+			switch ((l+n)->type) {
+			case CATS_ACT_TANH:
+				gain = 5.0/3.0;
+				break;
+			case CATS_ACT_RELU:
+				gain = sqrt(2);
+//				range = sqrt(3 / (l->inputs/l->ich));
+				range = 1.0 / sqrt(l->inputs/l->ich);
+				break;
+			case CATS_ACT_LEAKY_RELU:
+				gain = sqrt(2/(1 +l->alpha*l->alpha));
+				range = 1.0 / sqrt(l->inputs/l->ich);
+				break;
+	/*		case CATS_ACT_SELU:
+				gain = 3.0/4.0;*/
+			}
+		}
+		range *= gain;
 		if (l->wrange!=0) range = l->wrange;
 		switch (l->wtype) {
 		case CATS_GLOROT_UNIFORM: // linear, sigmoid, tanh
@@ -1671,7 +1679,7 @@ typedef enum {
 			break;
 		case CATS_HE_UNIFORM: // ReLU
 			range = gain * sqrt(6 / l->inputs);
-//			range = gain * sqrt(3 / l->inputs);
+//			range = gain * sqrt(3 / (l->inputs/l->ich));
 			for (int n=0; n<l->wsize; n++) l->w[n] = 2.0*range*frand()-range; // uniform
 			break;
 		case CATS_HE_NORMAL: // ReLU
@@ -1685,6 +1693,7 @@ typedef enum {
 			break;*/
 		default:
 			for (int n=0; n<l->wsize; n++) l->w[n] = rand_normal(0, range); // normal sigma:0.02
+//			for (int n=0; n<l->wsize; n++) l->w[n] = 2.0*range*frand()-range; // uniform
 		}
 //		memcpy(&this->wdata[this->wsize], this->wdata, this->wsize*sizeof(real)); // for debug
 	}
