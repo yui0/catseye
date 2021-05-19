@@ -1427,25 +1427,25 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		n[i] = m[i] = b[i] = 0;
 		switch (l->type) {
 		case CATS_CONV:
-			l->ox = l->px = (l->sx +2*l->padding -l->ksize) /l->stride +1;
-			l->oy = l->py = (l->sy +2*l->padding -l->ksize) /l->stride +1;
-			l->px -= l->padding*2;
+			l->ox = /*l->px =*/ (l->sx +2*l->padding -l->ksize) /l->stride +1;
+			l->oy = /*l->py =*/ (l->sy +2*l->padding -l->ksize) /l->stride +1;
+/*			l->px -= l->padding*2;
 			l->py -= l->padding*2;
-			l->pz = l->padding +l->padding*l->ox;
+			l->pz = l->padding +l->padding*l->ox;*/
 			l->outputs = l->ch * l->ox * l->oy;
 			n[i] = l->ksize * l->ksize;	// kernel size
 			m[i] = l->ch * l->ich;		// channel
 			l->wsize = n[i] * m[i];
 			l->workspace = malloc(sizeof(real)* l->ox*l->oy*l->ksize*l->ksize*l->ich *this->batch);
 			printf("%3d %-12s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
-			if ((l->sx +2*l->padding -l->ksize) % l->stride > 0) printf("\t↑ warning: stride is strange!\n");
+			if ((l->sx +2*l->padding -l->ksize) % l->stride > 0) printf("\n\t↑ warning: stride is strange!\n");
 			break;
 		case CATS_DECONV: // https://blog.shikoan.com/pytorch-convtranspose2d/
-			l->ox = l->px = (l->sx-1) *l->stride -2*l->padding +l->ksize;
-			l->oy = l->py = (l->sy-1) *l->stride -2*l->padding +l->ksize;
-			l->px -= l->padding*2;
+			l->ox = /*l->px =*/ (l->sx-1) *l->stride -2*l->padding +l->ksize;
+			l->oy = /*l->py =*/ (l->sy-1) *l->stride -2*l->padding +l->ksize;
+/*			l->px -= l->padding*2;
 			l->py -= l->padding*2;
-			l->pz = l->padding +l->padding*l->ox;
+			l->pz = l->padding +l->padding*l->ox;*/
 			l->outputs = l->ch * l->ox * l->oy;
 			n[i] = l->ksize * l->ksize;	// kernel size
 			m[i] = l->ch * l->ich;		// channel
@@ -1466,7 +1466,7 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 				l->workspace = malloc(sizeof(int)* l->outputs *this->batch);
 			}
 			printf("%3d %-12s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
-			if ((l->sx +2*l->padding -l->ksize) % l->stride > 0) printf("\t↑ warning: kernel or stride is strange!\n");
+			if ((l->sx +2*l->padding -l->ksize) % l->stride > 0) printf("\n\t↑ warning: kernel or stride is strange!\n");
 			break;
 		case CATS_GAP:
 			l->outputs = l->ch = l->ich;
@@ -1635,18 +1635,20 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 				l->beta[n] = 0;
 			}
 		}*/
+		if (!l->wsize) continue;
 
 		// initialize weights, range depends on the research of Y. Bengio et al. (2010)
 		// http://jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf
 		// https://ntacoffee.com/xavier-initialization/
 typedef enum {
-	CATS_GLOROT_UNIFORM/*Xavier*/, CATS_GLOROT_NORMAL, CATS_HE_UNIFORM/*Kaiming*/, CATS_HE_NORMAL, /*CATS_UNIFORM, CATS_RAND,*/
+	cccccc, /*CATS_UNIFORM,*/ CATS_GLOROT_UNIFORM/*Xavier*/, CATS_GLOROT_NORMAL, CATS_HE_UNIFORM/*Kaiming*/, CATS_HE_NORMAL
 } CATS_WEIGHT;
 		xor128_init(time(0));
 		xoroshiro128plus_init(time(0));
 		real range = sqrt(2)/sqrt(l->inputs+l->outputs);
 		// https://pytorch.org/docs/stable/nn.init.html
 		real gain = 1;
+		int fin = l->ksize ? l->ksize*l->ksize : l->inputs;
 		if (i<this->layers-1) {
 			int n = (l+1)->type==CATS_BATCHNORMAL ? 2 : 1;
 			switch ((l+n)->type) {
@@ -1655,14 +1657,14 @@ typedef enum {
 				break;
 			case CATS_ACT_RELU:
 				gain = sqrt(2);
-//				range = sqrt(3 / (l->inputs/l->ich));
-				range = 1.0 / sqrt(l->inputs/l->ich);
+//				range = sqrt(3 / (fin));
+				range = 1.0 / sqrt(fin);
 				break;
 			case CATS_ACT_LEAKY_RELU:
 				gain = sqrt(2/(1 +l->alpha*l->alpha));
-				range = 1.0 / sqrt(l->inputs/l->ich);
+				range = 1.0 / sqrt(fin);
 				break;
-	/*		case CATS_ACT_SELU:
+/*			case CATS_ACT_SELU:
 				gain = 3.0/4.0;*/
 			}
 		}
@@ -1678,12 +1680,12 @@ typedef enum {
 			for (int n=0; n<l->wsize; n++) l->w[n] = rand_normal(0, range); // normal
 			break;
 		case CATS_HE_UNIFORM: // ReLU
-			range = gain * sqrt(6 / l->inputs);
+			range = gain * sqrt(6 / fin);
 //			range = gain * sqrt(3 / (l->inputs/l->ich));
 			for (int n=0; n<l->wsize; n++) l->w[n] = 2.0*range*frand()-range; // uniform
 			break;
 		case CATS_HE_NORMAL: // ReLU
-			range = gain * sqrt(2 / (l->inputs/l->ich));
+			range = gain * sqrt(2 / fin);
 //			range = gain / sqrt(l->inputs/l->ich);
 			for (int n=0; n<l->wsize; n++) l->w[n] = rand_normal(0, range); // normal
 			break;
@@ -1691,11 +1693,13 @@ typedef enum {
 			range = sqrt(6)/sqrt(l->inputs+l->outputs);
 			for (int n=0; n<l->wsize; n++) l->w[n] = 2.0*range*frand()-range; // uniform
 			break;*/
-		default:
+		default: // CATS_RAND
 			for (int n=0; n<l->wsize; n++) l->w[n] = rand_normal(0, range); // normal sigma:0.02
+//			for (int c=0; c<n[i]*m[i]; c++) l->w[c] = rand_normal(0, range); // normal sigma:0.02
 //			for (int n=0; n<l->wsize; n++) l->w[n] = 2.0*range*frand()-range; // uniform
 		}
 //		memcpy(&this->wdata[this->wsize], this->wdata, this->wsize*sizeof(real)); // for debug
+		l->wrange = range;
 	}
 	this->clasify = (int16_t*)this->layer[this->layers-1].z;
 	this->label = this->layer[this->layers-1].z;
@@ -1704,7 +1708,8 @@ typedef enum {
 	uint64_t max = 0;
 	for (int i=0; i<this->layers; i++) {
 		CatsEye_layer *l = &this->layer[i];
-		printf("L%02d in:%d out:%d weight:%d (x:%ld-z:%ld-d:%ld-w:%ld)\n", i+1, l->inputs, l->outputs, l->wsize, l->x-this->odata, l->z-this->odata, this->d[i]-this->ddata, this->w[i]-this->wdata);
+		printf("L%02d in:%d out:%d weight:%d[%f] (z:%ld-d:%ld-w:%ld)\n", i+1, l->inputs, l->outputs, l->wsize, l->wrange, l->z-this->odata, this->d[i]-this->ddata, this->w[i]-this->wdata);
+//		printf("L%02d in:%d out:%d weight:%d (x:%ld-z:%ld-d:%ld-w:%ld)\n", i+1, l->inputs, l->outputs, l->wsize, l->x-this->odata, l->z-this->odata, this->d[i]-this->ddata, this->w[i]-this->wdata);
 		//printf("  (dIn:%ld-dOut:%ld)\n", l->dIn, l->dOut);
 
 		uint64_t s = l->ox*l->oy*l->ksize*l->ksize*l->ich; // col2im
@@ -2093,6 +2098,32 @@ void _CatsEye_visualize(real *o, int n, int sx, uint8_t *p, int width, int ch, r
 		}
 	}
 }
+void CatsEye_visualizeYUV(real *s, int n, int sx, uint8_t *p, int width)
+{
+	for (int i=0; i<n; i++) {
+		int r = (int)(s[i]*255.0                 +1.402  *s[i+n*2]);
+		int g = (int)(s[i]*255.0 -0.34414*s[i+n] -0.71414*s[i+n*2]);
+		int b = (int)(s[i]*255.0 +1.772  *s[i+n]);
+		p[((i/sx)*width + i%sx)*3 +0] = (uint8_t)(r>255 ? 255 : r<0 ? 0 : r);
+		p[((i/sx)*width + i%sx)*3 +1] = (uint8_t)(g>255 ? 255 : g<0 ? 0 : g);
+		p[((i/sx)*width + i%sx)*3 +2] = (uint8_t)(b>255 ? 255 : b<0 ? 0 : b);
+	}
+}
+
+// visualize weights [w1]
+/*void CatsEye_visualizeWeights(CatsEye *this, int n, int size, uint8_t *p, int width)
+{
+	real *w = &this->w[0][n];
+	real max = w[0];
+	real min = w[0];
+	for (int i=1; i<SIZE(0); i++) {
+		if (max < w[i * SIZE(1)]) max = w[i * SIZE(1)];
+		if (min > w[i * SIZE(1)]) min = w[i * SIZE(1)];
+	}
+	for (int i=0; i<SIZE(0); i++) {
+		p[(i/size)*width + i%size] = (uint8_t)((w[i * SIZE(1)] - min) / (max - min) * 255.0);
+	}
+}*/
 
 // https://www.cs.toronto.edu/~kriz/cifar.html
 real *CatsEye_loadCifar(char *name, int size, int lsize, int sample, int16_t **label)
@@ -2181,21 +2212,6 @@ real *CatsEye_loadCifar(char *name, int size, int lsize, int sample, int16_t **l
 
 	fclose(fp);
 	return 0;
-}*/
-
-// visualize weights [w1]
-/*void CatsEye_visualizeWeights(CatsEye *this, int n, int size, uint8_t *p, int width)
-{
-	real *w = &this->w[0][n];
-	real max = w[0];
-	real min = w[0];
-	for (int i=1; i<SIZE(0); i++) {
-		if (max < w[i * SIZE(1)]) max = w[i * SIZE(1)];
-		if (min > w[i * SIZE(1)]) min = w[i * SIZE(1)];
-	}
-	for (int i=0; i<SIZE(0); i++) {
-		p[(i/size)*width + i%size] = (uint8_t)((w[i * SIZE(1)] - min) / (max - min) * 255.0);
-	}
 }*/
 
 real *CatsEye_loadMnist(char *name, char *name2, int sample, int **label)
