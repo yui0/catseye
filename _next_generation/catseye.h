@@ -239,9 +239,9 @@ typedef struct __CatsEye_layer {
 		real momentum;	// SGD with momentum
 		real rho;	// RMSProp RHO
 	} u;
-	real beta_1, beta_2;	// Adam
-	real m1_beta_1;		// Adam
-	real m1_beta_2;		// Adam
+	real beta1, beta2;	// Adam
+//	real m1_beta1;		// Adam
+//	real m1_beta2;		// Adam
 	real *mu, *var;		// Batch Normalization [average, variance]
 //	real *gamma, *beta;	// Batch Normalization
 	real gamma, beta;	// Batch Normalization
@@ -361,12 +361,12 @@ typedef struct __CatsEye {
  #define _SOLVER()\
 {\
 	for (int i=l->wsize-1; i>=0; i--) {\
-		l->g[i] = l->beta_1 * l->g[i] + l->m1_beta_1 * l->dw[i];\
-		l->s[i] = l->beta_2 * l->s[i] + l->m1_beta_2 * l->dw[i] * l->dw[i];\
+		l->g[i] = l->beta1 * l->g[i] + (1 - l->beta1) * l->dw[i];\
+		l->s[i] = l->beta2 * l->s[i] + (1 - l->beta2) * l->dw[i] * l->dw[i];\
 		l->w[i] -= l->eta * l->g[i] / (sqrt(l->s[i] +1e-12));\
 	}\
 }
-//		l->w[i] -= l->eta * l->g[i]/l->m1_beta_1 / (sqrt(l->s[i]/l->m1_beta_2 +1e-12));\
+//		l->w[i] -= l->eta * l->g[i]/(1 - l->beta1) / (sqrt(l->s[i]/(1 - l->beta2) +1e-12));\
 
 #else // SGD
  //#define SOLVER(gemm, m, n, k, alpha, a, b, beta, c) gemm(m, n, k, alpha, a, b, beta, c)
@@ -627,23 +627,27 @@ static void CatsEye_convolutional_update(CatsEye_layer *l)
 
 static void CatsEye_deconvolutional_forward(CatsEye_layer *l)
 {
-	gemm_rtn(l->ksize*l->ksize*l->ich, l->sx*l->sy*l->p->batch, l->ch, 1, l->w, l->x, 0, l->workspace);
 	for (int i=0; i<l->p->batch; i++) {
-		col2im(l->workspace +l->ksize*l->ksize*l->ich*l->sx*l->sy*i, l->ch, l->oy, l->ox, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, l->z +l->outputs*i);
+		gemm_rtn(l->ksize*l->ksize*l->ch, l->sx*l->sy*1, l->ich, 1, l->w, l->x, 0, l->p->mem);
+		col2im(/*l->workspace +l->ksize*l->ksize*l->ich*l->sx*l->sy*i*/l->p->mem, l->ch, l->oy, l->ox, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, l->z +l->outputs*i);
 	}
 }
 static void CatsEye_deconvolutional_backward(CatsEye_layer *l)
 {
-	real *workspace = l->ksize!=1 ? l->workspace : l->dOut;
+//	real *workspace = l->ksize!=1 ? l->workspace : l->dOut;
 	for (int i=0; i<l->p->batch; i++) {
-		im2col(l->dOut +l->outputs*i, l->ch, l->oy, l->ox, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, workspace +l->ksize*l->ksize*l->ich *l->ox*l->oy*i);
+		im2col(l->dOut +l->outputs*i, l->ch, l->oy, l->ox, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, /*workspace +l->ksize*l->ksize*l->ich *l->ox*l->oy*i*/l->p->mem);
+		gemm_rnn(l->ich, l->sx*l->sy*1, l->ksize*l->ksize*l->ch, 1, l->w, l->p->mem, 0, l->dIn +i*l->inputs);
 	}
-	gemm_rnn(l->ch, l->ox*l->oy*l->p->batch, l->ksize*l->ksize*l->ich, 1, l->w, workspace, 0, l->dIn);
 }
 static void CatsEye_deconvolutional_update(CatsEye_layer *l)
 {
-	real *workspace = l->ksize!=1 ? l->workspace : l->x;
-	gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*l->p->batch, -l->eta, l->dOut, workspace, 1, l->w);
+	memset(l->dw, 0, sizeof(real)* l->ksize*l->ksize*l->ich);
+//	real *workspace = l->ksize!=1 ? l->workspace : l->x;
+	for (int i=0; i<l->p->batch; i++) {
+		gemm_rnt(l->ich, l->ksize*l->ksize*l->ch, l->sx*l->sy*1, 1, l->dOut, /*workspace*/l->p->mem, 1, l->dw);
+	}
+	_SOLVER();
 }
 
 // calculate forward propagation
@@ -1393,14 +1397,14 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 
 		if (l->u.momentum==0.0) l->u.momentum = 0.9; // MomentumSGD
 		//if (l->u.rho==0.0) l->u.rho = RMSPROP_RHO; // FIXME: RMSprop
-		//if (l->beta_1==0.0) l->beta_1 = 0.9; // FIXME: Adam
+		//if (l->beta1==0.0) l->beta1 = 0.9; // FIXME: Adam
 		// Adam
-		if (l->beta_2==0.0) {
-			l->beta_1 = ADAM_BETA1;
-			l->beta_2 = ADAM_BETA2;
+		if (l->beta2==0.0) {
+			l->beta1 = ADAM_BETA1;
+			l->beta2 = ADAM_BETA2;
 		}
-		l->m1_beta_1 = 1 - l->beta_1;
-		l->m1_beta_2 = 1 - l->beta_2;
+		/*l->m1_beta1 = 1 - l->beta1;
+		l->m1_beta2 = 1 - l->beta2;*/
 
 		l->forward = _CatsEye_layer_forward[l->type];
 		l->backward = _CatsEye_layer_backward[l->type];
@@ -1441,16 +1445,12 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			if ((l->sx +2*l->padding -l->ksize) % l->stride > 0) printf("\n\t↑ warning: stride is strange!\n");
 			break;
 		case CATS_DECONV: // https://blog.shikoan.com/pytorch-convtranspose2d/
-			l->ox = /*l->px =*/ (l->sx-1) *l->stride -2*l->padding +l->ksize;
-			l->oy = /*l->py =*/ (l->sy-1) *l->stride -2*l->padding +l->ksize;
-/*			l->px -= l->padding*2;
-			l->py -= l->padding*2;
-			l->pz = l->padding +l->padding*l->ox;*/
+			l->ox = (l->sx-1) *l->stride -2*l->padding +l->ksize;
+			l->oy = (l->sy-1) *l->stride -2*l->padding +l->ksize;
 			l->outputs = l->ch * l->ox * l->oy;
 			n[i] = l->ksize * l->ksize;	// kernel size
 			m[i] = l->ch * l->ich;		// channel
 			l->wsize = n[i] * m[i];
-			l->workspace = malloc(sizeof(real)* l->ox*l->oy*l->ksize*l->ksize*l->ich *this->batch);
 			printf("%3d %-12s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
@@ -1648,7 +1648,7 @@ typedef enum {
 		real range = sqrt(2)/sqrt(l->inputs+l->outputs);
 		// https://pytorch.org/docs/stable/nn.init.html
 		real gain = 1;
-		int fin = l->ksize ? l->ksize*l->ksize : l->inputs;
+		int fin = l->ksize ? l->ksize*l->ksize*l->ich : l->inputs;
 		if (i<this->layers-1) {
 			int n = (l+1)->type==CATS_BATCHNORMAL ? 2 : 1;
 			switch ((l+n)->type) {
@@ -1867,6 +1867,9 @@ static inline void _CatsEye_forward(CatsEye *this)
 		free(pixels);
 	}*/
 
+/*#ifdef CATS_CHECK
+	FILE *fp = fopen("/tmp/time.txt", "w");
+#endif*/
 	for (int i=this->start; i<=this->end; i++) {
 #ifdef CATS_CHECK
 		struct timespec start, stop;
@@ -1875,8 +1878,8 @@ static inline void _CatsEye_forward(CatsEye *this)
 		l->forward(l);
 #ifdef CATS_CHECK
 		clock_gettime(CLOCK_REALTIME, &stop);
-		l->forward_time = time_diff(&start, &stop);
-//		printf("#%d %.8fs F\r", i+1, time_diff(&start, &end));
+		l->forward_time = (l->forward_time + time_diff(&start, &stop)) * 0.5;
+//		fprintf(fp, "#%d %.8fs F\n", i+1, l->forward_time);
 
 		int count[20];
 		memset(count, 0, 20*sizeof(int));
@@ -1890,6 +1893,7 @@ static inline void _CatsEye_forward(CatsEye *this)
 		for (int n=1; n<20; n++) if (max < count[n]) max = count[n];
 		for (int n=0; n<20; n++) count[n] = (int)(count[n]*19.0 / max);
 		char name[30];
+//		sprintf(name, "/tmp/%s%02d.png", getprogname(), i+1);
 		sprintf(name, "/tmp/%02d.png", i+1);
 		uint8_t z[20*20];
 		memset(z, 0, 20*20);
@@ -1900,9 +1904,15 @@ static inline void _CatsEye_forward(CatsEye *this)
 #endif
 		l++;
 	}
+/*#ifdef CATS_CHECK
+	fclose(fp);
+#endif*/
 }
 static inline void _CatsEye_backward(CatsEye *this)
 {
+/*#ifdef CATS_CHECK
+	FILE *fp = fopen("/tmp/time.txt", "a");
+#endif*/
 	CatsEye_layer *l = &this->layer[this->end];
 	for (int i=this->end; i>=this->start; i--) {
 #ifdef CATS_CHECK
@@ -1914,10 +1924,13 @@ static inline void _CatsEye_backward(CatsEye *this)
 		l--;
 #ifdef CATS_CHECK
 		clock_gettime(CLOCK_REALTIME, &stop);
-		l->backward_time = time_diff(&start, &stop);
-//		printf("#%d %.8fs B\r", i+1, time_diff(&start, &end));
+		l->backward_time = (l->backward_time + time_diff(&start, &stop)) * 0.5;
+//		fprintf(fp, "#%d %.8fs B\n", i+1, l->backward_time);
 #endif
 	}
+/*#ifdef CATS_CHECK
+	fclose(fp);
+#endif*/
 }
 int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random, int verify)
 {

@@ -7,6 +7,12 @@
 // gcc espcn_train.c -o espcn_train -lm -Ofast -fopenmp -lgomp
 // clang espcn_train.c -o espcn_train -lm -Ofast -march=native -funroll-loops `pkg-config --libs --cflags OpenCL` -mf16c
 
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
+#define STB_IMAGE_RESIZE_IMPLEMENTATION
+#define STB_IMAGE_RESIZE_STATIC
+#include "stb_image_resize.h"
+
 //#define CATS_USE_MOMENTUM_SGD
 //#define CATS_USE_ADAGRAD
 //#define CATS_USE_RMSPROP
@@ -14,28 +20,24 @@
 #define ADAM_BETA1	0.5
 //#define ADAM_BETA1	0.1
 #define ADAM_BETA2	0.999
+#define ETA		5e-4	// ADAM (batch 1,64)
 //#define ETA		1e-4	// ADAM (batch 256)
-#define ETA		1e-3	// ADAM,AdaGrad (batch 1,3)
+//#define ETA		1e-3	// ADAM,AdaGrad (batch 1,3)
 //#define ETA		5e-3	// ADAM (batch 1) with LeakyReLU
 //#define ETA		8e-3	// ADAM (batch 1) with LeakyReLU
-//#define ETA		1e-7	// SGD (batch 64)
+//#define ETA		1e-6	// SGD (batch 64), momentumSGD
+//#define ETA		5e-6	// SGD (batch 64)
 //#define ETA		1e-5	// SGD (batch 1)
-//#define ETA		1e-6	// momentumSGD
 #define BATCH		1
 //#define BATCH		3
-//#define BATCH		8
 //#define BATCH		64
 //#define BATCH		256
 
+#define CATS_CHECK
 #define CATS_USE_FLOAT
 //#define CATS_OPENCL
 //#define CATS_OPENGL
 #include "catseye.h"
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#include "stb_image_write.h"
-#define STB_IMAGE_RESIZE_IMPLEMENTATION
-#define STB_IMAGE_RESIZE_STATIC
-#include "stb_image_resize.h"
 
 #define NAME	"espcn"
 
