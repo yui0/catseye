@@ -629,23 +629,21 @@ static void CatsEye_deconvolutional_forward(CatsEye_layer *l)
 {
 	for (int i=0; i<l->p->batch; i++) {
 		gemm_rtn(l->ksize*l->ksize*l->ch, l->sx*l->sy*1, l->ich, 1, l->w, l->x, 0, l->p->mem);
-		col2im(/*l->workspace +l->ksize*l->ksize*l->ich*l->sx*l->sy*i*/l->p->mem, l->ch, l->oy, l->ox, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, l->z +l->outputs*i);
+		col2im(l->p->mem, l->ch, l->oy, l->ox, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, l->z +l->outputs*i);
 	}
 }
 static void CatsEye_deconvolutional_backward(CatsEye_layer *l)
 {
-//	real *workspace = l->ksize!=1 ? l->workspace : l->dOut;
 	for (int i=0; i<l->p->batch; i++) {
-		im2col(l->dOut +l->outputs*i, l->ch, l->oy, l->ox, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, /*workspace +l->ksize*l->ksize*l->ich *l->ox*l->oy*i*/l->p->mem);
+		im2col(l->dOut +l->outputs*i, l->ch, l->oy, l->ox, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, l->p->mem);
 		gemm_rnn(l->ich, l->sx*l->sy*1, l->ksize*l->ksize*l->ch, 1, l->w, l->p->mem, 0, l->dIn +i*l->inputs);
 	}
 }
 static void CatsEye_deconvolutional_update(CatsEye_layer *l)
 {
 	memset(l->dw, 0, sizeof(real)* l->ksize*l->ksize*l->ich);
-//	real *workspace = l->ksize!=1 ? l->workspace : l->x;
 	for (int i=0; i<l->p->batch; i++) {
-		gemm_rnt(l->ich, l->ksize*l->ksize*l->ch, l->sx*l->sy*1, 1, l->dOut, /*workspace*/l->p->mem, 1, l->dw);
+		gemm_rnt(l->ich, l->ksize*l->ksize*l->ch, l->sx*l->sy*1, 1, l->dOut, l->p->mem, 1, l->dw);
 	}
 	_SOLVER();
 }
@@ -958,6 +956,30 @@ static void CatsEye_concat_backward(CatsEye_layer *l)
 		delta += l->outputs;
 	}
 }
+static void CatsEye_add_forward(CatsEye_layer *l)
+{
+	real *x = l->x;
+	real *a = l->l->x +l->offset;
+	real *z = l->z;
+	for (int i=0; i<l->p->batch; i++) {
+		memcpy(z, x, l->inputs*sizeof(real));
+		for (int n=0; n<l->inputs; n++) z[i] += a[i];
+		x += l->inputs;
+		a += l->l->inputs;
+		z += l->outputs;
+	}
+}
+static void CatsEye_add_backward(CatsEye_layer *l)
+{
+	real *d = l->dIn;
+	real *delta = l->dOut;
+	for (int i=0; i<l->p->batch; i++) {
+		memcpy(d, delta, l->inputs*sizeof(real));
+//		memcpy(d, delta, l->inputs*sizeof(real));
+		d += l->inputs;
+		delta += l->outputs;
+	}
+}
 
 #define CATS_ACT_ARRAY(type)	\
 static void CatsEye_act_##type(CatsEye_layer *l)\
@@ -1227,6 +1249,7 @@ static void (*_CatsEye_layer_forward[])(CatsEye_layer *l) = {
 	CatsEye_BatchNormalization_forward,
 
 	CatsEye_concat_forward,
+	CatsEye_add_forward,
 
 	// activation
 	CatsEye_act_sigmoid,
@@ -1265,6 +1288,7 @@ static void (*_CatsEye_layer_backward[])(CatsEye_layer *l) = {
 	CatsEye_BatchNormalization_backward,
 
 	CatsEye_concat_backward,
+	CatsEye_add_backward,
 
 	// activation
 	CatsEye_dact_sigmoid,
@@ -1302,7 +1326,8 @@ static void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
 	CatsEye_none,	// padding
 	CatsEye_none,	// Batch Normalization
 
-	CatsEye_none,	// Mix
+	CatsEye_none,	// mix / concat
+	CatsEye_none,	// add
 
 	// activation
 	CatsEye_none,	// sigmoid
@@ -1331,7 +1356,9 @@ typedef enum {
 	CATS_LINEAR, CATS_CONV, CATS_DECONV, CATS_MAXPOOL, CATS_AVGPOOL, CATS_GAP,
 	CATS_PIXELSHUFFLER, /*CATS_RECURRENT,*/
 	CATS_PADDING, CATS_BATCHNORMAL,
+
 	CATS_CONCAT,
+	CATS_ADD,
 
 	CATS_ACT_SIGMOID, CATS_ACT_SOFTMAX, CATS_ACT_TANH,
 	CATS_ACT_RELU, CATS_ACT_LEAKY_RELU, CATS_ACT_ELU, CATS_ACT_RRELU,
@@ -1347,7 +1374,8 @@ char CatsEye_string[][16] = {
 	"dense", "conv", "deconv", "max", "avg", "gap",
 	"subpixel", /*"rnn",*/
 	"pad", "bn",
-	"concat",
+
+	"concat", "add",
 
 	"sigmoid", "softmax", "tanh",
 	"relu", "leaky", "elu", "rrelu",
@@ -1549,6 +1577,7 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			printf("%3d %-12s %10d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
+		case CATS_ADD:
 		case CATS_CONCAT:
 			l->l = &this->layer[CatsEye_getLayer(this, l->layer)];
 		case CATS_LINEAR:
@@ -1660,6 +1689,7 @@ typedef enum {
 //				range = sqrt(3 / (fin));
 				range = 1.0 / sqrt(fin);
 				break;
+			case CATS_ACT_RRELU:
 			case CATS_ACT_LEAKY_RELU:
 				gain = sqrt(2/(1 +l->alpha*l->alpha));
 				range = 1.0 / sqrt(fin);
@@ -1695,7 +1725,6 @@ typedef enum {
 			break;*/
 		default: // CATS_RAND
 			for (int n=0; n<l->wsize; n++) l->w[n] = rand_normal(0, range); // normal sigma:0.02
-//			for (int c=0; c<n[i]*m[i]; c++) l->w[c] = rand_normal(0, range); // normal sigma:0.02
 //			for (int n=0; n<l->wsize; n++) l->w[n] = 2.0*range*frand()-range; // uniform
 		}
 //		memcpy(&this->wdata[this->wsize], this->wdata, this->wsize*sizeof(real)); // for debug
@@ -1879,7 +1908,7 @@ static inline void _CatsEye_forward(CatsEye *this)
 #ifdef CATS_CHECK
 		clock_gettime(CLOCK_REALTIME, &stop);
 		l->forward_time = (l->forward_time + time_diff(&start, &stop)) * 0.5;
-//		fprintf(fp, "#%d %.8fs F\n", i+1, l->forward_time);
+//		fprintf(fp, "#%d %.8f s F\n", i+1, l->forward_time);
 
 		int count[20];
 		memset(count, 0, 20*sizeof(int));
@@ -1892,9 +1921,11 @@ static inline void _CatsEye_forward(CatsEye *this)
 		max = count[0];
 		for (int n=1; n<20; n++) if (max < count[n]) max = count[n];
 		for (int n=0; n<20; n++) count[n] = (int)(count[n]*19.0 / max);
+#ifndef NAME
+#define NAME
+#endif
 		char name[30];
-//		sprintf(name, "/tmp/%s%02d.png", getprogname(), i+1);
-		sprintf(name, "/tmp/%02d.png", i+1);
+		sprintf(name, "/tmp/"NAME"%02d.png", i+1);
 		uint8_t z[20*20];
 		memset(z, 0, 20*20);
 		for (int x=0; x<20; x++) {
@@ -1925,7 +1956,7 @@ static inline void _CatsEye_backward(CatsEye *this)
 #ifdef CATS_CHECK
 		clock_gettime(CLOCK_REALTIME, &stop);
 		l->backward_time = (l->backward_time + time_diff(&start, &stop)) * 0.5;
-//		fprintf(fp, "#%d %.8fs B\n", i+1, l->backward_time);
+//		fprintf(fp, "#%d %.8f s B\n", i+1, l->backward_time);
 #endif
 	}
 /*#ifdef CATS_CHECK
@@ -1960,7 +1991,6 @@ int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random,
 			// calculate the mean squared error
 			real mse = 0;
 			CatsEye_layer *l = &this->layer[a];
-//			for (int i=0; i<l->inputs; i++) { // FIXME batch
 			for (int i=0; i<this->batch * l->inputs; i++) {
 				mse += l->dIn[i] * l->dIn[i];
 			}

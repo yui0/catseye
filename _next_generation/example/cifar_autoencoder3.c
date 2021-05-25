@@ -15,11 +15,11 @@
 #define ADAM_BETA2	0.999
 
 //#define ETA		1e-4
-#define ETA		2e-4
+#define ETA		3e-4
 #define BATCH	1
 //#define BATCH	128
 
-#define NAME		"cifar_autoencoder2"
+#define NAME		"cifar_autoencoder3"
 #define CATS_CHECK
 #define CATS_USE_FLOAT
 #include "catseye.h"
@@ -32,23 +32,43 @@ int main()
 	int sample = 10000;
 
 /*	CatsEye_layer u[] = {
-		{  size, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=64, .sx=32, .sy=32, .ich=3 },
-		{     0, CATS_ACT_LEAKY_RELU, },
-		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
-		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=128 },
-		{     0, CATS_ACT_LEAKY_RELU },
+		{  size, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=64, .sx=32, .sy=32, .ich=3 },
+		{     0, CATS_ACT_RRELU },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=128 },
+		{     0, CATS_ACT_RRELU },
 
-		{     0, CATS_DECONV, ETA, .ksize=2, .stride=2, .padding=0, .ch=3 },
+		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=32, },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=64 },
+		{     0, CATS_ACT_RRELU },
+
+		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=16, },
+		{     0, CATS_CONV, ETA, .ksize=1, .stride=1, .padding=0, .ch=3 },
+//		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=3 },
+//		{     0, CATS_ACT_RELU, .alpha=0.2 },
+
 		{  size, CATS_LOSS_IDENTITY_MSE },
 	};*/
 	CatsEye_layer u[] = {
-		{  size, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=64, .sx=32, .sy=32, .ich=3 },
+		{  size, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=64, .sx=32, .sy=32, .ich=3 },
 		{     0, CATS_ACT_RRELU },
-		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
-		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=128 },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=32 },
+		{     0, CATS_ACT_RRELU },
+/*		{     0, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=16 },
 		{     0, CATS_ACT_RRELU },
 
-		{     0, CATS_DECONV, ETA, .ksize=2, .stride=2, .padding=0, .ch=3 },
+		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=4, },
+
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=32 },
+		{     0, CATS_ACT_RRELU },*/
+		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=8, },
+
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=64 },
+		{     0, CATS_ACT_RRELU },
+		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=16, },
+
+//		{     0, CATS_CONV, ETA, .ksize=1, .stride=1, .padding=0, .ch=3 },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=3 },
+
 		{  size, CATS_LOSS_IDENTITY_MSE },
 	};
 	CatsEye cat = { .batch=BATCH };

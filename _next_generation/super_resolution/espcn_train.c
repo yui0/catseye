@@ -33,13 +33,12 @@
 //#define BATCH		64
 //#define BATCH		256
 
+#define NAME		"espcn"
 #define CATS_CHECK
 #define CATS_USE_FLOAT
 //#define CATS_OPENCL
 //#define CATS_OPENGL
 #include "catseye.h"
-
-#define NAME	"espcn"
 
 int main()
 {
@@ -53,20 +52,19 @@ int main()
 		{size/4, CATS_CONV, ETA, .ksize=5, .stride=1, .padding=2, .ch=64, .ich=3 },
 //		{size/4, CATS_CONV, ETA, .ksize=1, .stride=1, .ch=64, .ich=3 },
 //		{  size, CATS_CONV, ETA, .ksize=5, .stride=1, .padding=2, .ch=64, .ich=3 },
-//		{     0, CATS_ACT_TANH },
 //		{     0, CATS_BATCHNORMAL },
-		{     0, CATS_ACT_RELU },
+//		{     0, CATS_ACT_RELU },
+		{     0, CATS_ACT_RRELU },
 //		{     0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 
 /*		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=64 },
-//		{     0, CATS_ACT_TANH },
 		{     0, CATS_ACT_RELU },*/
 
 		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=32 },
 //		{     0, CATS_CONV, ETA, .ksize=1, .stride=1, .ch=32 },
-//		{     0, CATS_ACT_TANH },
 //		{     0, CATS_BATCHNORMAL },
-		{     0, CATS_ACT_RELU },
+//		{     0, CATS_ACT_RELU },
+		{     0, CATS_ACT_RRELU },
 //		{     0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 
 //		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=3, .name="Output" },
