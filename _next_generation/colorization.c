@@ -43,36 +43,6 @@ int main()
 		{   K*K, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=32, .sx=K, .sy=K, .ich=1 },
 		{     0, CATS_ACT_RRELU },
 		{     0, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=64 },
-		{     0, CATS_ACT_RRELU },
-
-/*		{     0, CATS_LINEAR, ETA, .outputs=8*8*4 },
-		{     0, CATS_ACT_RRELU },
-		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=1, },*/
-
-//		{     0, CATS_LINEAR, ETA, .outputs=LATENT_DIM, .name="encoder" },
-//		{     0, CATS_CONV, ETA, .ksize=1, .stride=1, .ch=4096 },
-//		{     0, CATS_ACT_RRELU },
-
-//		{     0, CATS_LINEAR, ETA, .outputs=512, .name="encoder" },
-		{     0, CATS_LINEAR, ETA, .outputs=8*8*4*2, .name="encoder" },
-		{     0, CATS_ACT_RRELU },
-		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=2, },
-
-//		{     0, CATS_LINEAR, ETA, .outputs=8*8*4, /*.inputs=LATENT_DIM,*/ .name="z_sampling" },
-//		{     0, CATS_ACT_RRELU },
-//		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=1, },
-
-		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=12 },
-		{     0, CATS_ACT_RRELU },
-		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=3, .name="decoder" },
-
-		{  size, CATS_LOSS_IDENTITY_MSE },
-	};
-#else
-/*	CatsEye_layer u[] = {
-		{   K*K, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=32, .sx=K, .sy=K, .ich=1 },
-		{     0, CATS_ACT_RRELU },
-		{     0, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=64 },
 		{     0, CATS_ACT_RRELU, .name="encoder" },
 
 		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=16 },
@@ -82,24 +52,29 @@ int main()
 		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=3, .name="decoder" },
 
 		{  size, CATS_LOSS_IDENTITY_MSE },
-	};*/
+	};
+#else
 	CatsEye_layer u[] = {
-		{   K*K, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=64, .sx=K, .sy=K, .ich=1 },
+		{   K*K, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=32, .sx=K, .sy=K, .ich=1, .name="input" },
+		{     0, CATS_ACT_RRELU },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=64 },
 		{     0, CATS_ACT_RRELU },
 		{     0, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=128 },
-		{     0, CATS_ACT_RRELU },
-		{     0, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=256 },
 		{     0, CATS_ACT_RRELU, .name="encoder" },
 
-		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=64 },
-
-		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=128 },
-		{     0, CATS_ACT_RRELU },
 		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=32 },
 
-		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=12 },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=64 },
 		{     0, CATS_ACT_RRELU },
-		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=3, .name="decoder" },
+		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=16 },
+
+//		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=12 },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=8 },
+		{     0, CATS_ACT_RRELU },
+//		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=3, .name="decoder" },
+		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=2, .name="decoder" },
+
+		{     0, CATS_CONCAT, .layer="input", .order=1 },
 
 		{  size, CATS_LOSS_IDENTITY_MSE },
 	};
@@ -120,17 +95,6 @@ int main()
 		real *g = x +i*SIZE +K*K;
 		real *b = x +i*SIZE +K*K*2;
 		for (int n=0; n<K*K; n++) {
-//			*p++ = (0.298912*(*r++ *255) +0.586611*(*g++ *255) +0.114478*(*b++ *255))/255;	// CCIR Rec.601
-//			*p++ = (0.298912*(*r++) +0.586611*(*g++) +0.114478*(*b++));	// CCIR Rec.601
-/*			real r = *y *255;
-			real g = *u *255;
-			real b = *v *255;
-			*y++ = (0.298912*r +0.586611*g +0.114478*b)/255.0;	// CCIR Rec.601*/
-//			*u++ = -0.1687*r -0.3313*g +0.500 *b;
-//			*v++ =  0.500 *r -0.4187*g -0.0813*b;
-//			*u++ = (0.298912*r +0.586611*g +0.114478*b)/255.0;	// CCIR Rec.601
-//			*v++ = (0.298912*r +0.586611*g +0.114478*b)/255.0;	// CCIR Rec.601
-
 			real _r = *r;
 			real _g = *g;
 			real _b = *b;

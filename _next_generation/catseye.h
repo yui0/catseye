@@ -231,6 +231,7 @@ typedef struct __CatsEye_layer {
 	struct __CatsEye_layer* l; // concat
 	int offset;		// concat
 //	int size;		// concat
+	int order;		// concat
 
 //	int hiddens;		// RNN
 //	int truncatedTime;	// RNN
@@ -924,8 +925,13 @@ static void CatsEye_concat_forward(CatsEye_layer *l)
 	real *mix = l->l->x +l->offset;
 	real *z = l->z;
 	for (int i=0; i<l->p->batch; i++) {
-		memcpy(z, x, l->inputs*sizeof(real));
-		memcpy(z+l->inputs, mix, (l->outputs - l->inputs)*sizeof(real));
+		if (l->order) {
+			memcpy(z+(l->outputs - l->inputs), x, l->inputs*sizeof(real));
+			memcpy(z, mix, (l->outputs - l->inputs)*sizeof(real));
+		} else {
+			memcpy(z, x, l->inputs*sizeof(real));
+			memcpy(z+l->inputs, mix, (l->outputs - l->inputs)*sizeof(real));
+		}
 		x += l->inputs;
 		mix += l->l->inputs;
 		z += l->outputs;
@@ -936,7 +942,11 @@ static void CatsEye_concat_backward(CatsEye_layer *l)
 	real *d = l->dIn;
 	real *delta = l->dOut;
 	for (int i=0; i<l->p->batch; i++) {
-		memcpy(d, delta, l->inputs*sizeof(real));
+		if (l->order) {
+			memcpy(d, delta+(l->outputs - l->inputs), l->inputs*sizeof(real));
+		} else {
+			memcpy(d, delta, l->inputs*sizeof(real));
+		}
 //		memcpy(l->l->dIn+l->offset, l->dOut+l->inputs, (l->outputs - l->inputs)*sizeof(real));
 		d += l->inputs;
 		delta += l->outputs;
