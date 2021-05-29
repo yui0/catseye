@@ -10,9 +10,10 @@ Neural network library written in C and Javascript
   - Small dependency & simple implementation
 - Fast: [under construction]
   - OpenCL support (GPGPU)
-  - SSE, AVX support (But gcc and clang support SIMD...)
-  - OpenMP support
-  - Support half precision floats (16bit)
+  - OpenGL support (GPGPU)
+  - ~~SSE, AVX support (But gcc and clang support SIMD...)~~
+  - ~~OpenMP support~~
+  - ~~Support half precision floats (16bit)~~
 - Supported networks:
   - Activation functions
     - sigmoid
@@ -30,13 +31,16 @@ Neural network library written in C and Javascript
     - RMSProp
     - Adam
   - Layer types
+    - linear (mlp)
     - convolution
+    - deconvolution
+    - Sub-Pixel Convolution (Pixel Shuffler)
     - max pooling
     - average pooling
     - global average pooling (GAP)
     - batch normalization
-    - Sub-Pixel Convolution (Pixel Shuffler) [Upscaling or Deconvolution]
-    - linear
+    - concat
+    - shortcut
 - Loader formats:
   - PNG
   - cifar [https://www.cs.toronto.edu/~kriz/cifar.html]

@@ -13,17 +13,20 @@
 #define CATS_USE_MOMENTUM_SGD
 //#define CATS_USE_RMSPROP
 //#define ETA	0.0001	// 00.0
-#define ETA	0.001	// 53.8
+#define ETA	0.001	// 88.0%(10)
 //#define ETA	1e-6
 #define BATCH	1
+//#define BATCH	64	// 44.5
 
-#define NAME	"resnet18_train"
+#define NAME	"resnet18"
 //#define SIZE	32	// 00.0%(10)
-#define SIZE	96	// 52.4%(10)
+#define SIZE	96	// 00.0%(10)
 //#define SIZE	227
 
 #define CATS_CHECK
 #define CATS_USE_FLOAT
+#define CATS_OPENCL
+//#define CATS_OPENGL
 #include "./catseye.h"
 
 int main()
@@ -49,48 +52,67 @@ int main()
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
 
 		// ResidualLayer
-		{     0, CATS_CONV, ETA, .ksize=1, .stride=1, .padding=0, .ch=64, .name="Residual1" },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=64, .name="conv2_1" },
 //		{     0, CATS_BATCHNORMAL },
 		{     0, CATS_ACT_RRELU },
 		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=64 },
 //		{     0, CATS_BATCHNORMAL },
+		{     0, CATS_SHORTCUT, .layer="conv2_1" },
 		{     0, CATS_ACT_RRELU },
-		{     0, CATS_CONV, ETA, .ksize=1, .stride=1, .padding=0, .ch=64 },
-		{     0, CATS_SHORTCUT, .layer="Residual1" },
+
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=64, .name="conv2_2" },
+//		{     0, CATS_BATCHNORMAL },
+		{     0, CATS_ACT_RRELU },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=64 },
+//		{     0, CATS_BATCHNORMAL },
+		{     0, CATS_SHORTCUT, .layer="conv2_2" },
+		{     0, CATS_ACT_RRELU },
+
+		// trans
+		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
+		{     0, CATS_CONV, ETA, .ksize=1, .stride=1, .padding=0, .ch=128 },
+//		{     0, CATS_BATCHNORMAL },
+		{     0, CATS_ACT_RRELU }, // 74.6%(10)
+
+		// ResidualLayer
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=128, .name="conv3_1" },
+//		{     0, CATS_BATCHNORMAL },
+		{     0, CATS_ACT_RRELU },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=128 },
+//		{     0, CATS_BATCHNORMAL },
+		{     0, CATS_SHORTCUT, .layer="conv3_1" },
+		{     0, CATS_ACT_RRELU },
+
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=128, .name="conv3_2" },
+//		{     0, CATS_BATCHNORMAL },
+		{     0, CATS_ACT_RRELU },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=128 },
+//		{     0, CATS_BATCHNORMAL },
+		{     0, CATS_SHORTCUT, .layer="conv3_2" },
+		{     0, CATS_ACT_RRELU },
+
+		// trans
+		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
+		{     0, CATS_CONV, ETA, .ksize=1, .stride=1, .padding=0, .ch=256 },
+//		{     0, CATS_BATCHNORMAL },
 		{     0, CATS_ACT_RRELU },
 
 		// ResidualLayer
-		{     0, CATS_CONV, ETA, .ksize=1, .stride=1, .padding=0, .ch=64, .name="Residual2" },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=256, .name="conv4_1" },
 //		{     0, CATS_BATCHNORMAL },
 		{     0, CATS_ACT_RRELU },
-		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=64 },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=256 },
 //		{     0, CATS_BATCHNORMAL },
-		{     0, CATS_ACT_RRELU },
-		{     0, CATS_CONV, ETA, .ksize=1, .stride=1, .padding=0, .ch=64 },
-		{     0, CATS_SHORTCUT, .layer="Residual2" },
+		{     0, CATS_SHORTCUT, .layer="conv4_1" },
 		{     0, CATS_ACT_RRELU },
 
-		// ResidualLayer
-		{     0, CATS_CONV, ETA, .ksize=1, .stride=1, .padding=0, .ch=64, .name="Residual3" },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=256, .name="conv4_2" },
 //		{     0, CATS_BATCHNORMAL },
 		{     0, CATS_ACT_RRELU },
-		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=64 },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=256 },
 //		{     0, CATS_BATCHNORMAL },
-		{     0, CATS_ACT_RRELU },
-		{     0, CATS_CONV, ETA, .ksize=1, .stride=1, .padding=0, .ch=64 },
-		{     0, CATS_SHORTCUT, .layer="Residual3" },
-		{     0, CATS_ACT_RRELU },
-
-		// ResidualLayer
-		{     0, CATS_CONV, ETA, .ksize=1, .stride=1, .padding=0, .ch=64, .name="Residual4" },
-//		{     0, CATS_BATCHNORMAL },
-		{     0, CATS_ACT_RRELU },
-		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=64 },
-//		{     0, CATS_BATCHNORMAL },
-		{     0, CATS_ACT_RRELU },
-		{     0, CATS_CONV, ETA, .ksize=1, .stride=1, .padding=0, .ch=64 },
-		{     0, CATS_SHORTCUT, .layer="Residual4" },
-		{     0, CATS_ACT_RRELU },
+		{     0, CATS_SHORTCUT, .layer="conv4_2" },
+		{     0, CATS_ACT_RRELU }, // 88.0%(10)
 
 		{     0, CATS_GAP }, // -> 512
 		{     0, CATS_LINEAR, ETA, .outputs=label },
