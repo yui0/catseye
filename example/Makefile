@@ -1,15 +1,22 @@
-# ©2016 YUICHIRO NAKADA
+# ©2016-2021 YUICHIRO NAKADA
 
 PROGRAM = $(patsubst %.c,%,$(wildcard *.c))
 #OBJS = $(patsubst %.c,%.o,$(wildcard *.c))
 
+#CC = gcc
+#CFLAGS = -Wfloat-conversion -fsingle-precision-constant -Ofast -march=native -funroll-loops -finline-functions -ffp-contract=fast -mf16c -ftree-vectorize
+## -fopt-info-optall-optimized -Wdouble-promotion
+#LDLIBS = -lm -Wl,-s -Wl,--gc-sections
+
 CC = clang
-CFLAGS = -Ofast -march=native -funroll-loops -mf16c
-LDFLAGS = -lm
+CFLAGS = -I.. -Wfloat-conversion -Ofast -march=native -funroll-loops -finline-functions -ffp-contract=fast -mf16c -ftree-vectorize
+LDFLAGS = -lm -Wl,-s -Wl,--gc-sections
 
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Linux)
 	CFLAGS += `pkg-config --libs --cflags OpenCL`
+#	CFLAGS += `pkg-config --libs --cflags gl egl gbm`
+#	LDFLAGS +=  -lglfw
 endif
 ifeq ($(UNAME_S),Darwin)
 	CFLAGS += -framework opencl

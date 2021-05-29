@@ -1,37 +1,60 @@
 //---------------------------------------------------------
 //	Cat's eye
 //
-//		©2016-2018 Yuichiro Nakada
+//		©2016-2021 Yuichiro Nakada
 //---------------------------------------------------------
 
 // gcc sin.c -o sin -lm -fopenmp -lgomp
 // clang sin.c -o sin -lm
 // ps2pdf sin.ps (ghostscript-core)
-#include "../catseye.h"
-#include "../pssub.h"
+
+//#define CATS_TEST
+//#define CATS_USE_FLOAT
+//#define CATS_OPENGL
+#include "catseye.h"
+#include "pssub.h"
+
+#define ETA	1e-2
 
 int main()
 {
 	int sample = 360;
-	int u[] = {
-		CATS_LINEAR, CATS_ACT_IDENTITY, 1/*ch*/,   1/*input*/,  0, 0, 0, 500,
-		CATS_LINEAR, CATS_ACT_SIGMOID,  1/*ch*/, 100/*hidden*/, 0, 0, 0, 0,
-		CATS_LINEAR, CATS_ACT_IDENTITY, 1/*ch*/,   1/*output*/, 0, 0, 0, CATS_LOSS_MSE,
-	};
-	int layers = sizeof(u)/sizeof(int)/LPLEN;
 
-	CatsEye cat;
-	CatsEye__construct(&cat, 0, 0, layers, u);
+/*	CatsEye_layer u[] = {
+		{   1, CATS_LINEAR, ETA }, // input layer
+		{ 100, CATS_ACT_SIGMOID },
+		{ 100, CATS_LINEAR, ETA }, // hidden layer
+		{   1, CATS_LOSS_IDENTITY_MSE }, // 回帰なのでMSE
+	};*/
+	CatsEye_layer u[] = {
+		{   1, CATS_LINEAR, ETA },
+		{  10, CATS_ACT_TANH },
+		{  10, CATS_LINEAR, ETA },
+		{   1, CATS_LOSS_IDENTITY_MSE }, // 回帰なのでMSE
+	};
+/*	CatsEye_layer u[] = {
+		{   1, CATS_LINEAR, ETA },
+		{  10, CATS_ACT_RELU },
+		{  10, CATS_LINEAR, ETA },
+		{  10, CATS_ACT_RELU },
+		{  10, CATS_LINEAR, ETA },
+		{   1, CATS_LOSS_IDENTITY_MSE }, // 回帰なのでMSE
+	};*/
+	CatsEye cat = CATS_INIT;
+	CatsEye__construct(&cat, u);
 
 	// 訓練データ
-	double x[sample];
+	real x[sample];
 	for (int i=0; i<sample; i++) x[i] = 2.0*M_PI / sample * i;
-	double t[sample];
+	real t[sample];
 	for (int i=0; i<sample; i++) t[i] = sin(x[i]);
 
 	// 多層パーセプトロンの訓練
 	printf("Starting training using (stochastic) gradient descent\n");
-	CatsEye_train(&cat, x, t, sample, 2000/*repeat*/, 0.01);
+//	CatsEye_train(&cat, x, t, sample, 2000/*repeat*/, sample, 0);
+	CatsEye_train(&cat, x, t, sample, 200/*repeat*/, sample, 0);
+//	CatsEye_train(&cat, x, t, sample, 100/*repeat*/, sample, 0);
+//	CatsEye_train(&cat, x, t, 1, 1/*repeat*/, 1, 0);
 	printf("Training complete\n");
 //	CatsEye_save(&cat, "sin.weights");
 
@@ -40,7 +63,7 @@ int main()
 	if (fp==NULL) return -1;
 	for (int i=0; i<sample; i++) {
 		CatsEye_forward(&cat, x+i);
-		fprintf(fp, "%d, %lf\n", i, cat.o[2][0]);
+		fprintf(fp, "%d, %lf\n", i, cat.layer[cat.layers-1].x[0]);
 	}
 	fclose(fp);
 
@@ -71,14 +94,14 @@ int main()
 	//PS_setgray(0.0);
 	PS_setrgb(1.0, 0.0, 0.0);
 	CatsEye_forward(&cat, x);
-	PS_plot(x[0], cat.o[2][0], 3);
+	PS_plot(x[0], cat.layer[cat.layers-1].x[0], 3);
 	for (int i=1; i<sample; i++) {
 		CatsEye_forward(&cat, x+i);
-		PS_plot(x[i], cat.o[2][0], 2);
+		PS_plot(x[i], cat.layer[cat.layers-1].x[0], 2);
 	}
 	PS_stroke();
 	PS_fin();
-	system("ps2pdf /tmp/sin.ps sin_.pdf");
+	system("ps2pdf /tmp/sin.ps");
 
 	CatsEye__destruct(&cat);
 

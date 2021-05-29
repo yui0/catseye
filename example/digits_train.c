@@ -1,24 +1,56 @@
 //---------------------------------------------------------
 //	Cat's eye
 //
-//		©2016 Yuichiro Nakada
+//		©2016,2021 Yuichiro Nakada
 //---------------------------------------------------------
 
 // gcc digits_train.c -o digits_train -lm -fopenmp -lgomp
 // clang digits_train.c -o digits_train -lm
-#include "../catseye.h"
+
+//#define CATS_USE_FLOAT
+#include "catseye.h"
+
+#define ETA 0.001	// batch 1
 
 int main()
 {
 	int size = 64;		// 入力層64ユニット(8x8)
-	int label = 10;	// 出力層10ユニット(0-9)
+	int label = 10;		// 出力層10ユニット(0-9)
 	int sample = 1797;
 
-	CatsEye cat;
-	CatsEye__construct(&cat, size, 100, label, 0);
+/*	CatsEye_layer u[] = {	// 98.1% (100)
+		{ size, CATS_LINEAR, ETA },
+		{  100, CATS_ACT_TANH },
+		{  100, CATS_LINEAR, ETA },
+		{label, CATS_LOSS_0_1 },
+	};*/
+/*	CatsEye_layer u[] = {	// 99.0% (100)
+		{ size, CATS_LINEAR, ETA },
+		{  100, CATS_ACT_TANH },
+		{  100, CATS_LINEAR, ETA },
+//		{    0, CATS_ACT_SOFTMAX },
+		{label, CATS_ACT_SIGMOID },
+		{label, CATS_LOSS_0_1 },
+	};*/
+/*	CatsEye_layer u[] = {	// 99.1% (100)
+		{ size, CATS_LINEAR, ETA },
+		{  100, CATS_ACT_TANH },
+		{  100, CATS_LINEAR, ETA },
+		{label, CATS_ACT_SOFTMAX },
+		{label, CATS_LOSS_0_1 },
+	};*/
+	CatsEye_layer u[] = {	// 99.2% (100)
+		{ size, CATS_LINEAR, ETA },
+		{  100, CATS_ACT_TANH },
+		{  100, CATS_LINEAR, ETA },
+		{label, CATS_ACT_SOFTMAX },
+		{label, CATS_SOFTMAX_CE },
+	};
+	CatsEye cat = { .batch=1 };	// 97.8%
+	CatsEye__construct(&cat, u);
 
-	double x[size*sample];	// 訓練データ
-	int t[sample];		// ラベルデータ
+	real x[size*sample];	// 訓練データ
+	int16_t t[sample];	// ラベルデータ
 
 	// CSVの読み込み
 	printf("Training data:\n");
@@ -35,19 +67,21 @@ int main()
 			}
 			if (n<3) printf("%6.2f  ", x[size*n+j]);
 		}
-		fscanf(fp, "%d", t+n);
+		fscanf(fp, "%hd", t+n);
 		if (n<3) printf("<%d>\n", t[n]);
 		n++;
 	}
 	fclose(fp);
+	printf("\n");
 	sample = n;
 
 	// 多層パーセプトロンの訓練
 	printf("Starting training using (stochastic) gradient descent\n");
-	CatsEye_train(&cat, x, t, sample-1, 100/*repeat*/, 0.01);
+//	CatsEye_train(&cat, x, t, sample-1, 100/*repeat*/, 0.01);
+	CatsEye_train(&cat, x, t, sample, 100/*repeat*/, sample, sample/10);
 	printf("Training complete\n");
-	CatsEye_save(&cat, "digits.weights");
-	CatsEye_saveJson(&cat, "digits.json");
+//	CatsEye_save(&cat, "digits.weights");
+//	CatsEye_saveJson(&cat, "digits.json");
 
 	// 結果の表示
 	int r = 0;

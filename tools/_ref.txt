@@ -1,0 +1,9 @@
+https://susanqq.github.io/UTKFace/
+crop_part1 to datasets/label_1/
+
+http://www.vision.caltech.edu/Image_Datasets/Caltech101/
+101_ObjectCategories to datasets/label_0/
+
+python augmentation.py
+
+

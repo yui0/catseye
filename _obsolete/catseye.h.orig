@@ -1,0 +1,512 @@
+//---------------------------------------------------------
+//	Cat's eye
+//
+//		©2016 Yuichiro Nakada
+//---------------------------------------------------------
+
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <time.h>
+#include <math.h>
+
+#define CATS_RANDOM
+
+#define CATS_SIGMOID
+//#define CATS_TANH
+//#define CATS_SCALEDTANH
+//#define CATS_RELU
+//#define CATS_ABS
+
+//#define CATS_SIGMOID_CROSSENTROPY
+#ifdef CATS_SIGMOID_CROSSENTROPY
+// cross entropy df: (y - t) / (y * (1 - y))
+// sigmoid function with cross entropy loss
+#define CATS_SIGMOID
+#define s_gain			1
+#define ACT2(x)			ACT1(x)
+#define DACT2(x)		DACT1(x)
+// SoftmaxWithLoss
+#else
+// identify function with mse loss
+#define s_gain			1
+#define ACT2(x)			(x)
+#define DACT2(x)		1
+#endif
+
+// activation function and derivative of activation function
+#ifdef CATS_SIGMOID
+// sigmoid function
+#define ACT1(x)			(1.0 / (1.0 + exp(-x * s_gain)))
+#define DACT1(x)		((1.0-x)*x * s_gain)	// ((1.0-sigmod(x))*sigmod(x))
+#elif defined CATS_TANH
+// tanh function
+#define ACT1(x)			(tanh(x))
+#define DACT1(x)		(1.0-x*x)		// (1.0-tanh(x)*tanh(x))
+#elif defined CATS_SCALEDTANH
+// scaled tanh function
+#define ACT1(x)			(1.7159 * tanh(2.0/3.0 * x))
+#define DACT1(x)		((2.0/3.0)/1.7159 * (1.7159-x)*(1.7159+x))
+#elif defined CATS_RELU
+// rectified linear unit function
+#define ACT1(x)			(x>0 ? x : 0.0)
+#define DACT1(x)		(x>0 ? 1.0 : 0.0)
+#elif defined CATS_ABS
+// abs function
+#define ACT1(x)			(x / (1.0 + fabs(x)))
+#define DACT1(x)		(1.0 / (1.0 + fabs(x))*(1.0 + fabs(x)))
+/*#elif defined CATS_SOFTMAX
+// softmax function (output only)
+#define ACT1(x)			(x / sum(exp(x)))
+    float_t f(const vec_t& v, size_t i) const {
+        float_t alpha = *std::max_element(v.begin(), v.end());
+        float_t numer = std::exp(v[i] - alpha);
+        float_t denom = 0.0;
+        for (auto x : v)
+            denom += std::exp(x - alpha);
+        return numer / denom;
+    }
+#define DACT1(x)		(x * (1.0 - x))*/
+#else
+// identity function (output only)
+#define ACT1(x)			(x)
+#define DACT1(x)		(1.0)
+#endif
+
+#ifdef CATS_OPT_ADAGRAD
+// AdaGrad (http://qiita.com/ak11/items/7f63a1198c345a138150)
+#define eps 1e-8		// 1e-4 - 1e-8
+#define OPT_CALC1(x)		this->e##x[i] += this->d##x[i]*this->d##x[i]
+//#define OPT_CALC1(x)		this->e##x[i] += this->d##x[i]*this->d##x[i] *0.7
+//#define OPT_CALC1(x)		this->e##x[i] = this->e##x[i]*(0.99+times/times*0.01) + this->d##x[i]*this->d##x[i]
+//#define OPT_CALC2(n, x, y)	this->w##x[i*n+j] -= eta*this->o##x[i] *this->d##y[j] /sqrt(this->e##y[j])
+#define OPT_CALC2(n, x, y)	this->w##x[i*n+j] -= eta*this->o##x[i] *this->d##y[j] /sqrt(this->e##y[j]+eps)
+
+#elif defined CATS_OPT_ADAM
+// Adam
+#define eps 1e-8
+#define beta1 0.9
+#define beta2 0.999
+#define OPT_CALC1(x)		this->m##x[i] = beta1*this->m##x[i] + (1.0-beta1) * this->d##x[i]; \
+				this->v##x[i] = beta2*this->v##x[i] + (1.0-beta2) * this->d##x[i]*this->d##x[i]
+#define OPT_CALC2(n, x, y)	this->w##x[i*n+j] -= eta*this->o##x[i] *this->m##y[j] /sqrt(this->v##y[j]+eps)
+
+#elif defined CATS_OPT_RMSPROP
+// RMSprop (http://cs231n.github.io/neural-networks-3/#anneal)
+#define eps 1e-8		// 1e-4 - 1e-8
+#define decay_rate 0.999	// [0.9, 0.99, 0.999]
+#define OPT_CALC1(x)		this->e##x[i] = decay_rate * this->e##x[i] + (1.0-decay_rate)*this->d##x[i]*this->d##x[i]
+#define OPT_CALC2(n, x, y)	this->w##x[i*n+j] -= eta*this->o##x[i] *this->d##y[j] /sqrt(this->e##y[j]+eps)
+
+#elif defined CATS_OPT_RMSPROPGRAVES
+// RMSpropGraves (https://github.com/pfnet/chainer/blob/master/chainer/optimizers/rmsprop_graves.py)
+#define eps 1e-4
+#define beta1 0.95
+#define beta2 0.95
+#define momentum 0.9
+#define OPT_CALC1(x)		this->m##x[i] = beta1*this->m##x[i] + (1.0-beta1) * this->d##x[i]; \
+				this->v##x[i] = beta2*this->v##x[i] + (1.0-beta2) * this->d##x[i]*this->d##x[i]
+#define OPT_CALC2(n, x, y)	this->dl##x[j] = this->dl##x[j] * momentum - eta*this->o##x[i]*this->d##y[j] /sqrt(this->v##y[j] - this->m##y[j]*this->m##y[j]+eps); \
+				this->w##x[i*n+j] += this->dl##x[j]
+
+#elif defined CATS_OPT_MOMENTUM
+// Momentum update (http://cs231n.github.io/neural-networks-3/#anneal)
+#define momentum 0.9		// [0.5, 0.9, 0.95, 0.99]
+#define OPT_CALC1(x)
+#define OPT_CALC2(n, x, y)	this->dl##x[i] = momentum * this->dl##x[i] - eta*this->o##x[i] *this->d##y[j]; \
+				this->w##x[i*n+j] += this->dl##x[i]
+
+#else
+// SGD (Vanilla update)
+#define CATS_OPT_SGD
+#define OPT_CALC1(x)
+//#define OPT_CALC2(n, x, y)	this->w##x[i*n+j] -= eta*this->o##x[i] *this->d##y[j]
+// SVM (http://d.hatena.ne.jp/echizen_tm/20110627/1309188711)
+// ∂loss(w, x, t) / ∂w = ∂(λ - twx + α * w^2 / 2) / ∂w = - tx + αw
+#define OPT_CALC2(n, x, y)	this->w##x[i*n+j] -= eta*this->o##x[i] *this->d##y[j] +this->w##x[i*n+j]*1e-8
+#endif
+
+void muladd(double *vec1, double *vec2, double a, int n)
+{
+	for (int i=0; i<n; i++) {
+		vec1[i] += vec2[i] * a;
+	}
+}
+double dot(double *vec1, double *vec2, int n)
+{
+	double s = 0.0;
+	for (int i=0; i<n; i++) {
+		s += vec1[i] * vec2[i];
+	}
+	return s;
+}
+double dotT(double *mat1, double *vec1, int r, int c)
+{
+	double s = 0.0;
+	for (int i=0; i<r; i++) {
+		s += mat1[i*c] * vec1[i];
+	}
+	return s;
+}
+/*void transpose(double *src, double *dst, int N, int M)
+{
+//	#pragma omp parallel for
+	for (int i=0; i<M; i++) {
+		for (int j=0; j<N; j++) {
+			*dst++ = src[M*j + i];
+		}
+	}
+}*/
+int binomial(/*int n, */double p)
+{
+//	if (p<0 || p>1) return 0;
+	int c = 0;
+//	for (int i=0; i<n; i++) {
+		double r = rand() / (RAND_MAX + 1.0);
+		if (r < p) c++;
+//	}
+	return c;
+}
+
+typedef struct {
+	// number of each layer
+	int in, hid, out;
+	// input layer
+	double *xi2, *xi3;
+	// output layer
+	double *o1, *o2, *o3;
+	// error value
+	double *d2, *d3;
+	// gradient value
+	double *e2, *e3, *m2, *v2, *m3, *v3;
+	double *dl1, *dl2;
+	// weights
+	double *w1, *w2;
+} CatsEye;
+
+/* constructor
+ * n_in:  number of input layer
+ * n_hid: number of hidden layer
+ * n_out: number of output layer */
+void CatsEye__construct(CatsEye *this, int n_in, int n_hid, int n_out, char *filename)
+{
+	FILE *fp;
+	if (filename) {
+		fp = fopen(filename, "r");
+		if (fp==NULL) return;
+		fscanf(fp, "%d %d %d\n", &this->in, &this->hid, &this->out);
+	} else {
+		// unit number
+		this->in = n_in;
+		this->hid = n_hid;
+		this->out = n_out;
+	}
+
+	// allocate inputs
+	this->xi2 = malloc(sizeof(double)*(this->hid+1));
+	this->xi3 = malloc(sizeof(double)*this->out);
+
+	// allocate outputs
+	this->o1 = malloc(sizeof(double)*(this->in+1));
+	this->o2 = malloc(sizeof(double)*(this->hid+1));
+	this->o3 = malloc(sizeof(double)*this->out);
+
+	// allocate errors
+	this->d2 = malloc(sizeof(double)*(this->hid+1));
+	this->d3 = malloc(sizeof(double)*this->out);
+
+	// allocate gradient
+	this->e2 = calloc(1, sizeof(double)*(this->hid+1));
+	this->e3 = calloc(1, sizeof(double)*this->out);
+	this->m2 = calloc(1, sizeof(double)*(this->hid+1));
+	this->m3 = calloc(1, sizeof(double)*this->out);
+	this->v2 = calloc(1, sizeof(double)*(this->hid+1));
+	this->v3 = calloc(1, sizeof(double)*this->out);
+	this->dl1 = malloc(sizeof(double)*(this->in+1)*this->hid);
+	this->dl2 = malloc(sizeof(double)*(this->hid+1)*this->out);
+
+	// allocate memories
+	this->w1 = malloc(sizeof(double)*(this->in+1)*this->hid);
+	this->w2 = malloc(sizeof(double)*(this->hid+1)*this->out);
+
+	if (filename) {
+		for (int i=0; i<(this->in+1)*this->hid; i++) {
+			fscanf(fp, "%lf ", &this->w1[i]);
+		}
+		for (int i=0; i<(this->hid+1)*this->out; i++) {
+			fscanf(fp, "%lf ", &this->w2[i]);
+		}
+		fclose(fp);
+	} else {
+		// initialize weights (http://aidiary.hatenablog.com/entry/20150618/1434628272)
+		// range depends on the research of Y. Bengio et al. (2010)
+		srand((unsigned)(time(0)));
+		double range = sqrt(6)/sqrt(this->in+this->hid+2);
+		srand((unsigned)(time(0)));
+		for (int i=0; i<(this->in+1)*this->hid; i++) {
+			this->w1[i] = 2.0*range*rand()/RAND_MAX-range;
+		}
+		for (int i=0; i<(this->hid+1)*this->out; i++) {
+			this->w2[i] = 2.0*range*rand()/RAND_MAX-range;
+		}
+	}
+}
+
+// deconstructor
+void CatsEye__destruct(CatsEye *this)
+{
+	// delete arrays
+	free(this->xi2);
+	free(this->xi3);
+	free(this->o1);
+	free(this->o2);
+	free(this->o3);
+	free(this->d2);
+	free(this->d3);
+	free(this->e2);
+	free(this->e3);
+	free(this->m2);
+	free(this->m3);
+	free(this->v2);
+	free(this->v3);
+	free(this->w1);
+	free(this->w2);
+}
+
+// caluculate forward propagation of input x
+void CatsEye_forward(CatsEye *this, double *x)
+{
+	// calculation of input layer
+//	memcpy(this->xi1, x, this->in*sizeof(double));
+	memcpy(this->o1, x, this->in*sizeof(double));
+	this->o1[this->in] = 1;	// for bias
+
+#ifdef CATS_DENOISING_AUTOENCODER
+	// Denoising Autoencoder (http://kiyukuta.github.io/2013/08/20/hello_autoencoder.html)
+	for (int i=0; i<this->in; i++) {
+		this->o1[i] *= binomial(/*0.8(20%)*//*0.2*/0.5);
+	}
+#endif
+
+	// caluculation of hidden layer
+	for (int j=0; j<this->hid; j++) {
+/*		this->xi2[j] = 0;
+		for (int i=0; i<this->in+1; i++) {
+			this->xi2[j] += this->w1[i*this->hid+j]*this->o1[i];
+		}*/
+		this->xi2[j] = dotT(&this->w1[j], this->o1, this->in+1, this->hid);
+		this->o2[j] = ACT1(this->xi2[j]);
+	}
+	this->o2[this->hid] = 1;	// for bias
+
+	// caluculation of output layer
+	for (int j=0; j<this->out; j++) {
+/*		this->xi3[j] = 0;
+		for (int i=0; i<this->hid+1; i++) {
+			this->xi3[j] += this->w2[i*this->out+j]*this->o2[i];
+		}*/
+		this->xi3[j] = dotT(&this->w2[j], this->o2, this->hid+1, this->out);
+		this->o3[j] = ACT2(this->xi3[j]);
+	}
+}
+
+/* train: multi layer perceptron
+ * x: train data (number of elements is in*N)
+ * t: correct label (number of elements is N)
+ * N: data size
+ * repeat: repeat times
+ * eta: learning rate (1e-6 to 1) */
+void CatsEye_train(CatsEye *this, double *x, void *t, int N, int repeat, double eta)
+{
+	for (int times=0; times<repeat; times++) {
+		double err = 0;
+#ifndef CATS_OPT_SGD
+		memset(this->e3, 0, sizeof(double)*this->out);
+		memset(this->e2, 0, sizeof(double)*this->hid);
+#endif
+#ifndef CATS_RANDOM
+		for (int sample=0; sample<N; sample++) {
+			// forward propagation
+			CatsEye_forward(this, x+sample*this->in);
+#else
+		for (int n=0; n<1500/*N*/; n++) {
+			// forward propagation
+			int sample = (rand()/(RAND_MAX+1.0)) * N;	// 0 <= rand < 1
+			CatsEye_forward(this, x+sample*this->in);
+#endif
+			// calculate the error of output layer
+			for (int i=0; i<this->out; i++) {
+#ifndef CATS_LOSS_MSE
+				// http://d.hatena.ne.jp/echizen_tm/20110606/1307378609
+				// E = max(0, -twx), ∂E / ∂w = max(0, -tx)
+				if (((int*)t)[sample] == i) {	// 1-of-K
+					this->d3[i] = this->o3[i]-1;
+				} else {
+					this->d3[i] = this->o3[i];
+				}
+#else
+				// http://qiita.com/Ugo-Nama/items/04814a13c9ea84978a4c
+				// https://github.com/nyanp/tiny-cnn/wiki/%E5%AE%9F%E8%A3%85%E3%83%8E%E3%83%BC%E3%83%88
+				this->d3[i] = this->o3[i]-((double*)t)[sample*this->out+i];
+//				this->d3[i] = (this->o3[i]-((double*)t)[sample*this->out+i]) * DACT2(this->o3[i]);
+#endif
+//				this->e3[i] += this->d3[i]*this->d3[i];
+				OPT_CALC1(3);
+			}
+			// calculate the error of hidden layer
+			for (int i=0; i<this->hid; i++) {
+/*				double tmp = 0;
+				for (int l=0; l<this->out; l++) {
+					tmp += this->w2[j*this->out+l]*this->d3[l];
+				}*/
+				//this->d2[j] = tmp * DACT1(this->xi2[j]);	// xi2 = z
+				this->d2[i] = dot(&this->w2[i*this->out], this->d3, this->out) * DACT1(this->o2[i]);	// o2 = f(z)
+				OPT_CALC1(2);
+			}
+			this->d2[this->hid] = dot(&this->w2[this->hid*this->out], this->d3, this->out) * DACT1(this->o2[this->hid]);	// o2 = f(z)
+			// update the weights of hidden layer
+			for (int i=0; i<this->in+1; i++) {
+				for (int j=0; j<this->hid; j++) {
+					OPT_CALC2(this->hid, 1, 2);
+				}
+				//muladd(&this->w1[i*this->hid], this->d2, -eta*this->o1[i], this->hid);
+			}
+			// update the weights of output layer
+			for (int i=0; i<this->hid+1; i++) {
+				for (int j=0; j<this->out; j++) {
+					//this->w2[i*this->out+j] -= eta*this->d3[j]*this->o2[i];
+//					this->w2[i*this->out+j] -= eta*this->o2[i] /sqrt(eps+this->e3[j]) *this->d3[j];
+					OPT_CALC2(this->out, 2, 3);
+				}
+				//muladd(&this->w2[i*this->out], this->d3, -eta*this->o2[i], this->out);
+			}
+#ifdef CATS_AUTOENCODER
+			// tied weight
+			double *dst = this->w2;
+			for (int i=0; i<this->hid; i++) {
+				for (int j=0; j<this->in; j++) {
+					this->w2[j + this->hid*i] = this->w1[this->hid*j + i];
+				}
+			}
+#endif
+
+			// calculate the mean squared error
+			double mse = 0;
+			for (int i=0; i<this->out; i++) {
+				mse += 0.5 * (this->d3[i] * this->d3[i]);
+			}
+			err = 0.5 * (err + mse);
+
+/*			if (isnan(this->d3[0])) {
+				printf("epochs %d, samples %d, mse %f\n", times, sample, err);
+				break;
+			}*/
+		}
+		printf("epochs %d, mse %f\n", times, err);
+	}
+}
+
+// return most probable label to the input x
+int CatsEye_predict(CatsEye *this, double *x)
+{
+	// forward propagation
+	CatsEye_forward(this, x);
+	// biggest output means most probable label
+	double max = this->o3[0];
+	int ans = 0;
+	for (int i=1; i<this->out; i++) {
+		if (this->o3[i] > max) {
+			max = this->o3[i];
+			ans = i;
+		}
+	}
+	return ans;
+}
+
+// save weights to csv file
+int CatsEye_save(CatsEye *this, char *filename)
+{
+	FILE *fp = fopen(filename, "w");
+	if (fp==NULL) return -1;
+
+	fprintf(fp, "%d %d %d\n", this->in, this->hid, this->out);
+
+	int i;
+	for (i=0; i<(this->in+1)*this->hid-1; i++) {
+		fprintf(fp, "%lf ", this->w1[i]);
+	}
+	fprintf(fp, "%lf\n", this->w1[i]);
+
+	for (i=0; i<(this->hid+1)*this->out-1; i++) {
+		fprintf(fp, "%lf ", this->w2[i]);
+	}
+	fprintf(fp, "%lf\n", this->w2[i]);
+
+	fclose(fp);
+	return 0;
+}
+
+// save weights to json file
+int CatsEye_saveJson(CatsEye *this, char *filename)
+{
+	FILE *fp = fopen(filename, "w");
+	if (fp==NULL) return -1;
+
+	fprintf(fp, "var config = [%d,%d,%d];\n", this->in, this->hid, this->out);
+
+	int i;
+	fprintf(fp, "var w1 = [");
+	for (i=0; i<(this->in+1)*this->hid-1; i++) {
+		fprintf(fp, "%lf,", this->w1[i]);
+	}
+	fprintf(fp, "%lf];\n", this->w1[i]);
+
+	fprintf(fp, "var w2 = [");
+	for (i=0; i<(this->hid+1)*this->out-1; i++) {
+		fprintf(fp, "%lf,", this->w2[i]);
+	}
+	fprintf(fp, "%lf];\n", this->w2[i]);
+
+	fclose(fp);
+	return 0;
+}
+
+// save weights to binary file
+int CatsEye_saveBin(CatsEye *this, char *filename)
+{
+	FILE *fp = fopen(filename, "wb");
+	if (fp==NULL) return -1;
+
+	fwrite(&this->in, sizeof(this->in), 1, fp);
+	fwrite(&this->hid, sizeof(this->hid), 1, fp);
+	fwrite(&this->out, sizeof(this->out), 1, fp);
+
+	//fwrite(this->w1, sizeof(double)*(this->in+1)*this->hid, 1, fp);
+	//fwrite(this->w2, sizeof(double)*(this->hid+1)*this->out, 1, fp);
+	for (int i=0; i<(this->in+1)*this->hid; i++) {
+		float a = this->w1[i];
+		fwrite(&a, sizeof(float), 1, fp);
+	}
+	for (int i=0; i<(this->hid+1)*this->out; i++) {
+		float a = this->w2[i];
+		fwrite(&a, sizeof(float), 1, fp);
+	}
+
+	fclose(fp);
+	return 0;
+}
+
+// w1
+void CatsEye_visualizeWeights(CatsEye *this, int n, int size, unsigned char *p, int width)
+{
+	double *w = &this->w1[n];
+	double max = w[0];
+	double min = w[0];
+	for (int i=1; i<this->in; i++) {
+		if (max < w[i * this->hid]) max = w[i * this->hid];
+		if (min > w[i * this->hid]) min = w[i * this->hid];
+	}
+	for (int i=0; i<this->in; i++) {
+		p[(i/size)*width + i%size] = ((w[i * this->hid] - min) / (max - min)) * 255.0;
+	}
+}

@@ -1,0 +1,71 @@
+バイナリファイル 12net_recognize.jpg に一致しました
+バイナリファイル 12net_test に一致しました
+12net_test.c:// gcc 12net_test.c -o 12net_test -lm -Ofast -march=native -funroll-loops -fopenmp -lgomp
+12net_test.c:// clang 12net_test.c -o 12net_test -lm -Ofast -march=native -funroll-loops
+12net_test.c:				if (l->type == CATS_LINEAR) continue;
+12net_test.c:				int mch = l->ch > 10 ? 10 : l->ch;
+12net_test.c:					CatsEye_visualize(&l->z[ch*l->ox*l->oy], l->ox*l->oy, l->ox, &pic[n*(k+2) +ch*(k+2)*k*10], k*10);
+12net_train.c:// gcc 12net_train.c -o 12net_train -lm -Ofast -march=native -funroll-loops -finline-functions -mf16c -fopenmp -lgomp
+12net_train.c:// clang 12net_train.c -o 12net_train -lm -Ofast -march=native -funroll-loops
+12net_train.c:		if (l->type == CATS_LINEAR) {
+12net_train.c:		int mch = l->ch > 10 ? 10 : l->ch;
+12net_train.c:			CatsEye_visualize(&l->z[ch*l->ox*l->oy], l->ox*l->oy, l->ox, &pixels[n*(k+2) +ch*(k+2)*k*10], k*10);
+バイナリファイル 3e540_756_268f3afc_3981d753.jpg に一致しました
+Makefile:#CFLAGS = -Wfloat-conversion -fsingle-precision-constant -Ofast -march=native -funroll-loops -finline-functions -ffp-contract=fast -mf16c -ftree-vectorize
+Makefile:## -fopt-info-optall-optimized -Wdouble-promotion
+Makefile:CFLAGS = -Wfloat-conversion -Ofast -march=native -funroll-loops -finline-functions -ffp-contract=fast -mf16c -ftree-vectorize
+cifar10_alex_train.c:// gcc cifar10_nin_train.c -o cifar10_nin_train -lm -Ofast -march=native -funroll-loops -fopenmp -lgomp
+cifar10_alex_train.c:// clang cifar10_nin_train.c -o cifar10_nin_train -lm -Ofast -march=native -funroll-loops
+cifar10_alex_train.c:			if (l->type == CATS_LINEAR) {
+cifar10_alex_train.c:			int mch = l->ch > 10 ? 10 : l->ch;
+cifar10_alex_train.c://				CatsEye_visualize(&l->z[ch*l->ox*l->oy], l->ox*l->oy, l->ox, &pixels[n*(k+2) +ch*(k+2)*k*10], k*10);
+cifar10_alex_train.c:				CatsEye_visualize(&l->z[ch*l->ox*l->oy], l->ox*l->oy, l->ox, &pixels[x +ch*(l->oy+2)*k*10], k*10);
+cifar10_alex_train.c:			x += l->ox+2;
+バイナリファイル cifar10_alex_train_classify.png に一致しました
+バイナリファイル cifar10_alex_train_wrong.png に一致しました
+バイナリファイル cifar10_classify.png に一致しました
+cifar10_nin_train.c:// gcc cifar10_nin_train.c -o cifar10_nin_train -lm -Ofast -march=native -funroll-loops -fopenmp -lgomp
+cifar10_nin_train.c:// clang cifar10_nin_train.c -o cifar10_nin_train -lm -Ofast -march=native -funroll-loops
+cifar10_nin_train.c:			if (l->type == CATS_LINEAR) {
+cifar10_nin_train.c:			int mch = l->ch > 10 ? 10 : l->ch;
+cifar10_nin_train.c://				CatsEye_visualize(&l->z[ch*l->ox*l->oy], l->ox*l->oy, l->ox, &pixels[n*(k+2) +ch*(k+2)*k*10], k*10);
+cifar10_nin_train.c:				CatsEye_visualize(&l->z[ch*l->ox*l->oy], l->ox*l->oy, l->ox, &pixels[x +ch*(l->oy+2)*k*10], k*10);
+cifar10_nin_train.c:			x += l->ox+2;
+バイナリファイル cifar10_nin_train_classify.png に一致しました
+バイナリファイル cifar10_nin_train_wrong.png に一致しました
+cifar10_train.c:// gcc cifar10_train.c -o cifar10_train -lm -Ofast -march=native -funroll-loops -fopenmp -lgomp
+cifar10_train.c:// clang cifar10_train.c -o cifar10_train -lm -Ofast -march=native -funroll-loops
+cifar10_train.c:			if (l->type == CATS_LINEAR) {
+cifar10_train.c:			int mch = l->ch > 10 ? 10 : l->ch;
+cifar10_train.c:				CatsEye_visualize(&l->z[ch*l->ox*l->oy], l->ox*l->oy, l->ox, &pixels[n*(k+2) +ch*(k+2)*k*10], k*10);
+cifar_autoencoder.c:///			p[(j/28)*28*10+(j%28)] = l->x[j] * 255.0;
+cifar_autoencoder.c:			mse += (x[size*i+j]-l->x[j])*(x[size*i+j]-l->x[j]);
+バイナリファイル cifar_autoencoder.png に一致しました
+バイナリファイル cifar_autoencoder_100.png に一致しました
+バイナリファイル face-train.bin に一致しました
+バイナリファイル mikarika.jpg.orig に一致しました
+バイナリファイル mikarika_r.jpg に一致しました
+mnist_autoencoder.c:///			p[(j/28)*28*10+(j%28)] = l->x[j] * 255.0;
+mnist_autoencoder.c:			mse += (x[size*i+j]-l->x[j])*(x[size*i+j]-l->x[j]);
+バイナリファイル mnist_autoencoder.png に一致しました
+mnist_cnn_train.c:// clang mnist_cnn_train.c -o mnist_cnn_train -lm -Ofast -march=native -funroll-loops `pkg-config --libs --cflags OpenCL` -mf16c
+mnist_gan.c:				mse += (x[size*i+j]-l->x[j])*(x[size*i+j]-l->x[j]);
+バイナリファイル mnist_gan.cats に一致しました
+mnist_lsgan.c:				mse += (x[size*i+j]-l->x[j])*(x[size*i+j]-l->x[j]);
+バイナリファイル mnist_lsgan.cats に一致しました
+バイナリファイル mnist_lsgan.png に一致しました
+バイナリファイル sin.pdf に一致しました
+バイナリファイル vgg16_predict.png に一致しました
+vgg16_train.c:// gcc vgg16_train.c -o vgg16_train -lm -Ofast -march=native -funroll-loops -fopenmp -lgomp
+vgg16_train.c:// clang vgg16_train.c -o vgg16_train -lm -Ofast -march=native -funroll-loops
+vgg16_train.c:			if (l->type == CATS_LINEAR) {
+vgg16_train.c:			int mch = l->ch > 10 ? 10 : l->ch;
+vgg16_train.c://				CatsEye_visualize(&l->z[ch*l->ox*l->oy], l->ox*l->oy, l->ox, &pixels[n*(k+2) +ch*(k+2)*k*10], k*10);
+vgg16_train.c:				CatsEye_visualize(&l->z[ch*l->ox*l->oy], l->ox*l->oy, l->ox, &pixels[x +ch*(l->oy+2)*k*10], k*10);
+vgg16_train.c:			x += l->ox+2;
+バイナリファイル vgg16_train_wrong.png に一致しました
+yolo9000_train.c:// gcc 12net_train.c -o 12net_train -lm -Ofast -march=native -funroll-loops -finline-functions -mf16c -fopenmp -lgomp
+yolo9000_train.c:// clang 12net_train.c -o 12net_train -lm -Ofast -march=native -funroll-loops
+yolo9000_train.c:		if (l->type == CATS_LINEAR) {
+yolo9000_train.c:		int mch = l->ch > 10 ? 10 : l->ch;
+yolo9000_train.c:			CatsEye_visualize(&l->z[ch*l->ox*l->oy], l->ox*l->oy, l->ox, &pixels[n*(k+2) +ch*(k+2)*k*10], k*10);

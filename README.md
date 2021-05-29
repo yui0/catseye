@@ -13,12 +13,6 @@ Neural network library written in C and Javascript
   - SSE, AVX support (But gcc and clang support SIMD...)
   - OpenMP support
   - Support half precision floats (16bit)
-- Support Deep Learning:
-  - Multilayer perceptron (MLP)
-  - Deep Neural Networks (DNN)
-  - Convolutional Neural Networks (CNN)
-  - Generative Adversarial Network (GAN)
-  - Network in Network (NIN)
 - Supported networks:
   - Activation functions
     - sigmoid
@@ -34,14 +28,15 @@ Neural network library written in C and Javascript
     - Momentum SGD
     - AdaGrad
     - RMSProp
+    - Adam
   - Layer types
     - convolution
     - max pooling
     - average pooling
+    - global average pooling (GAP)
     - batch normalization
     - Sub-Pixel Convolution (Pixel Shuffler) [Upscaling or Deconvolution]
     - linear
-    - CCCP, Cascaded Cross Channel Parametric Pooling
 - Loader formats:
   - PNG
   - cifar [https://www.cs.toronto.edu/~kriz/cifar.html]
@@ -86,48 +81,27 @@ $ ./sin
   ![sin](example/sin.png)
   ![quadratic function](example/quadratic.png)
 
-- Convolution Autoencoder ([example-new/mnist_autoencoder.c](example-new/mnist_autoencoder.c),[example-new/cifar_autoencoder.c](example-new/cifar_autoencoder.c))
+- Convolution Autoencoder ([example/mnist_cnn_autoencoder.c](example/mnist_cnn_autoencoder.c),[example/cifar_autoencoder.c](example/cifar_autoencoder.c))
 
-  ![autoencoder](example-new/mnist_autoencoder_100.png)
-  ![autoencoder](example-new/cifar_autoencoder_100.png)
+  ![autoencoder](example/mnist_cnn_autoencoder.png)
+  ![autoencoder](example/mnist_cnn_autoencoder.svg)
+  ![autoencoder](example/cifar_autoencoder.png)
 
-- DCGAN ([example-new/mnist_lsgan.c](example-new/mnist_lsgan.c))
+- DCGAN ([example/mnist_lsgan.c](example/mnist_lsgan.c))
   - epoch 1900
 
-  ![dcgan](example-new/mnist_lsgan.png)
+  ![dcgan](example/mnist_lsgan.png)
 
-- Autoencoder ([example/mnist_autoencoder.c](example/mnist_autoencoder.c))
-  - Unit 64 [tied weight]
+- Autoencoder ([example/mnist_autoencoder.c](example/mnist_autoencoder.c),[example/mnist_autoencoder2.c](example/mnist_autoencoder2.c))
 
-  ![epoch=100](example/mnist_autoencoder_u64ae_s100.png "epoch=100")
-  ![epoch=500](example/mnist_autoencoder_u64ae_s500.png "epoch=500")
-  ![epoch=1500](example/mnist_autoencoder_u64ae_s1500.png "epoch=1500")
+  ![Autoencoder](example/mnist_autoencoder.png "Autoencoder")
+  ![Autoencoder](example/mnist_autoencoder2.png "Autoencoder")
+  ![Autoencoder](example/mnist_autoencoder2.svg "Autoencoder")
 
-  ![epoch=100](example/mnist_autoencoder_weights_u64ae_s100.png "epoch=100")
-  ![epoch=500](example/mnist_autoencoder_weights_u64ae_s500.png "epoch=500")
-  ![epoch=1500](example/mnist_autoencoder_weights_u64ae_s1500.png "epoch=1500")
+- VanillaGAN
 
-  - Unit 64
-
-  ![epoch=100](example/mnist_autoencoder_u64_s100.png "epoch=100")
-  ![epoch=500](example/mnist_autoencoder_u64_s500.png "epoch=500")
-  ![epoch=1500](example/mnist_autoencoder_u64_s1500.png "epoch=1500")
-
-  ![epoch=100](example/mnist_autoencoder_weights_u64_s100.png "epoch=100")
-  ![epoch=500](example/mnist_autoencoder_weights_u64_s500.png "epoch=500")
-  ![epoch=1500](example/mnist_autoencoder_weights_u64_s1500.png "epoch=1500")
-
-  - Unit 16
-
-  ![epoch=100](example/mnist_autoencoder_u16_s100.png "epoch=100")
-  ![epoch=500](example/mnist_autoencoder_u16_s500.png "epoch=500")
-  ![epoch=1500](example/mnist_autoencoder_u16_s1500.png "epoch=1500")
-
-- Denoising Autoencoder
-  - Unit 64
-
-  ![epoch=100](example/mnist_autoencoder_u64da_s100.png "epoch=100")
-  ![epoch=100](example/mnist_autoencoder_weights_u64da_s100.png "epoch=100")
+  ![epoch=41](example/mnist_vgan_00041.png "epoch=41")
+  ![GIF](example/mnist_vgan.gif "GIF")
 
 - Convolutional Neural Networks (example/mnist_cnn_train.c)
   - tanh, 7x7, 32ch, 99.2%
@@ -150,16 +124,19 @@ $ ./sin
   - Neural Networks and Deep Learning [http://nnadl-ja.github.io/nnadl_site_ja/chap1.html]
   - Explain easy backpropagation in the universe [https://www.yukisako.xyz/entry/backpropagation]
   - Optimization algorithm with super easy explanation [https://qiita.com/omiita/items/1735c1d048fe5f611f80]
+  - Basic parts of calculation graph used for backpropagation method, etc. [https://qiita.com/t-tkd3a/items/031c0a4dbf25fd2866a3]
   - Automatic differentiation [https://tech-lab.sios.jp/archives/21072]
   - Machine learning [http://hokuts.com/category/%E3%83%97%E3%83%AD%E3%82%B0%E3%83%A9%E3%83%A0/%E6%A9%9F%E6%A2%B0%E5%AD%A6%E7%BF%92/]
+  - tiny-cnn [https://github.com/nyanp/tiny-cnn/wiki/%E5%AE%9F%E8%A3%85%E3%83%8E%E3%83%BC%E3%83%88]
+
   - CS231n Convolutional Neural Networks for Visual Recognition [http://cs231n.github.io/neural-networks-3/#anneal]
   - SVM [http://d.hatena.ne.jp/echizen_tm/20110627/1309188711]
   - Autoencoder
+    - Summary of research on VAE [https://www.hiro877.com/entry/vae-research]
     - Hello Autoencoder [https://kiyukuta.github.io/2013/08/20/hello_autoencoder.html]
     - Autoencoder [https://pc.atsuhiro-me.net/entry/2015/08/18/003402]
     - Autoencoder [https://www.slideshare.net/at_grandpa/chapter5-50042838]
   - Convolutional Neural Networks [http://blog.yusugomori.com/post/129688163130/%E6%95%B0%E5%BC%8F%E3%81%A7%E6%9B%B8%E3%81%8D%E4%B8%8B%E3%81%99-convolutional-neural-networks-cnn]
-  - tiny-cnn [https://github.com/nyanp/tiny-cnn/wiki/%E5%AE%9F%E8%A3%85%E3%83%8E%E3%83%BC%E3%83%88]
   - Backpropagation [http://postd.cc/2015-08-backprop/]
   - Perceptron [http://tkengo.github.io/blog/2015/08/21/visual-perceptron/]
 - Programing
