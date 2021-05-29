@@ -68,6 +68,9 @@ int main()
 		{     0, CATS_ACT_RRELU },
 		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=16 },
 
+		{     0, CATS_CONV, ETA, .ksize=1, .stride=1, .padding=0, .ch=512 },
+		{     0, CATS_ACT_RRELU },
+
 //		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=12 },
 		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=8 },
 		{     0, CATS_ACT_RRELU },
@@ -114,10 +117,9 @@ int main()
 
 	// 訓練
 	printf("Starting training...\n");
-//	CatsEye_train(&cat, x, x, sample, 100/*repeat*/, 1000/*random batch*/, sample/10/*verify*/);
-//	CatsEye_train(&cat, y, x, sample, 10/*repeat*/, 1000/*random batch*/, 0);
 //	CatsEye_train(&cat, y, x, sample, 50/*repeat*/, 1000/*random batch*/, 0);
-	CatsEye_train(&cat, y, x, sample, 100/*repeat*/, 1000/*random batch*/, 0);
+//	CatsEye_train(&cat, y, x, sample, 100/*repeat*/, 1000/*random batch*/, 0);
+	CatsEye_train(&cat, y, x, sample, 200/*repeat*/, 1000/*random batch*/, 0);
 	printf("Training complete\n");
 
 	// 結果の表示
