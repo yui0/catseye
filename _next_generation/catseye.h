@@ -959,7 +959,7 @@ static void CatsEye_shortcut_forward(CatsEye_layer *l)
 	real *z = l->z;
 	for (int i=0; i<l->p->batch; i++) {
 		memcpy(z, x, l->inputs*sizeof(real));
-		for (int n=0; n<l->inputs; n++) z[i] += a[i];
+		for (int n=0; n<l->inputs; n++) z[n] += a[n];
 		x += l->inputs;
 		a += l->l->inputs;
 		z += l->outputs;
@@ -1116,6 +1116,9 @@ static void CatsEye_act_RReLU(CatsEye_layer *l)
 	}
 }
 CATS_DACT_ARRAY(RReLU);
+
+// L1, L2
+// https://toeming.hatenablog.com/entry/2020/04/03/000925
 
 // calculate the error of output layer
 static void CatsEye_loss_delivative_0_1(CatsEye_layer *l)
@@ -1603,6 +1606,7 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 //			printf("%3d %-12s %10d %4d x%4d x%4d -> loss", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich);
 		}
 		if (l->name) printf(" <%s>\n", l->name);
+		else if (l->layer) printf(" +<%s>\n", l->layer);
 		else printf("\n");
 		if (!l->inputs) {
 			printf("\t↑ warning: input is strange!\n");
