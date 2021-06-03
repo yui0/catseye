@@ -13,8 +13,7 @@
 #define CATS_USE_MOMENTUM_SGD
 //#define CATS_USE_RMSPROP
 //#define ETA	0.0001	// 00.0
-#define ETA	0.001	// 88.0%(10)
-//#define ETA	1e-6
+#define ETA	0.001	// 93.7%(10)
 #define BATCH	1
 //#define BATCH	64	// 44.5
 
@@ -44,6 +43,7 @@ int main()
 #endif
 
 	// https://buildersbox.corp-sansan.com/entry/2020/10/13/110000
+	// https://qiita.com/TaiseiYamana/items/b3e97da112d912c66563
 	CatsEye_layer u[] = {
 		{  size, CATS_CONV, ETA, .ksize=7, .stride=2, .padding=3, .ch=64, .ich=3, .sx=k, .sy=k },
 //		{     0, CATS_BATCHNORMAL },
@@ -114,6 +114,29 @@ int main()
 		{     0, CATS_SHORTCUT, .layer="conv4_2" },
 		{     0, CATS_ACT_RRELU }, // 88.0%(10)
 
+		// trans
+		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
+		{     0, CATS_CONV, ETA, .ksize=1, .stride=1, .padding=0, .ch=512 },
+//		{     0, CATS_BATCHNORMAL },
+		{     0, CATS_ACT_RRELU },
+
+		// ResidualLayer
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=512, .name="conv5_1" },
+//		{     0, CATS_BATCHNORMAL },
+		{     0, CATS_ACT_RRELU },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=512 },
+//		{     0, CATS_BATCHNORMAL },
+		{     0, CATS_SHORTCUT, .layer="conv5_1" },
+		{     0, CATS_ACT_RRELU },
+
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=512, .name="conv5_2" },
+//		{     0, CATS_BATCHNORMAL },
+		{     0, CATS_ACT_RRELU },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=512 },
+//		{     0, CATS_BATCHNORMAL },
+		{     0, CATS_SHORTCUT, .layer="conv5_2" },
+		{     0, CATS_ACT_RRELU },
+
 		{     0, CATS_GAP }, // -> 512
 		{     0, CATS_LINEAR, ETA, .outputs=label },
 
@@ -137,6 +160,7 @@ int main()
 	printf("Starting training...\n");
 	CatsEye_train(&cat, x, t, sample, 10/*repeat*/, sample/*random batch*/, sample/10/*verify*/);
 	printf("Training complete\n");
+	CatsEye_saveCats(&cat, NAME".cats");
 
 	// 結果の表示
 	static int result[10][10];

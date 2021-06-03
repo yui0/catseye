@@ -126,7 +126,7 @@ int main()
 		// generator
 		{    ZDIM, CATS_LINEAR, ETA, .outputs=3*3*512, .wrange=0.02 },
 //		{    ZDIM, CATS_CONV, ETA, .ksize=1, .stride=1, .sx=3, .sy=3, .ich=11, .ch=512, .wrange=0.02 },
-		{       0, CATS_ACT_RELU, .alpha=0.2 },
+		{       0, CATS_ACT_RRELU },
 //		{       0, CATS_BATCHNORMAL },
 
 		// 3 -> 6
@@ -134,21 +134,21 @@ int main()
 		{       0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=256, .wrange=0.02 },
 //		{       0, CATS_CONV, ETA, .ksize=1, .stride=1, .ch=256, .wrange=0.02 },
 //		{       0, CATS_BATCHNORMAL },
-		{       0, CATS_ACT_RELU, .alpha=0.2 },
+		{       0, CATS_ACT_RRELU },
 
 		// 6 -> 12
 		{       0, CATS_PIXELSHUFFLER, .r=2, .ch=64 },
 		{       0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=128, .wrange=0.02 },
 //		{       0, CATS_CONV, ETA, .ksize=1, .stride=1, .ch=128, .wrange=0.02 },
 //		{       0, CATS_BATCHNORMAL },
-		{       0, CATS_ACT_RELU, .alpha=0.2 },
+		{       0, CATS_ACT_RRELU },
 
 		// 12 -> 24
 		{       0, CATS_PIXELSHUFFLER, .r=2, .ch=32 },
 		{       0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=64, .wrange=0.02 },
 //		{       0, CATS_CONV, ETA, .ksize=1, .stride=1, .ch=64, .wrange=0.02 },
 //		{       0, CATS_BATCHNORMAL },
-		{       0, CATS_ACT_RELU, .alpha=0.2 },
+		{       0, CATS_ACT_RRELU },
 
 		// 24 -> 48
 		{       0, CATS_PIXELSHUFFLER, .r=2, .ch=16 },
@@ -158,19 +158,15 @@ int main()
 		// discriminator
 		// 48 -> 24
 		{    SIZE, CATS_CONV, ETA, .ksize=4, .stride=2, .padding=1, .ch=32, .wrange=0.02, .name="Discriminator" },
-//		{       0, CATS_BATCHNORMAL },
 		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 		// 24 -> 12
 		{       0, CATS_CONV, ETA, .ksize=4, .stride=2, .padding=1, .ch=64, .wrange=0.02 },
-//		{       0, CATS_BATCHNORMAL },
 		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 		// 12 -> 6
 		{       0, CATS_CONV, ETA, .ksize=4, .stride=2, .padding=1, .ch=128, .wrange=0.02 },
-//		{       0, CATS_BATCHNORMAL },
 		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 		// 6 -> 3
 		{       0, CATS_CONV, ETA, .ksize=4, .stride=2, .padding=1, .ch=256, .wrange=0.02 },
-//		{       0, CATS_BATCHNORMAL },
 		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 
 		{       0, CATS_LINEAR, ETA, .outputs=1 },

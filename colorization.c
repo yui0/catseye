@@ -11,8 +11,8 @@
 #include "stb_image_write.h"
 
 #define CATS_USE_ADAM
-#define ADAM_BETA1	0.1
-#define ADAM_BETA2	0.999
+//#define ADAM_BETA1	0.1
+//#define ADAM_BETA2	0.999
 
 #define ETA		5e-4
 //#define ETA		1e-3
@@ -40,21 +40,6 @@ int main()
 	// https://qiita.com/MuAuan/items/e5f3e67ee24a776380aa
 #if 0
 	CatsEye_layer u[] = {
-		{   K*K, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=32, .sx=K, .sy=K, .ich=1 },
-		{     0, CATS_ACT_RRELU },
-		{     0, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=64 },
-		{     0, CATS_ACT_RRELU, .name="encoder" },
-
-		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=16 },
-
-		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=12 },
-		{     0, CATS_ACT_RRELU },
-		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=3, .name="decoder" },
-
-		{  size, CATS_LOSS_IDENTITY_MSE },
-	};
-#else
-	CatsEye_layer u[] = {
 		{   K*K, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=32, .sx=K, .sy=K, .ich=1, .name="input" },
 		{     0, CATS_ACT_RRELU },
 		{     0, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=64 },
@@ -68,13 +53,46 @@ int main()
 		{     0, CATS_ACT_RRELU },
 		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=16 },
 
-		{     0, CATS_CONV, ETA, .ksize=1, .stride=1, .padding=0, .ch=512 },
+		{     0, CATS_CONV, ETA, .ksize=1, .stride=1, .padding=0, .ch=1024 },
 		{     0, CATS_ACT_RRELU },
 
 //		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=12 },
 		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=8 },
 		{     0, CATS_ACT_RRELU },
 //		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=3, .name="decoder" },
+		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=2, .name="decoder" },
+
+		{     0, CATS_CONCAT, .layer="input", .order=1 },
+
+		{  size, CATS_LOSS_IDENTITY_MSE },
+	};
+#else
+	CatsEye_layer u[] = {
+		{   K*K, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=20, .sx=K, .sy=K, .ich=1, .name="input" },
+		{     0, CATS_ACT_RRELU },
+
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=20, },
+		{     0, CATS_ACT_RRELU },
+
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=20, },
+		{     0, CATS_ACT_RRELU },
+
+		{     0, CATS_LINEAR, ETA, .outputs=120 },
+		{     0, CATS_ACT_RRELU, .name="encoder" },
+
+		{     0, CATS_LINEAR, ETA, .outputs=4*4*128 },
+		{     0, CATS_ACT_RRELU },
+		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=32 }, // 4*4*128
+
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=64 },
+		{     0, CATS_ACT_RRELU },
+		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=16 },
+
+		{     0, CATS_CONV, ETA, .ksize=1, .stride=1, .padding=0, .ch=1024 },
+		{     0, CATS_ACT_RRELU },
+
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=1, .padding=1, .ch=8 },
+		{     0, CATS_ACT_RRELU },
 		{     0, CATS_PIXELSHUFFLER, .r=2, .ch=2, .name="decoder" },
 
 		{     0, CATS_CONCAT, .layer="input", .order=1 },
@@ -121,6 +139,7 @@ int main()
 //	CatsEye_train(&cat, y, x, sample, 100/*repeat*/, 1000/*random batch*/, 0);
 	CatsEye_train(&cat, y, x, sample, 200/*repeat*/, 1000/*random batch*/, 0);
 	printf("Training complete\n");
+	CatsEye_saveCats(&cat, NAME".cats");
 
 	// 結果の表示
 	uint8_t *pixels = calloc(1, size*100);

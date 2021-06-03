@@ -12,7 +12,8 @@
 #include"svg.h"
 
 //#define CATS_USE_ADAM
-#define ETA 0.01	// batch 1
+//#define ETA	1e-4
+#define ETA	0.01	// batch 1
 //#define ETA	0.001	// batch 64
 //#define BATCH	64
 #define BATCH	1
@@ -79,6 +80,7 @@ int main()
 	// 訓練
 	printf("Starting training...\n");
 	CatsEye_train(&cat, x, t, sample, 10/*repeat*/, 1500/*random batch*/, sample/10);
+//	CatsEye_train(&cat, x, t, sample, 20/*repeat*/, 1500/*random batch*/, sample/10);
 //	CatsEye_train(&cat, x, t, sample, 100/*repeat*/, 1500/*random batch*/, sample/10);
 	printf("Training complete\n");
 

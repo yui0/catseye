@@ -25,7 +25,7 @@ Neural network library written in C and Javascript
   - Loss functions
     - cross-entropy, mean-squared-error
   - Optimization algorithms
-    - stochastic gradient descent (with/without L2 normalization and momentum)
+    - SGD (stochastic gradient descent) with/without L2 normalization
     - Momentum SGD
     - AdaGrad
     - RMSProp
