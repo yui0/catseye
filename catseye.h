@@ -241,7 +241,6 @@ typedef struct __CatsEye_layer {
 		real rho;	// RMSProp RHO
 	} u;
 	real beta1, beta2;	// Adam
-	real lambda;		// L1/L2 norm
 	real *mu, *var;		// Batch Normalization [average, variance]
 //	real *gamma, *beta;	// Batch Normalization
 	real gamma, beta;	// Batch Normalization
@@ -272,7 +271,7 @@ typedef struct __CatsEye_layer {
 	// research
 	real forward_time;
 	real backward_time;
-//	int count[20];		// -1,0
+	real update_time;
 
 	void (*forward)(struct __CatsEye_layer*);
 	void (*backward)(struct __CatsEye_layer*);
@@ -295,6 +294,9 @@ typedef struct __CatsEye {
 	// label
 	int16_t *clasify;
 	real *label;
+
+	real lr;		// learning rate
+	real lambda;		// weight decay (L2 norm)
 
 	int label_size;		// internal use
 	void *label_data;	// internal use
@@ -379,10 +381,11 @@ typedef struct __CatsEye {
 #endif
 
 // https://tech-lab.sios.jp/archives/21823
-/*static void CatsEye_solver_SGD(CatsEye_layer *l)
+// https://github.com/tiny-dnn/tiny-dnn/wiki/%E5%AE%9F%E8%A3%85%E3%83%8E%E3%83%BC%E3%83%88
+/*static void CatsEye_optimizer_SGD(CatsEye_layer *l)
 {
 	for (int i=l->wsize-1; i>=0; i--) {
-		l->w[i] -= l->eta * l->dw[i];
+		l->w[i] -= l->p->lr * (l->dw[i] +l->p->lambda *l->w[i]); // L2 norm
 	}
 }*/
 
@@ -464,7 +467,6 @@ static void CatsEye_linear_update(CatsEye_layer *l)
 	}
 #else
 	// W := W - eta * dOutT * x
-//	gemm_rtn(l->outputs, l->inputs, l->p->batch, 1, l->dOut, l->x, 0, l->dw);
 	gemm_rtn(l->outputs, l->inputs, l->p->batch, 1, l->dOut, l->x, 1, l->dw);
 	_SOLVER();
 	for (int n=0; n<l->p->batch; n++) {
@@ -614,7 +616,7 @@ static void CatsEye_convolutional_update(CatsEye_layer *l)
 static void CatsEye_deconvolutional_forward(CatsEye_layer *l)
 {
 	for (int i=0; i<l->p->batch; i++) {
-		gemm_rtn(l->ksize*l->ksize*l->ch, l->sx*l->sy*1, l->ich, 1, l->w, l->x, 0, l->p->mem);
+		gemm_rtn(l->ksize*l->ksize*l->ch, l->sx*l->sy*1, l->ich, 1, l->w, l->x +l->inputs*i, 0, l->p->mem);
 		col2im(l->p->mem, l->ch, l->oy, l->ox, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, l->z +l->outputs*i);
 	}
 }
@@ -629,7 +631,7 @@ static void CatsEye_deconvolutional_update(CatsEye_layer *l)
 {
 //	memset(l->dw, 0, sizeof(real)* l->ksize*l->ksize*l->ich);
 	for (int i=0; i<l->p->batch; i++) {
-		gemm_rnt(l->ich, l->ksize*l->ksize*l->ch, l->sx*l->sy*1, 1, l->dOut, l->p->mem, 1, l->dw);
+		gemm_rnt(l->ich, l->ksize*l->ksize*l->ch, l->sx*l->sy*1, 1, l->dOut +l->outputs*i, l->p->mem, 1, l->dw);
 	}
 	_SOLVER();
 }
@@ -1285,9 +1287,6 @@ static void (*_CatsEye_layer_forward[])(CatsEye_layer *l) = {
 	CatsEye_loss_cross_entropy,		// cross-entropy loss
 	CatsEye_loss_cross_entropy_multiclass,	// (0-1) cross-entropy multiclass loss
 
-//	CatsEye_none,				// binary classification
-//	CatsEye_none,				// multi-value classification
-//	CatsEye_none,				// regression
 	CatsEye_loss_mse,			// identity with mse loss
 	CatsEye_loss_cross_entropy,		// sigmoid with cross-entropy loss
 	CatsEye_loss_cross_entropy_multiclass,	// softmax with multi cross-entropy loss
@@ -1324,9 +1323,6 @@ static void (*_CatsEye_layer_backward[])(CatsEye_layer *l) = {
 	CatsEye_loss_delivative_cross_entropy,
 	CatsEye_loss_delivative_cross_entropy_multiclass, // 0-1
 
-//	CatsEye_none,		// binary classification
-//	CatsEye_none,		// multi-value classification
-//	CatsEye_none,		// regression
 	CatsEye_loss_delivative_mse,	// (y-t) identity with mse loss
 	CatsEye_loss_delivative_mse,	// (y-t) sigmoid with cross-entropy loss
 	CatsEye_loss_delivative_0_1,	// (y-t) softmax with multi cross-entropy loss
@@ -1363,9 +1359,6 @@ static void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
 	CatsEye_none,	// cross-entropy loss
 	CatsEye_none,	// cross-entropy multiclass loss
 
-//	CatsEye_none,	// binary classification
-//	CatsEye_none,	// multi-value classification
-//	CatsEye_none,	// regression
 	CatsEye_none,	// identity with mse loss
 	CatsEye_none,	// sigmoid with cross-entropy loss
 	CatsEye_none,	// softmax with multi cross-entropy loss
@@ -1385,7 +1378,6 @@ typedef enum {
 	CATS_LOSS_0_1, CATS_LOSS_MSE, CATS_LOSS_BCE, CATS_LOSS_CE,
 
 	// y-t
-//	CATS_LOSS_BC, CATS_LOSS_MC, CATS_LOSS_REGRESSION,
 	CATS_LOSS_IDENTITY_MSE, CATS_SIGMOID_BCE, CATS_SOFTMAX_CE
 } CATS_LAYER_TYPE;
 char CatsEye_string[][16] = {
@@ -1401,7 +1393,6 @@ char CatsEye_string[][16] = {
 
 	"binary", "mse", "bce", "ce",
 
-//	"binary class", "multi class", "regression",
 	"identity/mse", "sigmoid/bce", "softmax/ce",
 };
 
@@ -1449,7 +1440,6 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			l->beta1 = ADAM_BETA1;
 			l->beta2 = ADAM_BETA2;
 		}
-//		l->lambda = 0; // L1/L2 norm
 
 		l->forward = _CatsEye_layer_forward[l->type];
 		l->backward = _CatsEye_layer_backward[l->type];
@@ -1939,8 +1929,8 @@ static inline void _CatsEye_forward(CatsEye *this)
 #ifndef NAME
 #define NAME
 #endif
-		char name[30];
-		sprintf(name, "/tmp/"NAME"%03d.png", i+1);
+		char name[50];
+		snprintf(name, 50, "/tmp/"NAME"%03d.png", i+1);
 		uint8_t z[20*20];
 		memset(z, 0, 20*20);
 		for (int x=0; x<20; x++) {
@@ -1951,34 +1941,9 @@ static inline void _CatsEye_forward(CatsEye *this)
 		l++;
 	}
 }
-static inline void _CatsEye_zero_grad(CatsEye *this)
-{
-	// https://qiita.com/Nezura/items/f7416ad17d79ccd1eab6
-#if 0
-	real *w = this->wdata;
-	real *dw = this->wdata +this->wsize;
-	for (int n=0; n<this->wsize; n++) {
-		*dw++ = 0.001 *(*w++); // L2
-//		*dw++ = -0.01 * ((*w > 0) - (*w < 0)); // L1
-//		w++;
-	}
-#endif
-	// https://atcold.github.io/pytorch-Deep-Learning/ja/week14/14-3/
-	CatsEye_layer *l = &this->layer[this->end];
-	for (int i=this->end; i>=this->start; i--) {
-		for (int n=0; n<l->wsize; n++) l->dw[n] = 0.001/*l->lambda*/ * l->w[n]; // grad of L2 norm
-
-/*		real a = 0;
-		for (int n=0; n<l->wsize; n++) a +=l->w[n]; // grad of L2 norm
-		a *= -l->eta * 0.001;
-		for (int n=0; n<l->wsize; n++) l->dw[n] = a;*/
-		l--;
-	}
-}
 static inline void _CatsEye_backward(CatsEye *this)
 {
-	memset(this->wdata +this->wsize, 0, this->wsize*sizeof(real)); // clear all l->dw (zero_grad)
-//	_CatsEye_zero_grad(this);
+	memset(this->wdata +this->wsize, 0, this->wsize*sizeof(real)); // clear all l->dw
 	CatsEye_layer *l = &this->layer[this->end];
 	for (int i=this->end; i>=this->start; i--) {
 #ifdef CATS_CHECK
@@ -1993,6 +1958,50 @@ static inline void _CatsEye_backward(CatsEye *this)
 		l->backward_time = (l->backward_time + time_diff(&start, &stop)) * 0.5;
 #endif
 	}
+}
+#if 0
+static inline void _CatsEye_update(CatsEye *this)
+{
+	CatsEye_layer *l = &this->layer[this->end];
+	for (int i=this->end; i>=this->start; i--) {
+#ifdef CATS_CHECK
+		struct timespec start, stop;
+		clock_gettime(CLOCK_REALTIME, &start);
+#endif
+		if (!(l->fix&1)) l->update(l);
+		l--;
+#ifdef CATS_CHECK
+		clock_gettime(CLOCK_REALTIME, &stop);
+		l->update_time = (l->backward_time + time_diff(&start, &stop)) * 0.5;
+#endif
+	}
+}
+static inline void _CatsEye_zero_grad(CatsEye *this)
+{
+	if (0/*l->lambda*/) {
+		// https://qiita.com/Nezura/items/f7416ad17d79ccd1eab6
+		real *w = this->wdata;
+		real *dw = this->wdata +this->wsize;
+		for (int n=0; n<this->wsize; n++) {
+			*dw++ = 0.001 *(*w++); // grad of L2 norm
+//			*dw++ = -0.01 * ((*w > 0) - (*w < 0)); // L1
+//			w++;
+		}
+		// https://atcold.github.io/pytorch-Deep-Learning/ja/week14/14-3/
+/*		CatsEye_layer *l = &this->layer[this->end];
+		for (int i=this->end; i>=this->start; i--) {
+			for (int n=0; n<l->wsize; n++) l->dw[n] = l->lambda * l->w[n]; // grad of L2 norm
+			l--;
+		}*/
+	} else {
+		memset(this->wdata +this->wsize, 0, this->wsize*sizeof(real)); // clear all l->dw
+	}
+}
+#endif
+static inline void _CatsEye_zero_grad(CatsEye *this)
+{
+	memset(this->ddata, 0, this->dsize*this->batch*sizeof(real)); // clear all l->d (zero_grad)
+//	memset(this->wdata +this->wsize, 0, this->wsize*sizeof(real)); // clear all l->dw
 }
 int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random, int verify)
 {
@@ -2014,7 +2023,9 @@ int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random,
 		_CatsEye_data_transfer(this, x, t, N);
 		for (int n=0; n<repeat; n++) {
 			_CatsEye_forward(this);
+//			_CatsEye_zero_grad(this);
 			_CatsEye_backward(this);
+//			_CatsEye_update(this);
 		}
 
 		real err = 0;

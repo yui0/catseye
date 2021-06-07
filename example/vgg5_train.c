@@ -76,6 +76,7 @@ int main()
 	printf("Starting training...\n");
 	CatsEye_train(&cat, x, t, sample, 10/*repeat*/, sample/*random batch*/, sample/10/*verify*/);
 	printf("Training complete\n");
+	CatsEye_saveCats(&cat, NAME".cats");
 
 	// 結果の表示
 	static int result[10][10];
