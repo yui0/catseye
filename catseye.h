@@ -1980,15 +1980,15 @@ static inline void _CatsEye_forward(CatsEye *this)
 	static int flag = 10;
 	if (flag) {
 		void CatsEye_visualize(real *o, int n, int sx, uint8_t *p, int width, int ch);
-		uint8_t *pixels = calloc(l->ich, 96*96*l->ich*100);
+		uint8_t *pixels = calloc(3, 96*96*3*100);
 		int n = this->batch<50 ? this->batch : 50;
 		for (int i=0; i<n; i++) {
-			CatsEye_visualize(l->x+l->inputs*i, l->sx*l->sy, l->sx, &pixels[(((i+50)/10)*96*96*10+((i+50)%10)*96)*l->ich], 96*10, l->ich);
-			CatsEye_visualize((real*)label+lsize*i, 96*96, 96, &pixels[((i/10)*96*96*10+(i%10)*96)*l->ich], 96*10, l->ich);
+			CatsEye_visualize(l->x+l->inputs*i, l->sx*l->sy, l->sx, &pixels[(((i+50)/10)*96*96*10+((i+50)%10)*96)*3], 96*10, 3);
+			CatsEye_visualize((real*)label+lsize*i, 96*96, 96, &pixels[((i/10)*96*96*10+(i%10)*96)*3], 96*10, 3);
 		}
 		char name[50];
 		snprintf(name, 50, "/tmp/"NAME"_in%03d.png", flag);
-		stbi_write_png(name, 96*10, 96*10, l->ich, pixels, 0);
+		stbi_write_png(name, 96*10, 96*10, 3, pixels, 0);
 		free(pixels);
 		--flag;
 	}
