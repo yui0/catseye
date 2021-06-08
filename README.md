@@ -45,6 +45,7 @@ Neural network library written in C and Javascript
   - PNG
   - cifar [https://www.cs.toronto.edu/~kriz/cifar.html]
   - MNIST
+  - Data Augmentation (noise, translation)
 
 ## Usage
 

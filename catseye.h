@@ -189,7 +189,8 @@ uint64_t xoroshiro128plus()
 #define frand()			( xoroshiro128plus() / (XOR128_MAX+1.0) )
 #endif
 #define _rand(max)		(int)( frand() * max)
-#define random(min, max)	( frand() * (max -min) +min )
+#define random(min, max)	( frand() * (max -min +1) +min )
+#define irandom(min, max)	( (xrand() % (max -min +1)) +min )
 // http://www.natural-science.or.jp/article/20110404234734.php (mt19937ar.h)
 // https://omitakahiro.github.io/random/random_variables_generation.html
 static inline real rand_normal(real mu, real sigma)
@@ -286,6 +287,7 @@ typedef struct __CatsEye {
 	int layers, *u;
 	CatsEye_layer *layer;
 	int start, stop, end;
+	int da;			// use data augmentation
 
 	// train parameter
 	int epoch;
@@ -332,13 +334,6 @@ typedef struct __CatsEye {
 // https://qiita.com/omiita/items/1735c1d048fe5f611f80
 #ifdef CATS_USE_MOMENTUM_SGD
  // MomentumSGD [ dw = u * dw - n * g ]
- #define _SOLVER()\
-{\
-	for (int i=l->wsize-1; i>=0; i--) {\
-		l->g[i] = l->u.momentum * l->g[i] -l->eta * l->dw[i];\
-		l->w[i] += l->g[i];\
-	}\
-}
 #define CatsEye_optimizer(l)	CatsEye_optimizer_momentumSGD(l)
 static void CatsEye_optimizer_momentumSGD(CatsEye_layer *l)
 {
@@ -351,13 +346,6 @@ static void CatsEye_optimizer_momentumSGD(CatsEye_layer *l)
 
 #elif defined CATS_USE_ADAGRAD
  // adagrad [ g2[i] += g * g; w[i] -= eta * g / sqrt(g2[i]); ]
- #define _SOLVER()\
-{\
-	for (int i=l->wsize-1; i>=0; i--) {\
-		l->s[i] += l->dw[i] * l->dw[i];\
-		l->w[i] -= l->eta * l->dw[i] / (sqrt(l->s[i]) +1e-12);\
-	}\
-}
 #define CatsEye_optimizer(l)	CatsEye_optimizer_adagrad(l)
 static void CatsEye_optimizer_adagrad(CatsEye_layer *l)
 {
@@ -369,13 +357,6 @@ static void CatsEye_optimizer_adagrad(CatsEye_layer *l)
 }
 
 #elif defined CATS_USE_RMSPROP
- #define _SOLVER()\
-{\
-	for (int i=l->wsize-1; i>=0; i--) {\
-		l->g[i] = l->u.rho * l->g[i] + (1 - l->u.rho) * l->dw[i] * l->dw[i];\
-		l->w[i] -= l->eta * l->dw[i] / (sqrt(l->g[i] +1e-12));\
-	}\
-}
 #define CatsEye_optimizer(l)	CatsEye_optimizer_RMSprop(l)
 static void CatsEye_optimizer_RMSprop(CatsEye_layer *l)
 {
@@ -387,16 +368,6 @@ static void CatsEye_optimizer_RMSprop(CatsEye_layer *l)
 }
 
 #elif defined CATS_USE_ADAM
- #define _SOLVER()\
-{\
-	for (int i=l->wsize-1; i>=0; i--) {\
-		l->g[i] = l->beta1 * l->g[i] + (1 - l->beta1) * l->dw[i];\
-		l->s[i] = l->beta2 * l->s[i] + (1 - l->beta2) * l->dw[i] * l->dw[i];\
-		l->w[i] -= l->eta * l->g[i] / (sqrt(l->s[i] +1e-12));\
-	}\
-}
-//		l->w[i] -= l->eta * l->g[i]/(1 - l->beta1) / (sqrt(l->s[i]/(1 - l->beta2) +1e-12));\
-
 #define CatsEye_optimizer(l)	CatsEye_optimizer_Adam(l)
 static void CatsEye_optimizer_Adam(CatsEye_layer *l)
 {
@@ -405,17 +376,12 @@ static void CatsEye_optimizer_Adam(CatsEye_layer *l)
 		l->s[i] = l->beta2 * l->s[i] + (1 - l->beta2) * l->dw[i] * l->dw[i];
 //		l->w[i] -= l->p->lr * l->g[i] / (sqrt(l->s[i] +1e-12));
 		l->w[i] -= l->eta * l->g[i] / (sqrt(l->s[i] +1e-12));
+
+//		l->w[i] -= l->eta * l->g[i]/(1 - l->beta1) / (sqrt(l->s[i]/(1 - l->beta2) +1e-12));
 	}
 }
 
 #else // SGD
- //#define SOLVER(gemm, m, n, k, alpha, a, b, beta, c) gemm(m, n, k, alpha, a, b, beta, c)
- #define _SOLVER()\
-{\
-	for (int i=l->wsize-1; i>=0; i--) {\
-		l->w[i] -= l->eta * l->dw[i];\
-	}\
-}
 // https://tech-lab.sios.jp/archives/21823
 // https://github.com/tiny-dnn/tiny-dnn/wiki/%E5%AE%9F%E8%A3%85%E3%83%8E%E3%83%BC%E3%83%88
 #define CatsEye_optimizer(l)	CatsEye_optimizer_SGD(l)
@@ -1467,7 +1433,7 @@ int CatsEye_getLayer(CatsEye *this, char *name)
 	return -1;
 }
 
-#define CATS_INIT			{ .batch=1 }
+#define CATS_INIT			{ .batch=1, .lambda=0 }
 #define CatsEye__construct(t, p)	_CatsEye__construct(t, p, sizeof(p)/sizeof(CatsEye_layer))
 void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 {
@@ -1865,13 +1831,6 @@ void CatsEye_forward(CatsEye *this, real *x)
 	CatsEye_layer *l = &this->layer[this->start];
 	memcpy(l->x, x, l->inputs*sizeof(real));
 
-//	this->layer[0].x = x; // FIXME
-#ifdef CATS_DENOISING_AUTOENCODER // FIXME
-	// Denoising Autoencoder (http://kiyukuta.github.io/2013/08/20/hello_autoencoder.html)
-	for (int i=0; i<this->layer[0].inputs; i++) {
-		this->o[0][i] *= binomial(/*0.7(30%)*/0.5);
-	}
-#endif
 	for (int i=this->start; i<this->end; i++) {
 		l->x[l->inputs] = 1;	// for bias
 		l->forward(l);
@@ -1911,6 +1870,64 @@ int CatsEye_accuracy(CatsEye *this, real *x, int16_t *t, int verify)
 	return r;
 }
 
+static inline void _CatsEye_DA_zoom(real *p, real *s, int w, int h, int ch, real r)
+{
+	for (int c=0; c<ch; c++) {
+		for (int y=0; y<h; y++) {
+			for (int x=0; x<w; x++) {
+				*p++ = s[(int)(y/r*w +x/r)];
+			}
+		}
+		s += w*h;
+	}
+}
+static inline void _CatsEye_DA_translationXY(real *p, real *s, int w, int h, int ch, int px, int py)
+{
+	for (int c=0; c<ch; c++) {
+		for (int y=0; y<py; y++) {
+//			memcpy(p, s+(py-y)*sx+px, (sx-px)*sizeof(real));
+//			for (int x=0; x<px; x++) p[px+x] = s[(py-y)*sx +px-x];
+			for (int x=0; x<px; x++) p[x] = s[(py-y)*w +px-x];
+			memcpy(p+px, s+(py-y)*w+px, (w-px)*sizeof(real));
+			p += w;
+		}
+		for (int y=0; y<(h-py); y++) {
+			memcpy(p, s+y*w+px, (w-px)*sizeof(real));
+			for (int x=0; x<px; x++) p[px+x] = s[y*w +px-x];
+			p += w;
+		}
+		s += w*h;
+	}
+}
+static inline void _CatsEye_DataAugmentation(real *p, real *s, int sx, int sy, int ch, int f)
+{
+	int type = f ? irandom(0, 1) : 0;
+	switch (type) {
+	case 0: // original
+		memcpy(p, s, sx*sy*ch*sizeof(real));
+		break;
+	case 1: // noise
+		for (int i=0; i<sx*sy*ch; i++) {
+			p[i] = s[i] * binomial(/*0.7(30%)*/0.9);
+		}
+		break;
+	case 2: // zoom in
+		_CatsEye_DA_zoom(p, s, sx, sy, ch, random(1, 2));
+		break;
+	case 3: // zoom out
+		_CatsEye_DA_zoom(p, s, sx, sy, ch, random(0, 1));
+		break;
+	case 4: // translation
+		_CatsEye_DA_translationXY(p, s, sx, sy, ch, irandom(0, sx), irandom(0, sy));
+		break;
+	case 5: // translationX
+		_CatsEye_DA_translationXY(p, s, sx, sy, ch, irandom(0, sx), 0);
+		break;
+	case 6: // translationY
+		_CatsEye_DA_translationXY(p, s, sx, sy, ch, 0, irandom(0, sy));
+		break;
+	}
+}
 static inline void _CatsEye_shuffle(int *array, int n)
 {
 	for (int i=0; i<n-1; i++) {
@@ -1947,24 +1964,35 @@ static inline void _CatsEye_forward(CatsEye *this)
 	int8_t *label = (int8_t*)this->label;
 	int8_t *label_data = (int8_t*)this->label_data;
 	for (int b=0; b<this->batch; b++) {
-//		int sample = 0;
 		int sample = this->shuffle_buffer[this->shuffle_base];
-		memcpy(l->x +l->inputs*b, this->learning_data+sample*this->slide, l->inputs*sizeof(real));
+		//memcpy(l->x +l->inputs*b, this->learning_data+sample*this->slide, l->inputs*sizeof(real));
+		_CatsEye_DataAugmentation(l->x +l->inputs*b, this->learning_data+sample*this->slide, l->sx, l->sy, l->ich, this->da);
 		memcpy(label +lsize*b, label_data+lsize*sample, lsize/*bytes*/);
 
 		this->shuffle_base++;
 		if (this->shuffle_base>=this->data_num) this->shuffle_base = 0;
 	}
-	/*{
+
+#ifndef NAME
+#define NAME
+#endif
+#ifdef CATS_CHECK
+	static int flag = 10;
+	if (flag) {
 		void CatsEye_visualize(real *o, int n, int sx, uint8_t *p, int width, int ch);
-		uint8_t *pixels = calloc(3, 96*96*3*100);
-		for (int i=0; i<10*10/2; i++) {
-			CatsEye_visualize(l->x+l->inputs*i, 48*48, 48, &pixels[(((i+50)/10)*96*96*10+((i+50)%10)*96)*3], 96*10, 3);
-			CatsEye_visualize(label+lsize*i, 96*96, 96, &pixels[((i/10)*96*96*10+(i%10)*96)*3], 96*10, 3);
+		uint8_t *pixels = calloc(l->ich, 96*96*l->ich*100);
+		int n = this->batch<50 ? this->batch : 50;
+		for (int i=0; i<n; i++) {
+			CatsEye_visualize(l->x+l->inputs*i, l->sx*l->sy, l->sx, &pixels[(((i+50)/10)*96*96*10+((i+50)%10)*96)*l->ich], 96*10, l->ich);
+			CatsEye_visualize((real*)label+lsize*i, 96*96, 96, &pixels[((i/10)*96*96*10+(i%10)*96)*l->ich], 96*10, l->ich);
 		}
-		stbi_write_png("/tmp/00.png", 96*10, 96*10, 3, pixels, 0);
+		char name[50];
+		snprintf(name, 50, "/tmp/"NAME"_in%03d.png", flag);
+		stbi_write_png(name, 96*10, 96*10, l->ich, pixels, 0);
 		free(pixels);
-	}*/
+		--flag;
+	}
+#endif
 
 	for (int i=this->start; i<=this->end; i++) {
 #ifdef CATS_CHECK
@@ -1987,9 +2015,6 @@ static inline void _CatsEye_forward(CatsEye *this)
 		max = count[0];
 		for (int n=1; n<20; n++) if (max < count[n]) max = count[n];
 		for (int n=0; n<20; n++) count[n] = (int)(count[n]*19.0 / max);
-#ifndef NAME
-#define NAME
-#endif
 		char name[50];
 		snprintf(name, 50, "/tmp/"NAME"%03d.png", i+1);
 		uint8_t z[20*20];
