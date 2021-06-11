@@ -1888,44 +1888,68 @@ static inline void _CatsEye_DA_translationXY(real *p, real *s, int w, int h, int
 //			memcpy(p, s+(py-y)*sx+px, (sx-px)*sizeof(real));
 //			for (int x=0; x<px; x++) p[px+x] = s[(py-y)*sx +px-x];
 			for (int x=0; x<px; x++) p[x] = s[(py-y)*w +px-x];
-			memcpy(p+px, s+(py-y)*w+px, (w-px)*sizeof(real));
+			memcpy(p+px, s+(py-y)*w, (w-px)*sizeof(real));
 			p += w;
 		}
 		for (int y=0; y<(h-py); y++) {
-			memcpy(p, s+y*w+px, (w-px)*sizeof(real));
-			for (int x=0; x<px; x++) p[px+x] = s[y*w +px-x];
+//			memcpy(p, s+y*w+px, (w-px)*sizeof(real));
+//			for (int x=0; x<px; x++) p[px+x] = s[y*w +px-x];
+			for (int x=0; x<px; x++) p[x] = s[(py-y)*w +px-x];
+			memcpy(p+px, s+(py-y)*w, (w-px)*sizeof(real));
 			p += w;
 		}
 		s += w*h;
 	}
 }
+typedef enum {
+	CATS_ORIGINAL = 1,
+	CATS_NOISE = 2,
+	CATS_ZOOM_IN = 4,
+	CATS_ZOOM_OUT = 8,
+	CATS_TRANSLATION = 16,
+	CATS_TRANSLATION_X = 32,
+	CATS_TRANSLATION_Y = 64,
+} CATS_DA_TYPE;
 static inline void _CatsEye_DataAugmentation(real *p, real *s, int sx, int sy, int ch, int f)
 {
-	int type = f ? irandom(0, 1) : 0;
-	switch (type) {
-	case 0: // original
-		memcpy(p, s, sx*sy*ch*sizeof(real));
-		break;
-	case 1: // noise
+	int tbl[7], n=0;
+	tbl[n] = CATS_ORIGINAL;
+	if (f&CATS_ORIGINAL) tbl[n++] = CATS_ORIGINAL;
+	if (f&CATS_NOISE) tbl[n++] = CATS_NOISE;
+	if (f&CATS_ZOOM_IN) tbl[n++] = CATS_ZOOM_IN;
+	if (f&CATS_ZOOM_OUT) tbl[n++] = CATS_ZOOM_OUT;
+	if (f&CATS_TRANSLATION) tbl[n++] = CATS_TRANSLATION;
+	if (f&CATS_TRANSLATION_X) tbl[n++] = CATS_TRANSLATION_X;
+	if (f&CATS_TRANSLATION_Y) tbl[n++] = CATS_TRANSLATION_Y;
+
+	int type = n ? irandom(0, n-1) : 0;
+	switch (tbl[type]) {
+	case CATS_NOISE: // noise
 		for (int i=0; i<sx*sy*ch; i++) {
-			p[i] = s[i] * binomial(/*0.7(30%)*/0.9);
+			real sigma = 0.04;
+			//real a = binomial(/*0.7(30%)*/0.9);
+			p[i] = s[i] +rand_normal(0, sigma) -sigma/2;
 		}
 		break;
-	case 2: // zoom in
+	case CATS_ZOOM_IN: // zoom in
 		_CatsEye_DA_zoom(p, s, sx, sy, ch, random(1, 2));
 		break;
-	case 3: // zoom out
+	case CATS_ZOOM_OUT: // zoom out
 		_CatsEye_DA_zoom(p, s, sx, sy, ch, random(0, 1));
 		break;
-	case 4: // translation
+	case CATS_TRANSLATION: // translation
 		_CatsEye_DA_translationXY(p, s, sx, sy, ch, irandom(0, sx), irandom(0, sy));
 		break;
-	case 5: // translationX
+	case CATS_TRANSLATION_X: // translationX
 		_CatsEye_DA_translationXY(p, s, sx, sy, ch, irandom(0, sx), 0);
 		break;
-	case 6: // translationY
+	case CATS_TRANSLATION_Y: // translationY
 		_CatsEye_DA_translationXY(p, s, sx, sy, ch, 0, irandom(0, sy));
 		break;
+
+	case CATS_ORIGINAL: // original
+	default:
+		memcpy(p, s, sx*sy*ch*sizeof(real));
 	}
 }
 static inline void _CatsEye_shuffle(int *array, int n)
