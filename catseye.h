@@ -189,8 +189,8 @@ uint64_t xoroshiro128plus()
 #define frand()			( xoroshiro128plus() / (XOR128_MAX+1.0) )
 #endif
 #define _rand(max)		(int)( frand() * max)
-#define random(min, max)	( frand() * (max -min +1) +min )
-#define irandom(min, max)	( (xrand() % (max -min +1)) +min )
+#define random(min, max)	( frand() * (max -min) +min )
+#define irand(min, max)		( (xrand() % (max -min +1)) +min )
 // http://www.natural-science.or.jp/article/20110404234734.php (mt19937ar.h)
 // https://omitakahiro.github.io/random/random_variables_generation.html
 static inline real rand_normal(real mu, real sigma)
@@ -334,7 +334,7 @@ typedef struct __CatsEye {
 // https://qiita.com/omiita/items/1735c1d048fe5f611f80
 #ifdef CATS_USE_MOMENTUM_SGD
  // MomentumSGD [ dw = u * dw - n * g ]
-#define CatsEye_optimizer(l)	CatsEye_optimizer_momentumSGD(l)
+#define SOLVER(l)	CatsEye_optimizer_momentumSGD(l)
 static void CatsEye_optimizer_momentumSGD(CatsEye_layer *l)
 {
 	for (int i=l->wsize-1; i>=0; i--) {
@@ -346,7 +346,7 @@ static void CatsEye_optimizer_momentumSGD(CatsEye_layer *l)
 
 #elif defined CATS_USE_ADAGRAD
  // adagrad [ g2[i] += g * g; w[i] -= eta * g / sqrt(g2[i]); ]
-#define CatsEye_optimizer(l)	CatsEye_optimizer_adagrad(l)
+#define SOLVER(l)	CatsEye_optimizer_adagrad(l)
 static void CatsEye_optimizer_adagrad(CatsEye_layer *l)
 {
 	for (int i=l->wsize-1; i>=0; i--) {
@@ -357,7 +357,7 @@ static void CatsEye_optimizer_adagrad(CatsEye_layer *l)
 }
 
 #elif defined CATS_USE_RMSPROP
-#define CatsEye_optimizer(l)	CatsEye_optimizer_RMSprop(l)
+#define SOLVER(l)	CatsEye_optimizer_RMSprop(l)
 static void CatsEye_optimizer_RMSprop(CatsEye_layer *l)
 {
 	for (int i=l->wsize-1; i>=0; i--) {
@@ -368,7 +368,7 @@ static void CatsEye_optimizer_RMSprop(CatsEye_layer *l)
 }
 
 #elif defined CATS_USE_ADAM
-#define CatsEye_optimizer(l)	CatsEye_optimizer_Adam(l)
+#define SOLVER(l)	CatsEye_optimizer_Adam(l)
 static void CatsEye_optimizer_Adam(CatsEye_layer *l)
 {
 	for (int i=l->wsize-1; i>=0; i--) {
@@ -384,7 +384,7 @@ static void CatsEye_optimizer_Adam(CatsEye_layer *l)
 #else // SGD
 // https://tech-lab.sios.jp/archives/21823
 // https://github.com/tiny-dnn/tiny-dnn/wiki/%E5%AE%9F%E8%A3%85%E3%83%8E%E3%83%BC%E3%83%88
-#define CatsEye_optimizer(l)	CatsEye_optimizer_SGD(l)
+#define SOLVER(l)	CatsEye_optimizer_SGD(l)
 static void CatsEye_optimizer_SGD(CatsEye_layer *l)
 {
 	for (int i=l->wsize-1; i>=0; i--) {
@@ -393,7 +393,6 @@ static void CatsEye_optimizer_SGD(CatsEye_layer *l)
 	}
 }
 #endif
-
 
 // Fully connected [ z^l = ( w^l * a^l-1 + b^l ) ]
 static void CatsEye_linear_forward(CatsEye_layer *l)
@@ -474,7 +473,7 @@ static void CatsEye_linear_update(CatsEye_layer *l)
 #else
 	// W := W - eta * dOutT * x
 	gemm_rtn(l->outputs, l->inputs, l->p->batch, 1, l->dOut, l->x, 1, l->dw);
-	CatsEye_optimizer(l);
+	SOLVER(l);
 	for (int n=0; n<l->p->batch; n++) {
 		for (int i=0; i<l->outputs; i++) l->w[l->inputs*l->outputs +i] -= l->eta * l->dOut[n*l->outputs +i]; // bias!!
 	}
@@ -598,7 +597,6 @@ static void CatsEye_convolutional_backward(CatsEye_layer *l)
 static void CatsEye_convolutional_update(CatsEye_layer *l)
 {
 #if 1
-//	memset(l->dw, 0, sizeof(real)* l->ch*l->ksize*l->ksize*l->ich);
 	for (int i=0; i<l->p->batch; i++) {
 		real *workspace = l->ksize!=1 ? l->workspace +l->ox*l->oy*l->ksize*l->ksize*l->ich *i : l->x +l->inputs*i;
 		// W = W - eta * dOut * x**T [A(m,k) B(k,n) C(m,n)]
@@ -611,7 +609,7 @@ static void CatsEye_convolutional_update(CatsEye_layer *l)
 //	for (int i=0; i<10; i++) printf("%f ", l->dOut[i +l->outputs*(l->p->batch-1)]);
 //	for (int i=0; i<10; i++) printf("%f ", l->dw[i]);
 //	printf("w:%d %d\n", l->wsize, l->ch*l->ksize*l->ksize*l->ich);
-	CatsEye_optimizer(l);
+	SOLVER(l);
 #else
 	real *workspace = l->ksize!=1 ? l->workspace : l->x;
 	gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*l->p->batch, -l->eta, l->dOut, workspace, 0, l->dw);
@@ -635,11 +633,10 @@ static void CatsEye_deconvolutional_backward(CatsEye_layer *l)
 }
 static void CatsEye_deconvolutional_update(CatsEye_layer *l)
 {
-//	memset(l->dw, 0, sizeof(real)* l->ksize*l->ksize*l->ich);
 	for (int i=0; i<l->p->batch; i++) {
 		gemm_rnt(l->ich, l->ksize*l->ksize*l->ch, l->sx*l->sy*1, 1, l->dOut +l->outputs*i, l->p->mem, 1, l->dw);
 	}
-	CatsEye_optimizer(l);
+	SOLVER(l);
 }
 
 // calculate forward propagation
@@ -1700,7 +1697,7 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 				l->beta[n] = 0;
 			}
 		}*/
-		if (!l->wsize) continue;
+		if (!l->wsize) { l->dw = 0; continue; }
 
 		// initialize weights, range depends on the research of Y. Bengio et al. (2010)
 		// http://jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf
@@ -1922,7 +1919,7 @@ static inline void _CatsEye_DataAugmentation(real *p, real *s, int sx, int sy, i
 	if (f&CATS_TRANSLATION_X) tbl[n++] = CATS_TRANSLATION_X;
 	if (f&CATS_TRANSLATION_Y) tbl[n++] = CATS_TRANSLATION_Y;
 
-	int type = n ? irandom(0, n-1) : 0;
+	int type = n ? irand(0, n-1) : 0;
 	switch (tbl[type]) {
 	case CATS_NOISE: // noise
 		for (int i=0; i<sx*sy*ch; i++) {
@@ -1938,13 +1935,13 @@ static inline void _CatsEye_DataAugmentation(real *p, real *s, int sx, int sy, i
 		_CatsEye_DA_zoom(p, s, sx, sy, ch, random(0, 1));
 		break;
 	case CATS_TRANSLATION: // translation
-		_CatsEye_DA_translationXY(p, s, sx, sy, ch, irandom(0, sx), irandom(0, sy));
+		_CatsEye_DA_translationXY(p, s, sx, sy, ch, irand(0, sx), irand(0, sy));
 		break;
 	case CATS_TRANSLATION_X: // translationX
-		_CatsEye_DA_translationXY(p, s, sx, sy, ch, irandom(0, sx), 0);
+		_CatsEye_DA_translationXY(p, s, sx, sy, ch, irand(0, sx), 0);
 		break;
 	case CATS_TRANSLATION_Y: // translationY
-		_CatsEye_DA_translationXY(p, s, sx, sy, ch, 0, irandom(0, sy));
+		_CatsEye_DA_translationXY(p, s, sx, sy, ch, 0, irand(0, sy));
 		break;
 
 	case CATS_ORIGINAL: // original
@@ -1989,7 +1986,7 @@ static inline void _CatsEye_forward(CatsEye *this)
 	int8_t *label_data = (int8_t*)this->label_data;
 	for (int b=0; b<this->batch; b++) {
 		int sample = this->shuffle_buffer[this->shuffle_base];
-		//memcpy(l->x +l->inputs*b, this->learning_data+sample*this->slide, l->inputs*sizeof(real));
+//		memcpy(l->x +l->inputs*b, this->learning_data+sample*this->slide, l->inputs*sizeof(real));
 		_CatsEye_DataAugmentation(l->x +l->inputs*b, this->learning_data+sample*this->slide, l->sx, l->sy, l->ich, this->da);
 		memcpy(label +lsize*b, label_data+lsize*sample, lsize/*bytes*/);
 
@@ -2074,43 +2071,14 @@ static inline void _CatsEye_update(CatsEye *this)
 {
 	CatsEye_layer *l = &this->layer[this->end];
 	for (int i=this->end; i>=this->start; i--) {
-#ifdef CATS_CHECK
-		struct timespec start, stop;
-		clock_gettime(CLOCK_REALTIME, &start);
-#endif
-		if (!(l->fix&1)) l->update(l);
+		if (l->dw) SOLVER(l);
 		l--;
-#ifdef CATS_CHECK
-		clock_gettime(CLOCK_REALTIME, &stop);
-		l->update_time = (l->backward_time + time_diff(&start, &stop)) * 0.5;
-#endif
 	}
 }
 static inline void _CatsEye_zero_grad(CatsEye *this)
 {
-	if (0/*l->lambda*/) {
-		// https://qiita.com/Nezura/items/f7416ad17d79ccd1eab6
-		real *w = this->wdata;
-		real *dw = this->wdata +this->wsize;
-		for (int n=0; n<this->wsize; n++) {
-			*dw++ = 0.001 *(*w++); // grad of L2 norm
-//			*dw++ = -0.01 * ((*w > 0) - (*w < 0)); // L1
-//			w++;
-		}
-		// https://atcold.github.io/pytorch-Deep-Learning/ja/week14/14-3/
-/*		CatsEye_layer *l = &this->layer[this->end];
-		for (int i=this->end; i>=this->start; i--) {
-			for (int n=0; n<l->wsize; n++) l->dw[n] = l->lambda * l->w[n]; // grad of L2 norm
-			l--;
-		}*/
-	} else {
-		memset(this->wdata +this->wsize, 0, this->wsize*sizeof(real)); // clear all l->dw
-	}
-}
-static inline void _CatsEye_zero_grad(CatsEye *this)
-{
-	memset(this->ddata, 0, this->dsize*this->batch*sizeof(real)); // clear all l->d (zero_grad)
-//	memset(this->wdata +this->wsize, 0, this->wsize*sizeof(real)); // clear all l->dw
+	//memset(this->ddata, 0, this->dsize*this->batch*sizeof(real)); // clear all l->d (zero_grad)
+	memset(this->wdata +this->wsize, 0, this->wsize*sizeof(real)); // clear all l->dw
 }
 #endif
 int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random, int verify)
@@ -2446,7 +2414,4 @@ real *CatsEye_loadMnist(char *name, char *name2, int sample, int **label)
 	return x;
 }
 
-#undef TYPE
-#undef SIZE
-#undef CH
-#undef RANDOM
+#undef SOLVER
