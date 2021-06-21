@@ -272,7 +272,7 @@ typedef struct __CatsEye_layer {
 	// research
 	real forward_time;
 	real backward_time;
-	real update_time;
+//	real update_time;
 
 	void (*forward)(struct __CatsEye_layer*);
 	void (*backward)(struct __CatsEye_layer*);
@@ -613,7 +613,6 @@ static void CatsEye_convolutional_update(CatsEye_layer *l)
 #else
 	real *workspace = l->ksize!=1 ? l->workspace : l->x;
 	gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*l->p->batch, -l->eta, l->dOut, workspace, 0, l->dw);
-//	SOLVER(gemm_rnt, l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*l->p->batch, -l->eta, l->dOut, workspace, 1, l->w);
 #endif
 }
 
@@ -1906,10 +1905,11 @@ typedef enum {
 	CATS_TRANSLATION = 16,
 	CATS_TRANSLATION_X = 32,
 	CATS_TRANSLATION_Y = 64,
+	CATS_FLIP = 128,
 } CATS_DA_TYPE;
 static inline void _CatsEye_DataAugmentation(real *p, real *s, int sx, int sy, int ch, int f)
 {
-	int tbl[7], n=0;
+	int tbl[8], n=0;
 	tbl[n] = CATS_ORIGINAL;
 	if (f&CATS_ORIGINAL) tbl[n++] = CATS_ORIGINAL;
 	if (f&CATS_NOISE) tbl[n++] = CATS_NOISE;
@@ -1918,6 +1918,7 @@ static inline void _CatsEye_DataAugmentation(real *p, real *s, int sx, int sy, i
 	if (f&CATS_TRANSLATION) tbl[n++] = CATS_TRANSLATION;
 	if (f&CATS_TRANSLATION_X) tbl[n++] = CATS_TRANSLATION_X;
 	if (f&CATS_TRANSLATION_Y) tbl[n++] = CATS_TRANSLATION_Y;
+	if (f&CATS_FLIP) tbl[n++] = CATS_FLIP;
 
 	int type = n ? irand(0, n-1) : 0;
 	switch (tbl[type]) {
@@ -1938,10 +1939,13 @@ static inline void _CatsEye_DataAugmentation(real *p, real *s, int sx, int sy, i
 		_CatsEye_DA_translationXY(p, s, sx, sy, ch, irand(0, sx), irand(0, sy));
 		break;
 	case CATS_TRANSLATION_X: // translationX
-		_CatsEye_DA_translationXY(p, s, sx, sy, ch, irand(0, sx), 0);
+		_CatsEye_DA_translationXY(p, s, sx, sy, ch, irand(0, sx), sy/*0?*/);
 		break;
 	case CATS_TRANSLATION_Y: // translationY
 		_CatsEye_DA_translationXY(p, s, sx, sy, ch, 0, irand(0, sy));
+		break;
+	case CATS_FLIP:
+		_CatsEye_DA_translationXY(p, s, sx, sy, ch, sx, sy/*0?*/);
 		break;
 
 	case CATS_ORIGINAL: // original
@@ -1986,8 +1990,8 @@ static inline void _CatsEye_forward(CatsEye *this)
 	int8_t *label_data = (int8_t*)this->label_data;
 	for (int b=0; b<this->batch; b++) {
 		int sample = this->shuffle_buffer[this->shuffle_base];
-//		memcpy(l->x +l->inputs*b, this->learning_data+sample*this->slide, l->inputs*sizeof(real));
-		_CatsEye_DataAugmentation(l->x +l->inputs*b, this->learning_data+sample*this->slide, l->sx, l->sy, l->ich, this->da);
+		memcpy(l->x +l->inputs*b, this->learning_data+sample*this->slide, l->inputs*sizeof(real));
+//		_CatsEye_DataAugmentation(l->x +l->inputs*b, this->learning_data+sample*this->slide, l->sx, l->sy, l->ich, this->da);
 		memcpy(label +lsize*b, label_data+lsize*sample, lsize/*bytes*/);
 
 		this->shuffle_base++;
@@ -2066,21 +2070,19 @@ static inline void _CatsEye_backward(CatsEye *this)
 #endif
 	}
 }
-#if 0
 static inline void _CatsEye_update(CatsEye *this)
 {
-	CatsEye_layer *l = &this->layer[this->end];
+/*	CatsEye_layer *l = &this->layer[this->end];
 	for (int i=this->end; i>=this->start; i--) {
 		if (l->dw) SOLVER(l);
 		l--;
-	}
+	}*/
 }
 static inline void _CatsEye_zero_grad(CatsEye *this)
 {
 	//memset(this->ddata, 0, this->dsize*this->batch*sizeof(real)); // clear all l->d (zero_grad)
 	memset(this->wdata +this->wsize, 0, this->wsize*sizeof(real)); // clear all l->dw
 }
-#endif
 int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random, int verify)
 {
 	int a = this->end;	// layers-1
