@@ -473,7 +473,7 @@ static void CatsEye_linear_update(CatsEye_layer *l)
 #else
 	// W := W - eta * dOutT * x
 	gemm_rtn(l->outputs, l->inputs, l->p->batch, 1, l->dOut, l->x, 1, l->dw);
-	SOLVER(l);
+//	SOLVER(l);
 	for (int n=0; n<l->p->batch; n++) {
 		for (int i=0; i<l->outputs; i++) l->w[l->inputs*l->outputs +i] -= l->eta * l->dOut[n*l->outputs +i]; // bias!!
 	}
@@ -609,7 +609,7 @@ static void CatsEye_convolutional_update(CatsEye_layer *l)
 //	for (int i=0; i<10; i++) printf("%f ", l->dOut[i +l->outputs*(l->p->batch-1)]);
 //	for (int i=0; i<10; i++) printf("%f ", l->dw[i]);
 //	printf("w:%d %d\n", l->wsize, l->ch*l->ksize*l->ksize*l->ich);
-	SOLVER(l);
+//	SOLVER(l);
 #else
 	real *workspace = l->ksize!=1 ? l->workspace : l->x;
 	gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*l->p->batch, -l->eta, l->dOut, workspace, 0, l->dw);
@@ -635,7 +635,7 @@ static void CatsEye_deconvolutional_update(CatsEye_layer *l)
 	for (int i=0; i<l->p->batch; i++) {
 		gemm_rnt(l->ich, l->ksize*l->ksize*l->ch, l->sx*l->sy*1, 1, l->dOut +l->outputs*i, l->p->mem, 1, l->dw);
 	}
-	SOLVER(l);
+//	SOLVER(l);
 }
 
 // calculate forward propagation
@@ -1696,7 +1696,7 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 				l->beta[n] = 0;
 			}
 		}*/
-		if (!l->wsize) { l->dw = 0; continue; }
+		if (!l->wsize) { /*l->dw = 0;*/ continue; }
 
 		// initialize weights, range depends on the research of Y. Bengio et al. (2010)
 		// http://jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf
@@ -1958,6 +1958,7 @@ static inline void _CatsEye_shuffle(int *array, int n)
 	for (int i=0; i<n-1; i++) {
 //		int j = i + rand() / (RAND_MAX / (n - i) + 1);
 		int j = i + (int)(xrand() / (XOR128_MAX / (n-i) +1));
+		if (j>=n) printf(" %d\n",j); // FIXME: err in espcn.c at here??
 		int t = array[j];
 		array[j] = array[i];
 		array[i] = t;
@@ -2054,7 +2055,7 @@ static inline void _CatsEye_forward(CatsEye *this)
 }
 static inline void _CatsEye_backward(CatsEye *this)
 {
-	memset(this->wdata +this->wsize, 0, this->wsize*sizeof(real)); // clear all l->dw
+//	memset(this->wdata +this->wsize, 0, this->wsize*sizeof(real)); // clear all l->dw
 	CatsEye_layer *l = &this->layer[this->end];
 	for (int i=this->end; i>=this->start; i--) {
 #ifdef CATS_CHECK
@@ -2063,18 +2064,19 @@ static inline void _CatsEye_backward(CatsEye *this)
 #endif
 		if (/*!(l->fix&2)*/i>this->stop) l->backward(l);
 		if (!(l->fix&1)) l->update(l);
-		l--;
+		if (l->wsize) SOLVER(l);
 #ifdef CATS_CHECK
 		clock_gettime(CLOCK_REALTIME, &stop);
 		l->backward_time = (l->backward_time + time_diff(&start, &stop)) * 0.5;
 #endif
+		l--;
 	}
 }
 static inline void _CatsEye_update(CatsEye *this)
 {
 /*	CatsEye_layer *l = &this->layer[this->end];
 	for (int i=this->end; i>=this->start; i--) {
-		if (l->dw) SOLVER(l);
+		if (l->wsize) SOLVER(l);
 		l--;
 	}*/
 }
@@ -2103,9 +2105,9 @@ int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random,
 		_CatsEye_data_transfer(this, x, t, N);
 		for (int n=0; n<repeat; n++) {
 			_CatsEye_forward(this);
-//			_CatsEye_zero_grad(this);
+			_CatsEye_zero_grad(this);
 			_CatsEye_backward(this);
-//			_CatsEye_update(this);
+			_CatsEye_update(this);
 		}
 
 		real err = 0;
