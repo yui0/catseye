@@ -13,8 +13,8 @@
 
 //#define CATS_USE_ADAM
 //#define ETA	1e-4
-#define ETA	0.01	// batch 1
-//#define ETA	0.001	// batch 64
+#define ETA	0.01	// 77.0% (batch 1 with SGD)
+//#define ETA	0.001	// batch 64 with SGD
 //#define BATCH	64
 #define BATCH	1
 #define NAME	"mnist_cnn_train2"

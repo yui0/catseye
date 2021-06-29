@@ -1991,9 +1991,13 @@ static inline void _CatsEye_forward(CatsEye *this)
 	int8_t *label_data = (int8_t*)this->label_data;
 	for (int b=0; b<this->batch; b++) {
 		int sample = this->shuffle_buffer[this->shuffle_base];
-		memcpy(l->x +l->inputs*b, this->learning_data+sample*this->slide, l->inputs*sizeof(real));
-//		_CatsEye_DataAugmentation(l->x +l->inputs*b, this->learning_data+sample*this->slide, l->sx, l->sy, l->ich, this->da);
-		memcpy(label +lsize*b, label_data+lsize*sample, lsize/*bytes*/);
+		if (this->da) {
+			_CatsEye_DataAugmentation(l->x +l->inputs*b, this->learning_data+sample*this->slide, l->sx, l->sy, l->ich, this->da);
+			memcpy(label +lsize*b, label_data+lsize*sample, lsize/*bytes*/);
+		} else {
+			memcpy(l->x +l->inputs*b, this->learning_data+sample*this->slide, l->inputs*sizeof(real));
+			memcpy(label +lsize*b, label_data+lsize*sample, lsize/*bytes*/);
+		}
 
 		this->shuffle_base++;
 		if (this->shuffle_base>=this->data_num) this->shuffle_base = 0;
@@ -2064,7 +2068,7 @@ static inline void _CatsEye_backward(CatsEye *this)
 #endif
 		if (/*!(l->fix&2)*/i>this->stop) l->backward(l);
 		if (!(l->fix&1)) l->update(l);
-		if (l->wsize) SOLVER(l);
+//		if (l->wsize) SOLVER(l);
 #ifdef CATS_CHECK
 		clock_gettime(CLOCK_REALTIME, &stop);
 		l->backward_time = (l->backward_time + time_diff(&start, &stop)) * 0.5;
@@ -2074,11 +2078,11 @@ static inline void _CatsEye_backward(CatsEye *this)
 }
 static inline void _CatsEye_update(CatsEye *this)
 {
-/*	CatsEye_layer *l = &this->layer[this->end];
+	CatsEye_layer *l = &this->layer[this->end];
 	for (int i=this->end; i>=this->start; i--) {
 		if (l->wsize) SOLVER(l);
 		l--;
-	}*/
+	}
 }
 static inline void _CatsEye_zero_grad(CatsEye *this)
 {
