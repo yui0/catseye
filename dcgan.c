@@ -339,7 +339,6 @@ int main()
 	// 訓練
 	int step = 0;
 	int repeat = SAMPLE/cat.batch;
-//	real grad[BATCH];
 	printf("Starting training...\n");
 	for (int n=cat.epoch; n<EPHOCS; n++) {
 		_CatsEye_data_transfer(&cat, x, lreal, SAMPLE);

@@ -1881,15 +1881,11 @@ static inline void _CatsEye_DA_translationXY(real *p, real *s, int w, int h, int
 {
 	for (int c=0; c<ch; c++) {
 		for (int y=0; y<py; y++) {
-//			memcpy(p, s+(py-y)*sx+px, (sx-px)*sizeof(real));
-//			for (int x=0; x<px; x++) p[px+x] = s[(py-y)*sx +px-x];
 			for (int x=0; x<px; x++) p[x] = s[(py-y)*w +px-x];
 			memcpy(p+px, s+(py-y)*w, (w-px)*sizeof(real));
 			p += w;
 		}
 		for (int y=0; y<(h-py); y++) {
-//			memcpy(p, s+y*w+px, (w-px)*sizeof(real));
-//			for (int x=0; x<px; x++) p[px+x] = s[y*w +px-x];
 			for (int x=0; x<px; x++) p[x] = s[(py-y)*w +px-x];
 			memcpy(p+px, s+(py-y)*w, (w-px)*sizeof(real));
 			p += w;
