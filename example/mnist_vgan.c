@@ -7,24 +7,26 @@
 // gcc mnist_gan.c -o mnist_gan -lm -Ofast -fopenmp -lgomp
 // clang mnist_gan.c -o mnist_gan -lm -Ofast
 
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
+
 #define CATS_USE_ADAM
 #define ADAM_BETA1	0.5
 #define ADAM_BETA2	0.999
 #define ETA		0.0002
 
+#define NAME		"mnist_vgan"
+//#define ZDIM		100
+//#define ZDIM		62
+#define ZDIM		10
+
+#define SAMPLE		60000
+//#define BATCH		1
+#define BATCH		64
+//#define BATCH		128
+
 #define CATS_USE_FLOAT
 #include "catseye.h"
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#include "stb_image_write.h"
-
-#define NAME	"mnist_vgan"
-//#define ZDIM	100
-//#define ZDIM	62
-#define ZDIM	10
-
-#define SAMPLE	60000
-//#define BATCH	1
-#define BATCH	64
 
 int main()
 {
@@ -38,12 +40,15 @@ int main()
 		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 
 		{       0, CATS_LINEAR, ETA, .outputs=256 },
+//		{       0, CATS_BATCHNORMAL },
 		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 
 		{       0, CATS_LINEAR, ETA, .outputs=512 },
+//		{       0, CATS_BATCHNORMAL },
 		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 
 		{       0, CATS_LINEAR, ETA, .outputs=1024 },
+//		{       0, CATS_BATCHNORMAL },
 		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 
 		{       0, CATS_LINEAR, ETA, .outputs=size },
@@ -56,6 +61,9 @@ int main()
 		{       0, CATS_LINEAR, ETA, .outputs=256 },
 		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
 
+		{       0, CATS_LINEAR, ETA, .outputs=128 },
+		{       0, CATS_ACT_LEAKY_RELU, .alpha=0.2 },
+
 		{       0, CATS_LINEAR, ETA, .outputs=1 },
 		{       1, CATS_ACT_SIGMOID },
 		{       1, CATS_SIGMOID_BCE, .name="Output" },
@@ -65,7 +73,6 @@ int main()
 	cat.epoch = 0;
 	int discriminator = CatsEye_getLayer(&cat, "Discriminator");
 	int output = CatsEye_getLayer(&cat, "Output");
-//	printf("Discriminator: #%d\n", discriminator);
 	if (!CatsEye_loadCats(&cat, NAME".cats")) {
 		printf("Loading success!!\n");
 	}
@@ -83,8 +90,8 @@ int main()
 	}
 	fread(data, 16, 1, fp);		// header
 	fread(data, size, sample, fp);	// data
-//	for (int i=0; i<sample*size; i++) x[i] = data[i] / 255.0;
-	for (int i=0; i<sample*size; i++) x[i] = data[i] /255.0 *2 -1; // [0,1] => [-1,1]
+	for (int i=0; i<sample*size; i++) x[i] = data[i] / 255.0;
+//	for (int i=0; i<sample*size; i++) x[i] = data[i] /255.0 *2 -1; // [0,1] => [-1,1]
 	fclose(fp);
 	free(data);
 	printf("OK\n");
@@ -101,27 +108,28 @@ int main()
 	// 訓練
 	int step = 0;
 	int repeat = SAMPLE/cat.batch;
-//	real grad[BATCH];
 	printf("Starting training...\n");
-	for (int n=cat.epoch; n<40; n++) {
+	for (int n=cat.epoch; n<30; n++) {
 		_CatsEye_data_transfer(&cat, x, lreal, SAMPLE);
 		int base = cat.shuffle_base;
 		for (int r=0; r<repeat; r++) {
 			// Training Discriminator [ D(x) ]
+//			printf("Training Discriminator #%d: phase 1 [real]\n", n);
 			cat.start = discriminator;
 			cat.slide = size;
-//			printf("Training Discriminator #%d: phase 1 [real]\n", n);
 			cat.learning_data = x;
 			cat.label_data = lreal;
 			cat.shuffle_base = base;
 			_CatsEye_forward(&cat);
 			base = cat.shuffle_base;
 			real loss = cat.loss;
-//			memcpy(grad, cat.layer[output].dIn, sizeof(real)*BATCH);
 //			cat.start = discriminator;
+			_CatsEye_zero_grad(&cat);
 			_CatsEye_backward(&cat);
+//			_CatsEye_update(&cat);
 
 			// Training Discriminator [ D(G(z)) = 0 ]
+//			printf("Training Discriminator #%d: phase 2 [fake]\n", n);
 			for (int i=0; i<ZDIM*SAMPLE; i++) {
 //				noise[i] = random(0, 1);
 //				noise[i] = random(-1, 1);
@@ -130,34 +138,34 @@ int main()
 			cat.start = 0;
 //			cat.stop = discriminator+1;
 			cat.slide = ZDIM;
-//			for (int i=0; i<discriminator; i++) cat.layer[i].fix = 1;
-//			printf("Training Discriminator #%d: phase 2 [fake]\n", n);
 			cat.learning_data = noise;
 			cat.label_data = lfake;
 			_CatsEye_forward(&cat);
 			loss += cat.loss;
-//			for (int i=0; i<BATCH; i++) grad[i] = (grad[i] + cat.layer[output].dIn[i])/2;
-//			memcpy(cat.layer[output].dIn, grad, sizeof(real)*BATCH);
 			cat.start = discriminator;
+//			_CatsEye_zero_grad(&cat);
 			_CatsEye_backward(&cat);
+			_CatsEye_update(&cat);
 
 			if ((step % 1)==0) {
 				// Training Generater [ D(G(z)) = 1 ]
+//				printf("Training Generater #%d\n", n);
 				for (int i=0; i<ZDIM*SAMPLE; i++) {
 					noise[i] = rand_normal(0, 1);
 				}
 				cat.start = 0;
 				cat.slide = ZDIM;
 				for (int i=discriminator; i<cat.layers; i++) cat.layer[i].fix = 1;
-//				printf("Training Generater #%d\n", n);
 				cat.learning_data = noise;
 				cat.label_data = lreal;
 				_CatsEye_forward(&cat);
+				_CatsEye_zero_grad(&cat);
 				_CatsEye_backward(&cat);
+				_CatsEye_update(&cat);
 				for (int i=discriminator; i<cat.layers; i++) cat.layer[i].fix = 0;
 			}
 //			if ((step % 100)==0) {
-				printf("Epoch: %d/40, Step: %d, D Loss: %f, G Loss: %f\n", n, step, loss, cat.loss);
+				printf("Epoch: %d/30, Step: %d, D Loss: %f, G Loss: %f\n", n, step, loss, cat.loss);
 //			}
 //			if ((step % 1000)==0) {
 			if ((step % 100)==0) {
