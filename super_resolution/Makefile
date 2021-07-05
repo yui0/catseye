@@ -9,7 +9,7 @@ PROGRAM = $(patsubst %.c,%,$(wildcard *.c))
 #LDLIBS = -lm -Wl,-s -Wl,--gc-sections
 
 CC = clang
-CFLAGS = -I.. -Wfloat-conversion -Ofast -march=native -funroll-loops -finline-functions -ffp-contract=fast -mf16c -ftree-vectorize
+CFLAGS = -I.. -Wfloat-conversion -Ofast -march=native -mtune=native -fomit-frame-pointer -funroll-loops -finline-functions -ffp-contract=fast -mf16c -ftree-vectorize
 LDFLAGS = -lm -Wl,-s -Wl,--gc-sections
 
 UNAME_S := $(shell uname -s)

@@ -45,7 +45,7 @@ Neural network library written in C and Javascript
   - PNG
   - cifar [https://www.cs.toronto.edu/~kriz/cifar.html]
   - MNIST
-  - Data Augmentation (noise, translation)
+  - Data Augmentation (noise, zoom, translation)
 
 ## Usage
 
@@ -151,3 +151,7 @@ $ ./sin
   - Recognizing handwritten digits on Web [http://d.hatena.ne.jp/sugyan/20151124/1448292129]
   - Image generator by Denoising Autoencoder [http://joisino.hatenablog.com/entry/2015/09/09/224157]
   - Neural Network 'paints' an image [http://cs.stanford.edu/people/karpathy/convnetjs/demo/image_regression.html]
+- Data
+  - [UTKFace - Large Scale Face Dataset](https://susanqq.github.io/UTKFace/)
+  - [Caltech 101](http://www.vision.caltech.edu/Image_Datasets/Caltech101/)
+
