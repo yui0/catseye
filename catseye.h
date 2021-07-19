@@ -219,9 +219,9 @@ typedef struct __CatsEye_layer {
 	int wtype;		// weight init type
 	real wrange;		// weight init
 
-	int ksize;		// CNN
+	int ksize, kw, kh;	// CNN
 	int stride;		// CNN
-	int padding;		// CNN
+	int padding, pw, ph;	// CNN
 	int px, py, pz;		// CNN (AUTO: padding)
 	int ich, ch;		// CNN
 	int sx, sy, ox, oy;	// CNN (AUTO: i/o size)
@@ -544,11 +544,11 @@ static void CatsEye_convolutional_forward(CatsEye_layer *l)
 		if (l->ksize==1) {
 			workspace = l->x +l->inputs*i;
 		} else {
-			workspace = l->workspace +l->ox*l->oy*l->ksize*l->ksize*l->ich *i;
-			im2col(l->x +l->inputs*i, l->ich, l->sy, l->sx, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, workspace);
+			workspace = l->workspace +l->ox*l->oy*l->kw*l->kh*l->ich *i;
+			im2col(l->x +l->inputs*i, l->ich, l->sy, l->sx, l->kh, l->kw, l->ph, l->pw, l->stride, l->stride, workspace);
 		}
 		// z = W * x [A(m,k) B(k,n) C(m,n)], cnhw
-		gemm_rnn(l->ch, l->ox*l->oy*1, l->ksize*l->ksize*l->ich, 1, l->w, workspace, 0, l->z +l->outputs*i);
+		gemm_rnn(l->ch, l->ox*l->oy*1, l->kw*l->kh*l->ich, 1, l->w, workspace, 0, l->z +l->outputs*i);
 
 		// https://docs.nvidia.com/deeplearning/performance/dl-performance-convolutional/index.html
 		// output := workspace * weights
@@ -574,12 +574,12 @@ static void CatsEye_convolutional_backward(CatsEye_layer *l)
 	for (int i=0; i<l->p->batch; i++) {
 		real *workspace = l->ksize!=1 ? l->p->mem : l->dIn +l->inputs*i;
 		// dIn = W**T * dOut [A(m,k) B(k,n) C(m,n)]
-		gemm_rtn(l->ksize*l->ksize*l->ich, l->ox*l->oy*1, l->ch, 1, l->w, l->dOut +l->outputs*i, 0, workspace);
+		gemm_rtn(l->kw*l->kh*l->ich, l->ox*l->oy*1, l->ch, 1, l->w, l->dOut +l->outputs*i, 0, workspace);
 		/*printf("gemm_rtn: ");
 		if (i==l->p->batch-1) for (int i=0; i<10; i++) printf("%f ", workspace[i]);
 		printf("\n");*/
 		if (l->ksize!=1) {
-			col2im(workspace, l->ich, l->sy, l->sx, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, l->dIn +l->inputs*i);
+			col2im(workspace, l->ich, l->sy, l->sx, l->kh, l->kw, l->ph, l->pw, l->stride, l->stride, l->dIn +l->inputs*i);
 //			for (int n=0; n<10; n++) printf("%f ", l->dIn[l->inputs*i + l->inputs-1-n]);
 //			printf("[%d]\n", l->wsize);
 		}
@@ -598,10 +598,10 @@ static void CatsEye_convolutional_update(CatsEye_layer *l)
 {
 #if 1
 	for (int i=0; i<l->p->batch; i++) {
-		real *workspace = l->ksize!=1 ? l->workspace +l->ox*l->oy*l->ksize*l->ksize*l->ich *i : l->x +l->inputs*i;
+		real *workspace = l->ksize!=1 ? l->workspace +l->ox*l->oy*l->kw*l->kh*l->ich *i : l->x +l->inputs*i;
 		// W = W - eta * dOut * x**T [A(m,k) B(k,n) C(m,n)]
 //		gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, 1, l->dOut +l->outputs*i, workspace, 1, l->dw);
-		gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, 1.0/l->p->batch, l->dOut +l->outputs*i, workspace, 1, l->dw);
+		gemm_rnt(l->ch, l->kw*l->kh*l->ich, l->ox*l->oy*1, 1.0/l->p->batch, l->dOut +l->outputs*i, workspace, 1, l->dw);
 //		for (int i=0; i<100; i++) printf("%f ", l->dw[l->wsize-1-i]);
 //		printf("\n");
 	}
@@ -1281,6 +1281,7 @@ static void CatsEye_none(CatsEye_layer *l)
 static void (*_CatsEye_layer_forward[])(CatsEye_layer *l) = {
 	CatsEye_linear_forward,
 	CatsEye_convolutional_forward,
+	CatsEye_convolutional_forward,		// conv1d
 	CatsEye_deconvolutional_forward,
 	CatsEye_maxpooling_forward,
 	CatsEye_avgpooling_forward,
@@ -1317,6 +1318,7 @@ static void (*_CatsEye_layer_forward[])(CatsEye_layer *l) = {
 static void (*_CatsEye_layer_backward[])(CatsEye_layer *l) = {
 	CatsEye_linear_backward,
 	CatsEye_convolutional_backward,
+	CatsEye_convolutional_backward,		// conv1d
 	CatsEye_deconvolutional_backward,
 	CatsEye_maxpooling_backward,
 	CatsEye_avgpooling_backward,
@@ -1346,13 +1348,14 @@ static void (*_CatsEye_layer_backward[])(CatsEye_layer *l) = {
 	CatsEye_loss_delivative_cross_entropy,
 	CatsEye_loss_delivative_cross_entropy_multiclass, // 0-1
 
-	CatsEye_loss_delivative_mse,	// (y-t) identity with mse loss
-	CatsEye_loss_delivative_mse,	// (y-t) sigmoid with cross-entropy loss
-	CatsEye_loss_delivative_0_1,	// (y-t) softmax with multi cross-entropy loss
+	CatsEye_loss_delivative_mse,		// (y-t) identity with mse loss
+	CatsEye_loss_delivative_mse,		// (y-t) sigmoid with cross-entropy loss
+	CatsEye_loss_delivative_0_1,		// (y-t) softmax with multi cross-entropy loss
 };
 static void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
 	CatsEye_linear_update,
 	CatsEye_convolutional_update,
+	CatsEye_convolutional_update,		// conv1d
 	CatsEye_deconvolutional_update,
 	CatsEye_none,	// maxpool
 	CatsEye_none,	// avgpool
@@ -1387,7 +1390,7 @@ static void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
 	CatsEye_none,	// softmax with multi cross-entropy loss
 };
 typedef enum {
-	CATS_LINEAR, CATS_CONV, CATS_DECONV, CATS_MAXPOOL, CATS_AVGPOOL, CATS_GAP,
+	CATS_LINEAR, CATS_CONV, CATS_CONV1D, CATS_DECONV, CATS_MAXPOOL, CATS_AVGPOOL, CATS_GAP,
 	CATS_PIXELSHUFFLER, /*CATS_RECURRENT,*/
 	CATS_PADDING, CATS_BATCHNORMAL,
 
@@ -1404,7 +1407,7 @@ typedef enum {
 	CATS_LOSS_IDENTITY_MSE, CATS_SIGMOID_BCE, CATS_SOFTMAX_CE
 } CATS_LAYER_TYPE;
 char CatsEye_string[][16] = {
-	"dense", "conv", "deconv", "max", "avg", "gap",
+	"dense", "conv", "conv1d", "deconv", "max", "avg", "gap",
 	"subpixel", /*"rnn",*/
 	"pad", "bn",
 
@@ -1486,21 +1489,38 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		}
 		if (!l->sx && l->ich) l->sx = l->sy = (int)sqrt(l->inputs/l->ich);
 
+		if (!l->kw) l->kw = l->kh = l->ksize; // conv2d, conv1d
+		else l->ksize = l->kw;
+		if (!l->pw) l->pw = l->ph = l->padding; // conv2d, conv1d
+		else l->padding = l->pw;
+
 		n[i] = m[i] = b[i] = 0;
 		switch (l->type) {
 		case CATS_CONV:
-			l->ox = /*l->px =*/ (l->sx +2*l->padding -l->ksize) /l->stride +1;
-			l->oy = /*l->py =*/ (l->sy +2*l->padding -l->ksize) /l->stride +1;
+			l->ox = /*l->px =*/ (l->sx +2*l->pw -l->kw) /l->stride +1;
+			l->oy = /*l->py =*/ (l->sy +2*l->ph -l->kh) /l->stride +1;
 /*			l->px -= l->padding*2;
 			l->py -= l->padding*2;
 			l->pz = l->padding +l->padding*l->ox;*/
 			l->outputs = l->ch * l->ox * l->oy;
-			n[i] = l->ksize * l->ksize;	// kernel size
+			n[i] = l->kw * l->kh;		// kernel size
 			m[i] = l->ch * l->ich;		// channel
 			l->wsize = n[i] * m[i];
-			l->workspace = malloc(sizeof(real)* l->ox*l->oy*l->ksize*l->ksize*l->ich *this->batch);
-			printf("%3d %-12s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
+			l->workspace = malloc(sizeof(real)* l->ox*l->oy*l->kw*l->kh*l->ich *this->batch);
+			printf("%3d %-12s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->ch, l->kw, l->kh, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 //			if ((l->sx +2*l->padding -l->ksize) % l->stride > 0) printf("\n\t↑ warning: stride is strange!\n");
+			break;
+		case CATS_CONV1D:
+			l->sx = l->inputs / l->ich;
+			l->ox = (l->sx +2*l->pw -l->ksize) /l->stride +1;
+			l->oy = l->sy = l->kh = 1;
+			l->ph = 0;
+			l->outputs = l->ch * l->ox * l->oy;
+			n[i] = l->kw;			// kernel size
+			m[i] = l->ch * l->ich;		// channel
+			l->wsize = n[i] * m[i];
+			l->workspace = malloc(sizeof(real)* l->ox*l->oy*l->kw*l->ich *this->batch);
+			printf("%3d %-12s %4d   %d/%d %4d       x%4d -> %4d       x%4d", i+1, CatsEye_string[l->type], l->ch, l->kw, l->stride, l->sx, l->ich, l->ox, l->ch);
 			break;
 		case CATS_DECONV: // https://blog.shikoan.com/pytorch-convtranspose2d/
 			l->ox = (l->sx-1) *l->stride -2*l->padding +l->ksize;

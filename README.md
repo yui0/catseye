@@ -33,6 +33,7 @@ Neural network library written in C and Javascript
   - Layer types
     - linear (mlp)
     - convolution
+    - convolution 1d
     - deconvolution
     - Sub-Pixel Convolution (Pixel Shuffler)
     - max pooling
