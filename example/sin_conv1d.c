@@ -16,6 +16,7 @@
 
 #define ETA	1e-2
 #define BATCH	1
+#define SAMPLE	(360+64)
 
 int main()
 {
@@ -72,17 +73,17 @@ int main()
 	CatsEye__construct(&cat, u);
 
 	// 訓練データ
-	real x[sample];
-	for (int i=0; i<sample; i++) x[i] = 2.0*M_PI / sample * i;
-	real t[sample];
-	for (int i=0; i<sample; i++) t[i] = sin(x[i]);
+	real x[SAMPLE];
+	for (int i=0; i<SAMPLE; i++) x[i] = 2.0*M_PI / sample * i;
+	real t[SAMPLE];
+	for (int i=0; i<SAMPLE; i++) t[i] = sin(x[i]);
 
 	// 多層パーセプトロンの訓練
 	printf("Starting training...\n");
 	cat.slide = 1;
-	CatsEye_train(&cat, x, t, sample-64, 100/*repeat*/, sample, 0);
+	CatsEye_train(&cat, t, t+64, sample, 10/*repeat*/, sample, 0);
+//	CatsEye_train(&cat, x, t, sample-64, 100/*repeat*/, sample, 0);
 //	CatsEye_train(&cat, x, t, sample/64, 100/*repeat*/, sample/64, 0);
-//	CatsEye_train(&cat, x, t, 1, 1/*repeat*/, 1, 0);
 	printf("Training complete\n");
 //	CatsEye_save(&cat, "sin.weights");
 
@@ -121,10 +122,12 @@ int main()
 	PS_linewidth(1.5);		// output
 	//PS_setgray(0.0);
 	PS_setrgb(1.0, 0.0, 0.0);
-	CatsEye_forward(&cat, x);
+//	CatsEye_forward(&cat, x);
+	CatsEye_forward(&cat, t);
 	PS_plot(x[0], cat.layer[cat.layers-1].x[0], 3);
 	for (int i=1; i<sample; i++) {
-		CatsEye_forward(&cat, x+i);
+//		CatsEye_forward(&cat, x+i);
+		CatsEye_forward(&cat, t+i);
 		PS_plot(x[i], cat.layer[cat.layers-1].x[0], 2);
 	}
 	PS_stroke();
