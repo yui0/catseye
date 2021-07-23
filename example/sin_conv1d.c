@@ -12,15 +12,20 @@
 //#define CATS_USE_FLOAT
 //#define CATS_OPENGL
 #include "catseye.h"
+#ifdef PS
 #include "pssub.h"
+#else
+#include "svg.h"
+#endif
 
 #define ETA	1e-2
 #define BATCH	1
-#define SAMPLE	(360+64)
+#define DATA	64
+#define SAMPLE	(360+DATA)
 
 int main()
 {
-	int sample = 360;
+	const int sample = 360;
 
 /*	CatsEye_layer u[] = {
 		{   1, CATS_LINEAR, ETA },
@@ -29,9 +34,9 @@ int main()
 		{   1, CATS_LOSS_IDENTITY_MSE }, // 回帰なのでMSE
 	};*/
 	// https://www.kabuku.co.jp/developers/visualize_intermidiate_conv1d_output
-	CatsEye_layer u[] = {
+/*	CatsEye_layer u[] = {
 		// 64(1ch) >> 32(64ch)
-		{  64, CATS_CONV1D, ETA, .ksize=9, .stride=2, .padding=4, .ch=64 },
+		{DATA, CATS_CONV1D, ETA, .ksize=9, .stride=2, .padding=4, .ch=64 },
 		{   0, CATS_ACT_RELU },
 
 		// 32(64ch) >> 16(64ch)
@@ -45,11 +50,12 @@ int main()
 		// 16(32ch) >> 16(1ch)
 		{   0, CATS_CONV1D, ETA, .ksize=9, .stride=1, .padding=4, .ch=1 },
 		{   0, CATS_ACT_TANH },
+
 		{   0, CATS_LINEAR, ETA },
 
 		{   1, CATS_LOSS_IDENTITY_MSE }, // 回帰なのでMSE
-	};
-/*	// https://qiita.com/niisan-tokyo/items/a94dbd3134219f19cab1
+	};*/
+	// https://qiita.com/niisan-tokyo/items/a94dbd3134219f19cab1
 	CatsEye_layer u[] = {
 		// 64(1ch) >> 32(64ch)
 		{  64, CATS_CONV1D, ETA, .ksize=9, .stride=2, .padding=4, .ch=64 },
@@ -67,8 +73,11 @@ int main()
 		{   0, CATS_CONV1D, ETA, .ksize=9, .stride=1, .padding=4, .ch=1 },
 
 //		{   0, CATS_ACT_TANH },
-		{  16, CATS_LOSS_IDENTITY_MSE }, // 回帰なのでMSE
-	};*/
+//		{  16, CATS_LOSS_IDENTITY_MSE }, // 回帰なのでMSE
+
+		{   0, CATS_LINEAR, ETA },
+		{   1, CATS_LOSS_IDENTITY_MSE },
+	};
 	CatsEye cat = { .batch=BATCH };
 	CatsEye__construct(&cat, u);
 
@@ -81,7 +90,7 @@ int main()
 	// 多層パーセプトロンの訓練
 	printf("Starting training...\n");
 	cat.slide = 1;
-	CatsEye_train(&cat, t, t+64, sample, 10/*repeat*/, sample, 0);
+	CatsEye_train(&cat, t, t+DATA, sample, 10/*repeat*/, sample, 0);
 //	CatsEye_train(&cat, x, t, sample-64, 100/*repeat*/, sample, 0);
 //	CatsEye_train(&cat, x, t, sample/64, 100/*repeat*/, sample/64, 0);
 	printf("Training complete\n");
@@ -96,6 +105,7 @@ int main()
 	}
 	fclose(fp);
 
+#ifdef PS
 	// postscriptで表示
 	PS_init("/tmp/sin.ps");
 	PS_viewport(0.2, 0.2, 0.8, 0.8);
@@ -133,6 +143,25 @@ int main()
 	PS_stroke();
 	PS_fin();
 	system("ps2pdf /tmp/sin.ps");
+#else
+	real xdata[sample], z[sample];
+//	int16_t ts[1];
+//	ts[0] = 0;
+	for (int i=0; i<sample; i++) {
+//		CatsEye_forward(&cat, x+i);
+		CatsEye_forward(&cat, t+i);
+		z[i] = cat.layer[cat.layers-1].x[0];
+		xdata[i] = i;
+	}
+
+	// SVGで表示
+	svg *psvg = svg_create(512, 512);
+	//if (!psvg) return;
+	svg_scatter(psvg, xdata, z, sample, 0, 0);
+	svg_finalize(psvg);
+	svg_save(psvg, "/tmp/sin.svg");
+	svg_free(psvg);
+#endif
 
 	CatsEye__destruct(&cat);
 
