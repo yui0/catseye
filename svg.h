@@ -270,12 +270,16 @@ unsigned char turbo_srgb_bytes[256][3] = {{48,18,59},{50,21,67},{51,24,74},{52,2
 #ifndef real
 #define real double
 #endif
-void svg_scatter(svg* psvg, real *x, real *y, int n, int16_t *t, int tn)
+#define SVG_FRAME	1
+#define SVG_NONFILL	2
+void svg_scatter(svg* psvg, real *x/*data_x*/, real *y/*data_y*/, int n/*total data*/, int16_t *t, int tn, int flag)
 {
-	int w = 360;
-	int h = 350;
+/*	int w = 360;
+	int h = 350;*/
 	int wx = 40;
 	int wy = 40;
+	int w = psvg->width - wx*2;
+	int h = psvg->height - wy*2;
 
 	real xmin = x[0];
 	real xmax = x[0];
@@ -293,16 +297,18 @@ void svg_scatter(svg* psvg, real *x, real *y, int n, int16_t *t, int tn)
 
 	// 枠
 	char s[256];
-	svg_rectangle(psvg, w, h, wx, wy, "#fffafa", "#696969", 2, 0, 0); // 枠線
-	for (int i=0; i<6; i++) {
-		svg_line(psvg, "#a9a9a9", 1, wx+(w/6)*i, wy, wx+(w/6)*i, wy+h); // 縦線
-		sprintf(s, "%.2f", (ymax-ymin)/6*i+ymin);
-		svg_text(psvg, 0, wy+(h/6)*(6-i), "sans-serif", 8, "#000000", "#000000", s); // 縦の目盛り
-	}
-	for (int i=0; i<6; i++) {
-		svg_line(psvg, "#a9a9a9", 1, wx, wy+(h/6)*i, wx+w, wy+(h/6)*i); // 横線
-		sprintf(s, "%.2f", (xmax-xmin)/6*i+xmin);
-		svg_text(psvg, wx+(w/6)*i, wy+h+30, "sans-serif", 8, "#000000", "#000000", s); // 横の目盛り
+	if (flag&SVG_FRAME) {
+		svg_rectangle(psvg, w, h, wx, wy, "#fffafa", "#696969", 2, 0, 0); // 枠線
+		for (int i=0; i<6; i++) {
+			svg_line(psvg, "#a9a9a9", 1, wx+(w/6)*i, wy, wx+(w/6)*i, wy+h); // 縦線
+			sprintf(s, "%.2f", (ymax-ymin)/6*i+ymin);
+			svg_text(psvg, 0, wy+(h/6)*(6-i), "sans-serif", 8, "#000000", "#000000", s); // 縦の目盛り
+		}
+		for (int i=0; i<6; i++) {
+			svg_line(psvg, "#a9a9a9", 1, wx, wy+(h/6)*i, wx+w, wy+(h/6)*i); // 横線
+			sprintf(s, "%.2f", (xmax-xmin)/6*i+xmin);
+			svg_text(psvg, wx+(w/6)*i, wy+h+30, "sans-serif", 8, "#000000", "#000000", s); // 横の目盛り
+		}
 	}
 	// カラーマップ
 	if (tn) {
@@ -318,10 +324,23 @@ void svg_scatter(svg* psvg, real *x, real *y, int n, int16_t *t, int tn)
 	}
 	// 点
 	for (int i=0; i<n; i++) {
-		int c = tn ? (int)(t[i]/(real)tn*256) : 0;
-		sprintf(s, "#%02x%02x%02x", (int)turbo_srgb_bytes[c][0], (int)turbo_srgb_bytes[c][1], (int)turbo_srgb_bytes[c][2]);
+//		char *stroke = "#000080";
+		if (tn) {
+			int c = tn ? (int)(t[i]/(real)tn*256) : 0;
+			sprintf(s, "#%02x%02x%02x", (int)turbo_srgb_bytes[c][0], (int)turbo_srgb_bytes[c][1], (int)turbo_srgb_bytes[c][2]);
+		} else {
+			if (t) {
+				sprintf(s, "#%02x%02x%02x", t[0], t[1], t[2]);
+			} else {
+				sprintf(s, "#FFE4C4");
+			}
+		}
 
-		svg_circle(psvg, "#000080", 0, s, 3, (int)(wx+(x[i]-xmin)*ax), (int)(wy+(h-(y[i]-ymin)*ay)));
+		if (flag&SVG_NONFILL) {
+			svg_circle(psvg, /*s*/"red", 1, "none"/*"yellow"*/, 3, (int)(wx+(x[i]-xmin)*ax), (int)(wy+(h-(y[i]-ymin)*ay)));
+		} else {
+			svg_circle(psvg, "#000080", 0, s, 3, (int)(wx+(x[i]-xmin)*ax), (int)(wy+(h-(y[i]-ymin)*ay)));
+		}
 //		svg_circle(psvg, "#000080", 0, s, 3, (int)(wx+(x[i]-xmin)*ax), (int)(wy+(y[i]-ymin)*ay));
 	}
 }

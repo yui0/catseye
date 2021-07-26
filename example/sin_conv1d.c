@@ -144,20 +144,24 @@ int main()
 	PS_fin();
 	system("ps2pdf /tmp/sin.ps");
 #else
-	real xdata[sample], z[sample];
-//	int16_t ts[1];
-//	ts[0] = 0;
+	real ax[DATA+sample], z[DATA+sample];
+	for (int i=0; i<DATA; i++) {
+		z[i] = t[i];
+		ax[i] = i; // axis
+	}
 	for (int i=0; i<sample; i++) {
 //		CatsEye_forward(&cat, x+i);
-		CatsEye_forward(&cat, t+i);
-		z[i] = cat.layer[cat.layers-1].x[0];
-		xdata[i] = i;
+//		CatsEye_forward(&cat, t+i);
+		CatsEye_forward(&cat, z+i);
+		z[DATA+i] = cat.layer[cat.layers-1].x[0];
+		ax[DATA+i] = DATA+i;
 	}
 
 	// SVGで表示
 	svg *psvg = svg_create(512, 512);
 	//if (!psvg) return;
-	svg_scatter(psvg, xdata, z, sample, 0, 0);
+	svg_scatter(psvg, ax, z, DATA+sample, 0, 0, SVG_FRAME);
+	svg_scatter(psvg, ax, t/*+64*/, DATA+sample, 0, 0, SVG_NONFILL);
 	svg_finalize(psvg);
 	svg_save(psvg, "/tmp/sin.svg");
 	svg_free(psvg);
