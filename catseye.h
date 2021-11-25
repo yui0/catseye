@@ -631,10 +631,6 @@ static void CatsEye_convolutional_update(CatsEye_layer *l)
 static void CatsEye_deconvolutional_forward(CatsEye_layer *l)
 {
 	for (int i=0; i<l->p->batch; i++) {
-//		real *workspace = /*l->ksize!=1 ?*/ l->workspace +l->sx*l->sy*l->kw*l->kh*l->ch *i /*: l->x +l->inputs*i*/;
-//		real *workspace = l->p->mem;
-//		gemm_rtn(l->ksize*l->ksize*l->ch, l->sx*l->sy*1, l->ich, 1, l->w, l->x +l->inputs*i, 0, /*l->p->mem*/workspace);
-//		col2im(/*l->p->mem*/workspace, l->ch, l->oy, l->ox, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, l->z +l->outputs*i);
 		gemm_rtn(l->ksize*l->ksize*l->ch, l->sx*l->sy*1, l->ich, 1, l->w, l->x +l->inputs*i, 0, l->p->mem);
 		col2im(l->p->mem, l->ch, l->oy, l->ox, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, l->z +l->outputs*i);
 	}
@@ -642,22 +638,16 @@ static void CatsEye_deconvolutional_forward(CatsEye_layer *l)
 static void CatsEye_deconvolutional_backward(CatsEye_layer *l)
 {
 	for (int i=0; i<l->p->batch; i++) {
-		real *workspace = /*l->ksize!=1 ?*/ l->workspace +l->sx*l->sy*l->kw*l->kh*l->ch *i /*: l->x +l->inputs*i*/;
-//		real *workspace = l->p->mem;
-		im2col(l->dOut +l->outputs*i, l->ch, l->oy, l->ox, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, /*l->p->mem*/workspace);
-		gemm_rnn(l->ich, l->sx*l->sy*1, l->ksize*l->ksize*l->ch, 1, l->w, /*l->p->mem*/workspace, 0, l->dIn +i*l->inputs);
-//		im2col(l->dOut +l->outputs*i, l->ch, l->oy, l->ox, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, l->p->mem);
-//		gemm_rnn(l->ich, l->sx*l->sy*1, l->ksize*l->ksize*l->ch, 1, l->w, l->p->mem, 0, l->dIn +i*l->inputs);
+		real *workspace = l->workspace +l->sx*l->sy*l->kw*l->kh*l->ch *i;
+		im2col(l->dOut +l->outputs*i, l->ch, l->oy, l->ox, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, workspace);
+		gemm_rnn(l->ich, l->sx*l->sy*1, l->ksize*l->ksize*l->ch, 1, l->w, workspace, 0, l->dIn +i*l->inputs);
 	}
 }
 static void CatsEye_deconvolutional_update(CatsEye_layer *l)
 {
 	for (int i=0; i<l->p->batch; i++) {
-		real *workspace = /*l->ksize!=1 ?*/ l->workspace +l->sx*l->sy*l->kw*l->kh*l->ch *i /*: l->x +l->inputs*i*/;
-//		real *workspace = l->p->mem;
-		im2col(l->dOut +l->outputs*i, l->ch, l->oy, l->ox, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, /*l->p->mem*/workspace);
-		gemm_rnt(l->ich, l->ksize*l->ksize*l->ch, l->sx*l->sy*1, 1, l->x +l->inputs*i, /*l->p->mem*/workspace, 1, l->dw);
-//		gemm_rnt(l->ich, l->ksize*l->ksize*l->ch, l->sx*l->sy*1, 1, l->dOut +l->outputs*i, l->p->mem/*use backward*/, 1, l->dw);
+		real *workspace = l->workspace +l->sx*l->sy*l->kw*l->kh*l->ch *i;
+		gemm_rnt(l->ich, l->ksize*l->ksize*l->ch, l->sx*l->sy*1, 1, l->x +l->inputs*i, workspace, 1, l->dw);
 	}
 //	SOLVER(l);
 }

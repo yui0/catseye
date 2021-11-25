@@ -16,8 +16,8 @@
 #define CATS_USE_ADAM
 #define ADAM_BETA1	0.5
 #define ADAM_BETA2	0.999
-//#define ETA		9e-6	// ADAM (batch 1,64)
-#define ETA		4e-4	// ADAM (batch 1,64)
+#define ETA		1e-3	// ADAM (batch 1,64)
+//#define ETA		4e-4	// ADAM (batch 1,64)
 #define BATCH		1
 //#define BATCH		64
 
@@ -34,52 +34,6 @@ int main()
 	const int size = k*k*3;
 	const int sample = 946-1;
 
-	// https://rightcode.co.jp/blog/information-technology/convert-low-resolution-images-to-high-resolution-using-cnn
-/*	CatsEye_layer u[] = {
-		// 64x64x32
-		{size/4, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=32, .ich=3, .name="Input" },
-		{     0, CATS_ACT_RRELU, .name="32x32" },
-
-		// 32x32x64
-		{     0, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=64 },
-		{     0, CATS_ACT_RRELU, .name="16x16" },
-
-		// 16x16x128
-		{     0, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=128 },
-		{     0, CATS_ACT_RRELU, .name="8x8" },
-
-		// 8x8x256
-		{     0, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=256 },
-		{     0, CATS_ACT_RRELU },
-
-		// 4x4x512
-		{     0, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=512 },
-		{     0, CATS_ACT_RRELU },
-
-		// 8x8x256
-		{     0, CATS_SHORTCUT, .layer="8x8", .r=1 },
-		{     0, CATS_DECONV, ETA, .ksize=2, .stride=2, .padding=0, .ch=256 },
-		{     0, CATS_ACT_RRELU },
-
-		// 16x16x128
-		{     0, CATS_SHORTCUT, .layer="16x16", .r=1 },
-		{     0, CATS_DECONV, ETA, .ksize=2, .stride=2, .padding=0, .ch=128 },
-		{     0, CATS_ACT_RRELU },
-
-		// 32x32x64
-		{     0, CATS_SHORTCUT, .layer="32x32", .r=1 },
-		{     0, CATS_DECONV, ETA, .ksize=2, .stride=2, .padding=0, .ch=64 },
-		{     0, CATS_ACT_RRELU },
-
-		// 64x64x32
-		{     0, CATS_DECONV, ETA, .ksize=2, .stride=2, .padding=0, .ch=32 },
-		{     0, CATS_ACT_RRELU },
-
-		// 128x128x3
-		{     0, CATS_DECONV, ETA, .ksize=2, .stride=2, .padding=0, .ch=3, .name="Output" },
-
-		{  size, CATS_LOSS_IDENTITY_MSE },
-	};*/
 	CatsEye_layer u[] = {
 		// 24x24x32
 		{size/4, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=32, .ich=3, .name="Input" },
@@ -90,7 +44,7 @@ int main()
 		{     0, CATS_ACT_RRELU, .name="12x12" },
 
 		// 6x6x128
-/*		{     0, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=128 },
+		{     0, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=128 },
 		{     0, CATS_ACT_RRELU, .name="6x6" },
 
 		// 3x3x256
@@ -104,7 +58,7 @@ int main()
 		// 12x12x64
 		{     0, CATS_SHORTCUT, .layer="6x6", .r=1 },
 		{     0, CATS_DECONV, ETA, .ksize=2, .stride=2, .padding=0, .ch=64 },
-		{     0, CATS_ACT_RRELU },*/
+		{     0, CATS_ACT_RRELU },
 
 		// 24x24x32
 		{     0, CATS_SHORTCUT, .layer="12x12", .r=1 },
