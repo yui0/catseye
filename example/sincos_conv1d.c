@@ -33,7 +33,7 @@ int main()
 	// https://qiita.com/niisan-tokyo/items/a94dbd3134219f19cab1
 	CatsEye_layer u[] = {
 		// 64(1ch) >> 32(64ch)
-		{  64, CATS_CONV1D, ETA, .ksize=9, .stride=2, .padding=4, .ch=64 },
+		{DATA, CATS_CONV1D, ETA, .ksize=9, .stride=2, .padding=4, .ch=64 },
 		{   0, CATS_ACT_RELU },
 
 		// 32(64ch) >> 16(64ch)

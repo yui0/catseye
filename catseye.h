@@ -12,7 +12,7 @@
 
 #include <time.h>
 #include <sys/time.h>
-inline float time_diff(struct timespec *start, struct timespec *end)
+static inline float time_diff(struct timespec *start, struct timespec *end)
 {
 	return (end->tv_sec - start->tv_sec) + 1e-9*(end->tv_nsec - start->tv_nsec);
 }
@@ -71,7 +71,7 @@ inline float time_diff(struct timespec *start, struct timespec *end)
 #define gemm_rtn(m, n, k, alpha, a, b, beta, c)	sgemm_ocl('T', 'N', m, n, k, alpha, a, b, beta, c)
 #else
 //#include "gemm_cpu.h"
-inline void gemm_rnn(int M, int N, int K, real alpha, real* restrict A, real* restrict B, real beta, real* restrict C)
+static void gemm_rnn(int M, int N, int K, real alpha, real* restrict A, real* restrict B, real beta, real* restrict C)
 {
 	if (beta==0.0) {
 		memset(C, 0, M*N*sizeof(real));
@@ -88,7 +88,7 @@ inline void gemm_rnn(int M, int N, int K, real alpha, real* restrict A, real* re
 		}
 	}
 }
-inline void gemm_rnt(int M, int N, int K, real alpha, real* restrict A, real* restrict B, real beta, real* restrict C)
+static void gemm_rnt(int M, int N, int K, real alpha, real* restrict A, real* restrict B, real beta, real* restrict C)
 {
 	if (beta==0.0) {
 		memset(C, 0, M*N*sizeof(real));
@@ -106,7 +106,7 @@ inline void gemm_rnt(int M, int N, int K, real alpha, real* restrict A, real* re
 		}
 	}
 }
-inline void gemm_rtn(int M, int N, int K, real alpha, real* restrict A, real* restrict B, real beta, real* restrict C)
+static void gemm_rtn(int M, int N, int K, real alpha, real* restrict A, real* restrict B, real beta, real* restrict C)
 {
 	if (beta==0.0) {
 		memset(C, 0, M*N*sizeof(real));
@@ -180,6 +180,17 @@ uint64_t xoroshiro128plus()
 	xoroshiro_s[1] = rotl(s1, 36); // c
 	return result;
 }
+
+// taken from https://github.com/svaarala/duktape/blob/master/misc/splitmix64.c
+uint64_t splitmix64_x; /* The state can be seeded with any value. */
+uint64_t splitmix64_next()
+{
+	uint64_t z = (splitmix64_x += UINT64_C(0x9E3779B97F4A7C15));
+	z = (z ^ (z >> 30)) * UINT64_C(0xBF58476D1CE4E5B9);
+	z = (z ^ (z >> 27)) * UINT64_C(0x94D049BB133111EB);
+	return z ^ (z >> 31);
+}
+
 //#define CATS_USE_XOR128
 #ifdef CATS_USE_XOR128
 #define xrand()			xor128()
@@ -616,9 +627,14 @@ static void CatsEye_convolutional_update(CatsEye_layer *l)
 #endif
 }
 
+// https://github.com/pjreddie/darknet/blob/master/src/deconvolutional_layer.c
 static void CatsEye_deconvolutional_forward(CatsEye_layer *l)
 {
 	for (int i=0; i<l->p->batch; i++) {
+//		real *workspace = /*l->ksize!=1 ?*/ l->workspace +l->sx*l->sy*l->kw*l->kh*l->ch *i /*: l->x +l->inputs*i*/;
+//		real *workspace = l->p->mem;
+//		gemm_rtn(l->ksize*l->ksize*l->ch, l->sx*l->sy*1, l->ich, 1, l->w, l->x +l->inputs*i, 0, /*l->p->mem*/workspace);
+//		col2im(/*l->p->mem*/workspace, l->ch, l->oy, l->ox, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, l->z +l->outputs*i);
 		gemm_rtn(l->ksize*l->ksize*l->ch, l->sx*l->sy*1, l->ich, 1, l->w, l->x +l->inputs*i, 0, l->p->mem);
 		col2im(l->p->mem, l->ch, l->oy, l->ox, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, l->z +l->outputs*i);
 	}
@@ -626,14 +642,22 @@ static void CatsEye_deconvolutional_forward(CatsEye_layer *l)
 static void CatsEye_deconvolutional_backward(CatsEye_layer *l)
 {
 	for (int i=0; i<l->p->batch; i++) {
-		im2col(l->dOut +l->outputs*i, l->ch, l->oy, l->ox, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, l->p->mem);
-		gemm_rnn(l->ich, l->sx*l->sy*1, l->ksize*l->ksize*l->ch, 1, l->w, l->p->mem, 0, l->dIn +i*l->inputs);
+		real *workspace = /*l->ksize!=1 ?*/ l->workspace +l->sx*l->sy*l->kw*l->kh*l->ch *i /*: l->x +l->inputs*i*/;
+//		real *workspace = l->p->mem;
+		im2col(l->dOut +l->outputs*i, l->ch, l->oy, l->ox, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, /*l->p->mem*/workspace);
+		gemm_rnn(l->ich, l->sx*l->sy*1, l->ksize*l->ksize*l->ch, 1, l->w, /*l->p->mem*/workspace, 0, l->dIn +i*l->inputs);
+//		im2col(l->dOut +l->outputs*i, l->ch, l->oy, l->ox, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, l->p->mem);
+//		gemm_rnn(l->ich, l->sx*l->sy*1, l->ksize*l->ksize*l->ch, 1, l->w, l->p->mem, 0, l->dIn +i*l->inputs);
 	}
 }
 static void CatsEye_deconvolutional_update(CatsEye_layer *l)
 {
 	for (int i=0; i<l->p->batch; i++) {
-		gemm_rnt(l->ich, l->ksize*l->ksize*l->ch, l->sx*l->sy*1, 1, l->dOut +l->outputs*i, l->p->mem, 1, l->dw);
+		real *workspace = /*l->ksize!=1 ?*/ l->workspace +l->sx*l->sy*l->kw*l->kh*l->ch *i /*: l->x +l->inputs*i*/;
+//		real *workspace = l->p->mem;
+		im2col(l->dOut +l->outputs*i, l->ch, l->oy, l->ox, l->ksize, l->ksize, l->padding, l->padding, l->stride, l->stride, /*l->p->mem*/workspace);
+		gemm_rnt(l->ich, l->ksize*l->ksize*l->ch, l->sx*l->sy*1, 1, l->x +l->inputs*i, /*l->p->mem*/workspace, 1, l->dw);
+//		gemm_rnt(l->ich, l->ksize*l->ksize*l->ch, l->sx*l->sy*1, 1, l->dOut +l->outputs*i, l->p->mem/*use backward*/, 1, l->dw);
 	}
 //	SOLVER(l);
 }
@@ -1529,6 +1553,8 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			n[i] = l->ksize * l->ksize;	// kernel size
 			m[i] = l->ch * l->ich;		// channel
 			l->wsize = n[i] * m[i];
+//			l->workspace = malloc(sizeof(real)* l->ox*l->oy*l->kw*l->kh*l->ich *this->batch);
+			l->workspace = malloc(sizeof(real)* l->sx*l->sy*l->kw*l->kh*l->ch *this->batch);
 			printf("%3d %-12s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 

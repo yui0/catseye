@@ -161,7 +161,7 @@ int main()
 	}
 	svg *psvg = svg_create(512, 512);
 	//if (!psvg) return;
-	svg_scatter(psvg, xs, ys, sample/50, t, 10);
+	svg_scatter(psvg, xs, ys, sample/50, t, 10, SVG_FRAME);
 	svg_finalize(psvg);
 	svg_save(psvg, "mnist_cnn_autoencoder.svg");
 	svg_free(psvg);
