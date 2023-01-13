@@ -16,12 +16,12 @@
 #define CATS_USE_ADAM
 #define ADAM_BETA1	0.5
 #define ADAM_BETA2	0.999
-#define ETA		1e-3	// ADAM (batch 1,64)
+#define ETA		1e-4	// ADAM (batch 1,64)
 //#define ETA		4e-4	// ADAM (batch 1,64)
 #define BATCH		1
 //#define BATCH		64
 
-#define NAME		"unet-r"
+#define NAME		"unet"
 #define CATS_CHECK
 #define CATS_USE_FLOAT
 //#define CATS_OPENCL
@@ -34,6 +34,7 @@ int main()
 	const int size = k*k*3;
 	const int sample = 946-1;
 
+	// https://rightcode.co.jp/blog/information-technology/convert-low-resolution-images-to-high-resolution-using-cnn
 	CatsEye_layer u[] = {
 		// 24x24x32
 		{size/4, CATS_CONV, ETA, .ksize=3, .stride=2, .padding=1, .ch=32, .ich=3, .name="Input" },
@@ -54,19 +55,19 @@ int main()
 		// 6x6x128
 		{     0, CATS_DECONV, ETA, .ksize=2, .stride=2, .padding=0, .ch=128 },
 		{     0, CATS_ACT_RRELU },
+		{     0, CATS_SHORTCUT, .layer="6x6", .r=1 },
 
 		// 12x12x64
-		{     0, CATS_SHORTCUT, .layer="6x6", .r=1 },
 		{     0, CATS_DECONV, ETA, .ksize=2, .stride=2, .padding=0, .ch=64 },
 		{     0, CATS_ACT_RRELU },
+		{     0, CATS_SHORTCUT, .layer="12x12", .r=1 },
 
 		// 24x24x32
-		{     0, CATS_SHORTCUT, .layer="12x12", .r=1 },
 		{     0, CATS_DECONV, ETA, .ksize=2, .stride=2, .padding=0, .ch=32 },
 		{     0, CATS_ACT_RRELU },
+		{     0, CATS_SHORTCUT, .layer="24x24", .r=1 },
 
 		// 48x48x16
-		{     0, CATS_SHORTCUT, .layer="24x24", .r=1 },
 		{     0, CATS_DECONV, ETA, .ksize=2, .stride=2, .padding=0, .ch=16 },
 		{     0, CATS_ACT_RRELU },
 

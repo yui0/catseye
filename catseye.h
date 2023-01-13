@@ -1,7 +1,7 @@
 //---------------------------------------------------------
 //	Cat's eye
 //
-//		©2016-2021 Yuichiro Nakada
+//		©2016-2023 Yuichiro Nakada
 //---------------------------------------------------------
 
 #include <stdio.h>
@@ -16,6 +16,9 @@ static inline float time_diff(struct timespec *start, struct timespec *end)
 {
 	return (end->tv_sec - start->tv_sec) + 1e-9*(end->tv_nsec - start->tv_nsec);
 }
+
+//#pragma GCC optimize("Ofast")
+//#pragma GCC target("sse,sse2,sse3,ssse3,sse4,popcnt,abm,mmx,avx,tune=native")
 
 #define _debug(...)	{ printf("%s(%d):", __func__, __LINE__); printf(__VA_ARGS__); }
 
@@ -298,7 +301,9 @@ typedef struct __CatsEye {
 	int layers, *u;
 	CatsEye_layer *layer;
 	int start, stop, end;
+
 	int da;			// use data augmentation
+	void (*set_data)(struct __CatsEye *this, CatsEye_layer *l, real *data, int8_t *label, real *x, int8_t *t);
 
 	// train parameter
 	int epoch;
@@ -2013,9 +2018,27 @@ static inline void _CatsEye_data_transfer(CatsEye *this, real *x, void *l, int n
 	this->learning_data = x;
 	this->label_data = l;
 }
+void _CatsEye_set_data(CatsEye *this, CatsEye_layer *l, real *data, int8_t *label, real *x, int8_t *t)
+{
+	memcpy(data, x, l->inputs*sizeof(real));
+	memcpy(label, t, this->label_size/*bytes*/);
+}
+void _CatsEye_set_data_with_da(CatsEye *this, CatsEye_layer *l, real *data, int8_t *label, real *x, int8_t *t)
+{
+	_CatsEye_DataAugmentation(data, x, l->sx, l->sy, l->ich, this->da);
+	memcpy(label, t, this->label_size/*bytes*/);
+}
 static inline void _CatsEye_forward(CatsEye *this)
 {
 	CatsEye_layer *l = &this->layer[this->start];
+
+	if (!this->set_data) {
+		if (this->da) {
+			this->set_data = _CatsEye_set_data_with_da;
+		} else {
+			this->set_data = _CatsEye_set_data;
+		}
+	}
 
 	// create data for every batch
 	int lsize = this->label_size;
@@ -2023,6 +2046,7 @@ static inline void _CatsEye_forward(CatsEye *this)
 	int8_t *label_data = (int8_t*)this->label_data;
 	for (int b=0; b<this->batch; b++) {
 		int sample = this->shuffle_buffer[this->shuffle_base];
+#if 0
 		if (this->da) {
 			_CatsEye_DataAugmentation(l->x +l->inputs*b, this->learning_data+sample*this->slide, l->sx, l->sy, l->ich, this->da);
 			memcpy(label +lsize*b, label_data+lsize*sample, lsize/*bytes*/);
@@ -2030,6 +2054,8 @@ static inline void _CatsEye_forward(CatsEye *this)
 			memcpy(l->x +l->inputs*b, this->learning_data+sample*this->slide, l->inputs*sizeof(real));
 			memcpy(label +lsize*b, label_data+lsize*sample, lsize/*bytes*/);
 		}
+#endif
+		this->set_data(this, l, l->x +l->inputs*b, label +lsize*b, this->learning_data+sample*this->slide, label_data+lsize*sample);
 
 		this->shuffle_base++;
 		if (this->shuffle_base>=this->data_num) this->shuffle_base = 0;
