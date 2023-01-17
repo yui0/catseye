@@ -303,7 +303,8 @@ typedef struct __CatsEye {
 	int start, stop, end;
 
 	int da;			// use data augmentation
-	void (*set_data)(struct __CatsEye *this, CatsEye_layer *l, real *data, int8_t *label, real *x, int8_t *t);
+//	void (*set_data)(struct __CatsEye *this, CatsEye_layer *l, void *data, void *label, void *x, void *t);
+	void (*set_data)(struct __CatsEye *this, CatsEye_layer *l, int n, int b);
 
 	// train parameter
 	int epoch;
@@ -1824,6 +1825,7 @@ typedef enum {
 	this->start = this->stop = 0;
 	this->end = this->layers-1;
 	this->slide = this->layer[0].inputs;
+	this->shuffle_buffer = 0;
 
 	sgemm_init(wmem);
 }
@@ -1835,7 +1837,10 @@ void CatsEye__destruct(CatsEye *this)
 
 	// delete arrays
 //	printf("%x %x %x %x %x %x %x %x %x\n",this->z,this->odata,this->o,this->ddata,this->d,this->ws,this->wdata,this->w,this->u);
-	if (this->shuffle_buffer) free(this->shuffle_buffer);
+	if (this->shuffle_buffer) {
+		free(this->shuffle_buffer);
+		this->shuffle_buffer = 0;
+	}
 	free(this->mem);
 	for (int i=0; i<this->layers-1; i++) {
 		CatsEye_layer *l = &this->layer[i];
@@ -1992,14 +1997,19 @@ static inline void _CatsEye_DataAugmentation(real *p, real *s, int sx, int sy, i
 }
 static inline void _CatsEye_shuffle(int *array, int n)
 {
+//	printf("_CatsEye_shuffle: %d\n", n);
 	for (int i=0; i<n-1; i++) {
 //		int j = i + rand() / (RAND_MAX / (n - i) + 1);
 		int j = i + (int)(xrand() / (XOR128_MAX / (n-i) +1));
-		if (j>=n) printf(" %d\n",j); // FIXME: err in espcn.c at here??
+		if (j>=n) printf(" %d\n", j); // FIXME: err in espcn.c at here??
 		int t = array[j];
 		array[j] = array[i];
 		array[i] = t;
 	}
+/*	for (int i=0; i<n; i++) {
+		printf(" %d", array[i]);
+	}
+	printf("\n");*/
 }
 static inline void _CatsEye_data_transfer(CatsEye *this, real *x, void *l, int n)
 {
@@ -2018,16 +2028,28 @@ static inline void _CatsEye_data_transfer(CatsEye *this, real *x, void *l, int n
 	this->learning_data = x;
 	this->label_data = l;
 }
-void _CatsEye_set_data(CatsEye *this, CatsEye_layer *l, real *data, int8_t *label, real *x, int8_t *t)
+void _CatsEye_set_data(CatsEye *this, CatsEye_layer *l, int n, int b)
+{
+	memcpy(l->x +l->inputs*b, this->learning_data+n*this->slide, l->inputs*sizeof(real));
+	memcpy(this->label +this->label_size*b, this->label_data+this->label_size*n, this->label_size/*bytes*/);
+}
+void _CatsEye_set_data_with_da(CatsEye *this, CatsEye_layer *l, int n, int b)
+{
+	_CatsEye_DataAugmentation(l->x +l->inputs*b, this->learning_data+n*this->slide, l->sx, l->sy, l->ich, this->da);
+	memcpy(this->label +this->label_size*b, this->label_data+this->label_size*n, this->label_size/*bytes*/);
+}
+#if 0
+void _CatsEye_set_data(CatsEye *this, CatsEye_layer *l, void *data, void *label, void *x, void *t)
 {
 	memcpy(data, x, l->inputs*sizeof(real));
 	memcpy(label, t, this->label_size/*bytes*/);
 }
-void _CatsEye_set_data_with_da(CatsEye *this, CatsEye_layer *l, real *data, int8_t *label, real *x, int8_t *t)
+void _CatsEye_set_data_with_da(CatsEye *this, CatsEye_layer *l, void *data, void *label, void *x, void *t)
 {
 	_CatsEye_DataAugmentation(data, x, l->sx, l->sy, l->ich, this->da);
 	memcpy(label, t, this->label_size/*bytes*/);
 }
+#endif
 static inline void _CatsEye_forward(CatsEye *this)
 {
 	CatsEye_layer *l = &this->layer[this->start];
@@ -2045,8 +2067,8 @@ static inline void _CatsEye_forward(CatsEye *this)
 	int8_t *label = (int8_t*)this->label;
 	int8_t *label_data = (int8_t*)this->label_data;
 	for (int b=0; b<this->batch; b++) {
-		int sample = this->shuffle_buffer[this->shuffle_base];
 #if 0
+		int sample = this->shuffle_buffer[this->shuffle_base];
 		if (this->da) {
 			_CatsEye_DataAugmentation(l->x +l->inputs*b, this->learning_data+sample*this->slide, l->sx, l->sy, l->ich, this->da);
 			memcpy(label +lsize*b, label_data+lsize*sample, lsize/*bytes*/);
@@ -2054,8 +2076,9 @@ static inline void _CatsEye_forward(CatsEye *this)
 			memcpy(l->x +l->inputs*b, this->learning_data+sample*this->slide, l->inputs*sizeof(real));
 			memcpy(label +lsize*b, label_data+lsize*sample, lsize/*bytes*/);
 		}
+//		this->set_data(this, l, l->x +l->inputs*b, label +lsize*b, this->learning_data+sample*this->slide, label_data+lsize*sample);
 #endif
-		this->set_data(this, l, l->x +l->inputs*b, label +lsize*b, this->learning_data+sample*this->slide, label_data+lsize*sample);
+		this->set_data(this, l, this->shuffle_buffer[this->shuffle_base], b);
 
 		this->shuffle_base++;
 		if (this->shuffle_base>=this->data_num) this->shuffle_base = 0;
@@ -2159,6 +2182,7 @@ int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random,
 		repeat /= this->batch;
 		printf(" batch: %d, repeat: %d\n", this->batch, repeat);
 	}
+	if (N<=0) printf("sample is strange!! %d\n", N);
 	printf("epoch    loss     elapsed time\n");
 
 	struct timespec start, stop;
@@ -2231,6 +2255,10 @@ int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random,
 			return 0;
 		}
 	}
+/*	if (this->shuffle_buffer) {
+		free(this->shuffle_buffer);
+		this->shuffle_buffer = 0;
+	}*/
 	return 1;
 }
 
