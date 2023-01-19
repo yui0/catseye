@@ -27,7 +27,7 @@ int utf8_bytesize(unsigned char code)
 	return size;
 }
 
-int utf8_strlen(const char* str)
+/*int utf8_strlen(const char* str)
 {
 	int c, i, ix, q;
 	for (q=0, i=0, ix=strlen(str); i<ix; i++, q++) {
@@ -41,6 +41,14 @@ int utf8_strlen(const char* str)
 		else return 0;//invalid utf8
 	}
 	return q;
+}*/
+size_t /*utf8len*/utf8_strlen(const char *s)
+{
+	size_t len = 0;
+	while(*s) {
+		len += (*(s++)&0xC0)!=0x80;
+	}
+	return len;
 }
 
 ht* read_dic(const char *name)
@@ -104,8 +112,9 @@ char* split_word(char* str, ht *dic)
 size_t* word2int(char* str, ht *dic)
 {
 	int len = strlen(str);
-	char* word = (char*)alloca(sizeof(char) * len);
-	size_t* result = (size_t*)malloc(sizeof(size_t) * utf8_strlen(str));
+	char* word = (char*)alloca(sizeof(char) * (len+1));
+//	size_t* result = (size_t*)malloc(sizeof(size_t) * (utf8_strlen(str)+1));
+	size_t* result = (size_t*)malloc(sizeof(size_t) * len*2);
 	int m = 0;
 	for (int i=0; i<len; /*i+=utf8_bytesize(str[i])*/) {
 		int l = utf8_bytesize(str[i]);
@@ -122,6 +131,7 @@ size_t* word2int(char* str, ht *dic)
 				break;
 			}
 		}
+		if (m>utf8_strlen(str)) { printf("err: [%s] %d %d\n", str, m, utf8_strlen(str)); }
 
 		i += l;
 	}
