@@ -30,7 +30,8 @@ static inline float time_diff(struct timespec *start, struct timespec *end)
 #define malloc(size)	({ void* p; posix_memalign((void**) &p, 16, size)==0 ? p : NULL; })
 #define free(p)		free(p)
 #endif  /* _MSC_VER */
-#define calloc(n, size)	({ void* p = malloc((n*size)); memset(p, 0, (n*size))!=0 ? p : NULL; })
+//#define calloc(n, size)	({ void* p = malloc((n*size)); memset(p, 0, (n*size))!=0 ? p : NULL; })
+#define calloc(n, size)	({ uint64_t s = n * size; void* p = malloc(s); memset(p, 0, s)!=0 ? p : NULL; })
 #endif
 
 #if defined(CATS_OPENGL) || defined(CATS_OPENCL)
