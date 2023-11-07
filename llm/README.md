@@ -4,6 +4,8 @@
 
 Inference of LLM model in pure C.
 
+![Logo](llm.jpeg)
+
 ### 🌟 Features
 
 - Plain C implementation without dependencies
