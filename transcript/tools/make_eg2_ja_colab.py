@@ -7,7 +7,7 @@ import nbformat as nb
 from zipfile import ZipFile,ZIP_DEFLATED
 
 ROOT=Path(__file__).parent
-INCLUDE=['eg2_ja_vocab.py','eg2_ja_table.py','eg2_ja_cache.py','eg2_ja_train.py',
+INCLUDE=['eg2_ja_vocab.py','eg2_mix_vocab.py','eg2_ja_table.py','eg2_ja_cache.py','eg2_ja_train.py',
          'eg2_ja_fleurs.py','convert_eg2_reader.py','convert_eg2_table.py','eg2_bundle.py']
 
 
@@ -97,12 +97,31 @@ subprocess.run([sys.executable,'-u',str(TOOLS/'eg2_ja_table.py'),
     '--model-dir',str(MODEL),'--vocab',str(VOCAB),'--out',str(TABLE),
     '--device','cuda','--batch','32'],check=True)
 print('word_table.npy 完成:',TABLE)'''),
-      nb.v4.new_code_cell('''# @title ⑧ 日本語音声 → 512次元 Soft Tokens のキャッシュ
-# Encoderを固定して実行。スクリプトを別プロセスで呼ぶのでGPUメモリは終了時に解放されます。
-for manifest,out_dir in [(TRAIN_MANIFEST,CACHE_TRAIN),(DEV_MANIFEST,CACHE_DEV)]:
-    subprocess.run([sys.executable,'-u',str(TOOLS/'eg2_ja_cache.py'),
+      nb.v4.new_code_cell('''# @title ⑧ 日本語音声 → 512次元 Soft Tokens のキャッシュ（詳細ログ付き）
+# 失敗時は最後のCalledProcessErrorだけでなく、内部Python tracebackを画面とログに保存。
+# 既にできた .npy は再利用するので、失敗後の再実行で最初から計算し直しません。
+import subprocess,sys
+
+def run_cache_logged(split, manifest, out_dir):
+    logfile=BASE/('eg2_cache_'+split+'.log')
+    command=[sys.executable,'-u',str(TOOLS/'eg2_ja_cache.py'),
         '--manifest',str(manifest),'--model-dir',str(MODEL),
-        '--out',str(out_dir),'--device','cuda'],check=True)
+        '--out',str(out_dir),'--device','cuda','--dtype','auto']
+    print('>>>',split,manifest,' | log:',logfile,flush=True)
+    with logfile.open('w',encoding='utf-8') as log:
+        with subprocess.Popen(command,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
+                              text=True,encoding='utf-8',errors='replace',bufsize=1) as proc:
+            for line in proc.stdout:
+                print(line,end='',flush=True)
+                log.write(line)
+            returncode=proc.wait()
+    if returncode:
+        print('失敗時の詳細ログ:',logfile)
+        print('Colabで確認: !tail -n 100 '+str(logfile))
+        raise RuntimeError(f'{split} 音声キャッシュ失敗 (code={returncode})。上のtracebackを参照してください。')
+
+for split,manifest,out_dir in [('train',TRAIN_MANIFEST,CACHE_TRAIN),('dev',DEV_MANIFEST,CACHE_DEV)]:
+    run_cache_logged(split,manifest,out_dir)
 print('音声特徴のキャッシュを生成しました')'''),
       nb.v4.new_code_cell('''# @title ⑨ 既存の英語 Reader v2 を初期値として取得（日本語用に追加学習する）
 INIT=[]

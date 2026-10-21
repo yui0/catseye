@@ -29,14 +29,14 @@ def decode_audio(obj):
     return data
 
 
-def fetch(out,train_limit=100,dev_limit=30):
+def fetch(out,train_limit=100,dev_limit=30,language='ja_jp'):
     from datasets import load_dataset,Audio
     import soundfile as sf
     out=Path(out);out.mkdir(parents=True,exist_ok=True)
     results={}
     for split,limit in [('train',train_limit),('dev',dev_limit)]:
         remote='validation' if split=='dev' else 'train'
-        source=load_dataset('google/fleurs','ja_jp',split=remote,streaming=True)
+        source=load_dataset('google/fleurs',language,split=remote,streaming=True)
         source=source.cast_column('audio',Audio(decode=False))
         audio_dir=out/split;audio_dir.mkdir(exist_ok=True)
         meta=out/(split+'.jsonl');written=0
@@ -61,8 +61,9 @@ def fetch(out,train_limit=100,dev_limit=30):
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--out',type=Path,required=True)
+    p.add_argument('--language',choices=('ja_jp','en_us'),default='ja_jp')
     p.add_argument('--train-limit',type=int,default=100)
     p.add_argument('--dev-limit',type=int,default=30)
-    a=p.parse_args();fetch(a.out,a.train_limit,a.dev_limit)
+    a=p.parse_args();fetch(a.out,a.train_limit,a.dev_limit,a.language)
 
 if __name__=='__main__':main()

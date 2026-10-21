@@ -4,13 +4,28 @@
 //		©2016-2023 Yuichiro Nakada
 //---------------------------------------------------------
 
+#ifndef CATSEYE_H
+#define CATSEYE_H
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <math.h>
-
 #include <time.h>
+#include <float.h>
+
+#ifndef M_PI
+#define M_PI		3.14159265358979323846
+#endif
+
+// CATS_QUIET: silence the network summary / training log
+#ifdef CATS_QUIET
+#define CATS_LOG(...)	((void)0)
+#else
+#define CATS_LOG(...)	printf(__VA_ARGS__)
+#endif
+
 #include <sys/time.h>
 static inline float time_diff(struct timespec *start, struct timespec *end)
 {
@@ -20,19 +35,35 @@ static inline float time_diff(struct timespec *start, struct timespec *end)
 //#pragma GCC optimize("Ofast")
 //#pragma GCC target("sse,sse2,sse3,ssse3,sse4,popcnt,abm,mmx,avx,tune=native")
 
-#define _debug(...)	{ printf("%s(%d):", __func__, __LINE__); printf(__VA_ARGS__); }
+#define _debug(...)	do { printf("%s(%d):", __func__, __LINE__); printf(__VA_ARGS__); } while (0)
 
-#if 1
+// 16-byte aligned allocation (SIMD); calloc zeroes and checks the n*size overflow
 #if defined(_MSC_VER) || defined(__MINGW32__)
-#define malloc(size)	_aligned_malloc(size, 16)
-#define free(p)		_aligned_free(p)
+#include <malloc.h>
+static inline void* cats_malloc(size_t size) { return _aligned_malloc(size, 16); }
+static inline void cats_free(void *p) { _aligned_free(p); }
 #else
-#define malloc(size)	({ void* p; posix_memalign((void**) &p, 16, size)==0 ? p : NULL; })
-#define free(p)		free(p)
-#endif  /* _MSC_VER */
-//#define calloc(n, size)	({ void* p = malloc((n*size)); memset(p, 0, (n*size))!=0 ? p : NULL; })
-#define calloc(n, size)	({ uint64_t s = n * size; void* p = malloc(s); memset(p, 0, s)!=0 ? p : NULL; })
+static inline void* cats_malloc(size_t size)
+{
+	void *p;
+	return posix_memalign(&p, 16, size ? size : 1)==0 ? p : NULL;
+}
+static inline void cats_free(void *p) { (free)(p); }
 #endif
+static inline void* cats_calloc(size_t n, size_t size)
+{
+	if (size && n > (size_t)-1 / size) return NULL;
+	void *p = cats_malloc(n * size);
+	if (p) memset(p, 0, n * size);
+	return p;
+}
+#ifndef CATS_NO_ALLOC_MACROS
+#define malloc(size)	cats_malloc(size)
+#define free(p)		cats_free(p)
+#define calloc(n, size)	cats_calloc(n, size)
+#endif
+
+#ifndef CATS_INFER_ONLY
 
 #if defined(CATS_OPENGL) || defined(CATS_OPENCL)
 #ifndef CATS_USE_FLOAT
@@ -135,16 +166,12 @@ static void gemm_rtn(int M, int N, int K, real alpha, real* restrict A, real* re
 // https://github.com/AndreasMadsen/xorshift/blob/master/reference.c
 // https://ogawa-sankinkoutai.seesaa.net/article/108848981.html
 #define XOR128_MAX	18446744073709551615.0
-#if __WORDSIZE == 64
-typedef unsigned long int	uint64_t;
-#else
-__extension__
-typedef unsigned long long int	uint64_t;
-#endif
 // The state must be seeded so that it is not everywhere zero.
+static int cats_seeded = 0;	// set once the user (or the constructor) seeded the generators
 uint64_t seed[2];
 void xor128_init(uint64_t s)
 {
+	cats_seeded = 1;
 	for (int i=1; i<=2; i++) {
 		seed[i-1] = s = 1812433253U * ( s ^ ( s >> 30 ) ) + i;
 	}
@@ -165,6 +192,7 @@ uint64_t xoroshiro_s[2] = {
 };
 void xoroshiro128plus_init(uint64_t s)
 {
+	cats_seeded = 1;
 	for (int i=1; i<=2; i++) {
 		xoroshiro_s[i-1] = s = 1812433253U * ( s ^ ( s >> 30 ) ) + i;
 	}
@@ -198,19 +226,19 @@ uint64_t splitmix64_next()
 //#define CATS_USE_XOR128
 #ifdef CATS_USE_XOR128
 #define xrand()			xor128()
-#define frand()			( xor128() / (XOR128_MAX+1.0) )
+#define frand()			( (xor128() >> 11) * (1.0/9007199254740992.0) )	/* [0,1) */
 #else
 #define xrand()			xoroshiro128plus()
-#define frand()			( xoroshiro128plus() / (XOR128_MAX+1.0) )
+#define frand()			( (xoroshiro128plus() >> 11) * (1.0/9007199254740992.0) )	/* [0,1) */
 #endif
-#define _rand(max)		(int)( frand() * max)
-#define random(min, max)	( frand() * (max -min) +min )
-#define irand(min, max)		( (xrand() % (max -min +1)) +min )
+#define _rand(max)		(int)( frand() * (max))
+#define random(min, max)	( frand() * ((max) -(min)) +(min) )
+#define irand(min, max)		( (int)(xrand() % (uint64_t)((max) -(min) +1)) +(min) )
 // http://www.natural-science.or.jp/article/20110404234734.php (mt19937ar.h)
 // https://omitakahiro.github.io/random/random_variables_generation.html
 static inline real rand_normal(real mu, real sigma)
 {
-	real z = sqrt(-2.0*log(frand())) * sin(2.0*M_PI*frand());
+	real z = sqrt(-2.0*log(1.0 -frand())) * sin(2.0*M_PI*frand());	// 1-frand() is in (0,1]: no log(0)
 	return mu + sigma*z;
 }
 static inline int binomial(/*int n, */real p)
@@ -434,8 +462,8 @@ static void CatsEye_linear_forward(CatsEye_layer *l)
 	for (int n=0; n<l->p->batch; n++) {
 		for (int i=0; i<l->outputs; i++) l->z[n*l->outputs +i] += l->w[l->inputs*l->outputs +i]; // bias!!
 	}
-//	for (int i=l->inputs-10; i<l->inputs; i++) printf("%f ", l->x[i]);
-//	printf("\n");
+//	for (int i=l->inputs-10; i<l->inputs; i++) CATS_LOG("%f ", l->x[i]);
+//	CATS_LOG("\n");
 
 	// https://docs.nvidia.com/deeplearning/performance/dl-performance-fully-connected/index.html
 	// output := weightsT * input
@@ -463,13 +491,13 @@ static void CatsEye_linear_backward(CatsEye_layer *l)
 	// dIn := dOut * W
 	gemm_rnn(l->p->batch, l->inputs, l->outputs, 1, l->dOut, l->w, 0, l->dIn);
 
-/*	printf("gemm_rnn: ");
-	for (int i=l->inputs-10; i<l->inputs; i++) printf("%f ", l->dIn[i]);
-	printf("\n");
-	printf("GEMM1_RNN: ");
+/*	CATS_LOG("gemm_rnn: ");
+	for (int i=l->inputs-10; i<l->inputs; i++) CATS_LOG("%f ", l->dIn[i]);
+	CATS_LOG("\n");
+	CATS_LOG("GEMM1_RNN: ");
 	sgemm_gl(GEMM1_RNN, l->p->batch, l->inputs, l->outputs, 1, l->dOut, l->w, 0, l->dIn);
-	for (int i=l->inputs-10; i<l->inputs; i++) printf("%f ", l->dIn[i]);
-	printf("\n");*/
+	for (int i=l->inputs-10; i<l->inputs; i++) CATS_LOG("%f ", l->dIn[i]);
+	CATS_LOG("\n");*/
 
 	// gradients(input) := weights * gradients(output)
 //	gemm_rnn(l->inputs, l->p->batch, l->outputs, 1, l->w, l->dOut, 0, l->dIn);
@@ -495,9 +523,9 @@ static void CatsEye_linear_update(CatsEye_layer *l)
 	for (int n=0; n<l->p->batch; n++) {
 		for (int i=0; i<l->outputs; i++) l->w[l->inputs*l->outputs +i] -= l->eta * l->dOut[n*l->outputs +i]; // bias!!
 	}
-//	for (int i=0; i<10; i++) printf("%f ", l->dOut[i]);
-/*	for (int i=0; i<10; i++) printf("%f ", l->w[i]);
-	printf("\n");*/
+//	for (int i=0; i<10; i++) CATS_LOG("%f ", l->dOut[i]);
+/*	for (int i=0; i<10; i++) CATS_LOG("%f ", l->w[i]);
+	CATS_LOG("\n");*/
 
 	// weights := weights - eta * input * gradientsT(output)
 //	gemm_rnt(l->inputs, l->outputs, l->p->batch, -l->eta, l->x, l->dOut, 1, l->w);
@@ -593,13 +621,13 @@ static void CatsEye_convolutional_backward(CatsEye_layer *l)
 		real *workspace = l->ksize!=1 ? l->p->mem : l->dIn +l->inputs*i;
 		// dIn = W**T * dOut [A(m,k) B(k,n) C(m,n)]
 		gemm_rtn(l->kw*l->kh*l->ich, l->ox*l->oy*1, l->ch, 1, l->w, l->dOut +l->outputs*i, 0, workspace);
-		/*printf("gemm_rtn: ");
-		if (i==l->p->batch-1) for (int i=0; i<10; i++) printf("%f ", workspace[i]);
-		printf("\n");*/
+		/*CATS_LOG("gemm_rtn: ");
+		if (i==l->p->batch-1) for (int i=0; i<10; i++) CATS_LOG("%f ", workspace[i]);
+		CATS_LOG("\n");*/
 		if (l->ksize!=1) {
 			col2im(workspace, l->ich, l->sy, l->sx, l->kh, l->kw, l->ph, l->pw, l->stride, l->stride, l->dIn +l->inputs*i);
-//			for (int n=0; n<10; n++) printf("%f ", l->dIn[l->inputs*i + l->inputs-1-n]);
-//			printf("[%d]\n", l->wsize);
+//			for (int n=0; n<10; n++) CATS_LOG("%f ", l->dIn[l->inputs*i + l->inputs-1-n]);
+//			CATS_LOG("[%d]\n", l->wsize);
 		}
 	}
 #else
@@ -620,13 +648,13 @@ static void CatsEye_convolutional_update(CatsEye_layer *l)
 		// W = W - eta * dOut * x**T [A(m,k) B(k,n) C(m,n)]
 //		gemm_rnt(l->ch, l->ksize*l->ksize*l->ich, l->ox*l->oy*1, 1, l->dOut +l->outputs*i, workspace, 1, l->dw);
 		gemm_rnt(l->ch, l->kw*l->kh*l->ich, l->ox*l->oy*1, 1.0/l->p->batch, l->dOut +l->outputs*i, workspace, 1, l->dw);
-//		for (int i=0; i<100; i++) printf("%f ", l->dw[l->wsize-1-i]);
-//		printf("\n");
+//		for (int i=0; i<100; i++) CATS_LOG("%f ", l->dw[l->wsize-1-i]);
+//		CATS_LOG("\n");
 	}
 //	for (int i=0; i<l->wsize; i++) l->dw[i] /= l->p->batch; // avg
-//	for (int i=0; i<10; i++) printf("%f ", l->dOut[i +l->outputs*(l->p->batch-1)]);
-//	for (int i=0; i<10; i++) printf("%f ", l->dw[i]);
-//	printf("w:%d %d\n", l->wsize, l->ch*l->ksize*l->ksize*l->ich);
+//	for (int i=0; i<10; i++) CATS_LOG("%f ", l->dOut[i +l->outputs*(l->p->batch-1)]);
+//	for (int i=0; i<10; i++) CATS_LOG("%f ", l->dw[i]);
+//	CATS_LOG("w:%d %d\n", l->wsize, l->ch*l->ksize*l->ksize*l->ich);
 //	SOLVER(l);
 #else
 	real *workspace = l->ksize!=1 ? l->workspace : l->x;
@@ -921,7 +949,7 @@ static void CatsEye_BatchNormalization_backward(CatsEye_layer *l)
 			dmu2 += -2.0 * X_mu;
 
 			dbeta += delta[i];
-			dgamma = delta[i] * (x[i] -l->mu[n]) /sqrt(l->var[n] + 1e-8);
+			dgamma += delta[i] * X_mu / sigma;
 		}
 		dvar *= -0.5 * pow(l->var[n] + 1e-8, -3.0/2.0);
 		dmu += dvar * dmu2/len;
@@ -932,15 +960,13 @@ static void CatsEye_BatchNormalization_backward(CatsEye_layer *l)
 			d[i] += a + b * (x[i] - l->mu[n]);
 		}
 
-//		l->beta[n] -= l->eta * dbeta;
-//		l->gamma[n] -= l->eta * dgamma;
-		l->beta -= l->eta * dbeta;
-		l->gamma -= l->eta * dgamma;
-
 		x += len;
 		delta += len;
 		d += len;
 	}
+	// gamma/beta are shared by all channels: one update from the summed gradients
+	l->beta -= l->eta * dbeta;
+	l->gamma -= l->eta * dgamma;
 }
 
 static void CatsEye_concat_forward(CatsEye_layer *l)
@@ -1017,7 +1043,7 @@ static void CatsEye_shortcut_backward(CatsEye_layer *l)
 			} else {
 				memcpy(d2, delta, l->inputs*sizeof(real));
 			}
-			d2 += l->inputs;
+			d2 += l->r ? l->l->inputs : l->inputs;
 		}
 		d1 += l->inputs;
 		delta += l->outputs;
@@ -1045,8 +1071,8 @@ static void CatsEye_dact_##type(CatsEye_layer *l)\
 		y++;\
 	}\
 }
-//	for (int b=0; b<l->p->batch; b++) for (int n=0; n<10; n++) printf("%f[%f] ", l->dIn[b*l->inputs +l->inputs-1-n], l->z[b*l->inputs +l->inputs-1-n]);\
-//	printf("%d\n", l->wsize);\
+//	for (int b=0; b<l->p->batch; b++) for (int n=0; n<10; n++) CATS_LOG("%f[%f] ", l->dIn[b*l->inputs +l->inputs-1-n], l->z[b*l->inputs +l->inputs-1-n]);\
+//	CATS_LOG("%d\n", l->wsize);\
 
 #define sigmoid_gain			1//0.1
 #define CATS_ACT_sigmoid(x, l)		(1.0 / (1.0 + exp(-(x) * sigmoid_gain)))
@@ -1060,7 +1086,7 @@ CATS_ACT_ARRAY(swish);
 CATS_DACT_ARRAY(swish);*/
 
 #define CATS_ACT_log(x, l)		(log(x))
-#define CATS_DACT_log(y, l)		(1.0/y)
+#define CATS_DACT_log(y, l)		(exp(-(y)))	// y = log(x): d/dx = 1/x = exp(-y)
 CATS_ACT_ARRAY(log);
 CATS_DACT_ARRAY(log);
 
@@ -1176,17 +1202,17 @@ static void CatsEye_loss_delivative_0_1(CatsEye_layer *l)
 
 	// y - t [ t <- one hot ]
 	memcpy(l->dIn, l->x, sizeof(real)*l->inputs *l->p->batch);
-//	for (int n=0; n<l->inputs; n++) printf(" %f", l->dIn[n]);
-//	printf("\n");
+//	for (int n=0; n<l->inputs; n++) CATS_LOG(" %f", l->dIn[n]);
+//	CATS_LOG("\n");
 //	l->dIn[a] -= 1;
 	int16_t *a = l->p->clasify;
 	for (int i=0; i<l->p->batch; i++) {
 		l->dIn[l->inputs*i + *a++] -= 1;
 /*		l->dIn[l->inputs*i + *a] -= 1;
 		l->dIn[l->inputs*i + *a++] /= l->p->batch; // FIXME: right?*/
-		/*printf("batch %d:", i);
-		for (int n=0; n<l->inputs; n++) printf(" %f", l->dIn[l->inputs*i + n]);
-		printf("\n");*/
+		/*CATS_LOG("batch %d:", i);
+		for (int n=0; n<l->inputs; n++) CATS_LOG(" %f", l->dIn[l->inputs*i + n]);
+		CATS_LOG("\n");*/
 	}
 }
 // loss function for mse with identity and cross entropy with sigmoid
@@ -1212,7 +1238,7 @@ static void CatsEye_loss_delivative_mse(CatsEye_layer *l)
 	for (int i=0; i<l->inputs *l->p->batch; i++) {
 		// http://qiita.com/Ugo-Nama/items/04814a13c9ea84978a4c
 		// https://github.com/nyanp/tiny-cnn/wiki/%E5%AE%9F%E8%A3%85%E3%83%8E%E3%83%BC%E3%83%88
-//		printf("(%f-%f=%f) ", *y, *t, *y-*t);
+//		CATS_LOG("(%f-%f=%f) ", *y, *t, *y-*t);
 		*d++ = *y++ - *t++;	// (y - t) * (y - t) / 2  ->  y - t
 /*		*d = *y++ - *t++;	// (y - t) * (y - t) / 2  ->  y - t
 		*d++ /= l->p->batch;	// FIXME: right?*/
@@ -1226,7 +1252,7 @@ static void CatsEye_loss_cross_entropy(CatsEye_layer *l)
 	real *y = l->x;
 	real loss = 0;
 	for (int i=0; i<l->inputs *l->p->batch; i++) {
-		loss += - *t * log(*y) - (1 - *t) * log(1 - *y);
+		loss += - *t * log(*y +1e-12) - (1 - *t) * log(1 - *y +1e-12);
 		y++;
 		t++;
 	}
@@ -1239,7 +1265,7 @@ static void CatsEye_loss_delivative_cross_entropy(CatsEye_layer *l)
 	real *d = l->dIn;
 	real *y = l->x;
 	for (int i=0; i<l->inputs *l->p->batch; i++) {
-		*d++ = (*y - *t++) / (*y * (1 - *y));	// -t * log(y) - (1 - t) * log(1 - y);
+		*d++ = (*y - *t++) / (*y * (1 - *y) +1e-12);	// -t * log(y) - (1 - t) * log(1 - y);
 		y++;
 	}
 }
@@ -1261,8 +1287,7 @@ static void CatsEye_loss_cross_entropy_multiclass(CatsEye_layer *l)
 		y++;
 		t++;
 	}*/
-	loss /= l->inputs *l->p->batch;
-//	loss /= l->p->batch;
+	loss /= l->p->batch;	// mean over the batch
 	l->p->loss = loss;
 }
 static void CatsEye_loss_delivative_cross_entropy_multiclass(CatsEye_layer *l)
@@ -1427,6 +1452,10 @@ typedef enum {
 	// y-t
 	CATS_LOSS_IDENTITY_MSE, CATS_SIGMOID_BCE, CATS_SOFTMAX_CE
 } CATS_LAYER_TYPE;
+// weight initialization (layer.wtype)
+typedef enum {
+	CATS_RAND, /*CATS_UNIFORM,*/ CATS_GLOROT_UNIFORM/*Xavier*/, CATS_GLOROT_NORMAL, CATS_HE_UNIFORM/*Kaiming*/, CATS_HE_NORMAL
+} CATS_WEIGHT;
 char CatsEye_string[][16] = {
 	"dense", "conv", "conv1d", "deconv", "max", "avg", "gap",
 	"subpixel", /*"rnn",*/
@@ -1443,8 +1472,9 @@ char CatsEye_string[][16] = {
 	"identity/mse", "sigmoid/bce", "softmax/ce",
 };
 
-int CatsEye_getLayer(CatsEye *this, char *name)
+int CatsEye_getLayer(CatsEye *this, const char *name)
 {
+	if (!name) return -1;
 	CatsEye_layer *l = this->layer;
 	for (int i=0; i<this->layers; i++) {
 		if (l->name && !strcmp(l->name, name)) return i;
@@ -1458,6 +1488,10 @@ int CatsEye_getLayer(CatsEye *this, char *name)
 void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 {
 	//this->batch = 1;
+	if (!cats_seeded) { // random by default; call xoroshiro128plus_init(seed) beforehand to be reproducible
+		xor128_init(time(0));
+		xoroshiro128plus_init(time(0));
+	}
 	this->u = 0;
 	this->z = 0;
 	this->layers = layers;
@@ -1528,8 +1562,8 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			m[i] = l->ch * l->ich;		// channel
 			l->wsize = n[i] * m[i];
 			l->workspace = malloc(sizeof(real)* l->ox*l->oy*l->kw*l->kh*l->ich *this->batch);
-			printf("%3d %-12s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->ch, l->kw, l->kh, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
-//			if ((l->sx +2*l->padding -l->ksize) % l->stride > 0) printf("\n\t↑ warning: stride is strange!\n");
+			CATS_LOG("%3d %-12s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->ch, l->kw, l->kh, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
+//			if ((l->sx +2*l->padding -l->ksize) % l->stride > 0) CATS_LOG("\n\t↑ warning: stride is strange!\n");
 			break;
 		case CATS_CONV1D:
 			l->sx = l->inputs / l->ich;
@@ -1541,7 +1575,7 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			m[i] = l->ch * l->ich;		// channel
 			l->wsize = n[i] * m[i];
 			l->workspace = malloc(sizeof(real)* l->ox*l->oy*l->kw*l->ich *this->batch);
-			printf("%3d %-12s %4d   %d/%d %4d       x%4d -> %4d       x%4d", i+1, CatsEye_string[l->type], l->ch, l->kw, l->stride, l->sx, l->ich, l->ox, l->ch);
+			CATS_LOG("%3d %-12s %4d   %d/%d %4d       x%4d -> %4d       x%4d", i+1, CatsEye_string[l->type], l->ch, l->kw, l->stride, l->sx, l->ich, l->ox, l->ch);
 			break;
 		case CATS_DECONV: // https://blog.shikoan.com/pytorch-convtranspose2d/
 			l->ox = (l->sx-1) *l->stride -2*l->padding +l->ksize;
@@ -1552,7 +1586,7 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			l->wsize = n[i] * m[i];
 //			l->workspace = malloc(sizeof(real)* l->ox*l->oy*l->kw*l->kh*l->ich *this->batch);
 			l->workspace = malloc(sizeof(real)* l->sx*l->sy*l->kw*l->kh*l->ch *this->batch);
-			printf("%3d %-12s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
+			CATS_LOG("%3d %-12s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
 		case CATS_AVGPOOL:
@@ -1566,14 +1600,14 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			if (l->type == CATS_MAXPOOL) {
 				l->workspace = malloc(sizeof(int)* l->outputs *this->batch);
 			}
-			printf("%3d %-12s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
-			if ((l->sx +2*l->padding -l->ksize) % l->stride > 0) printf("\n\t↑ warning: kernel or stride is strange!\n");
+			CATS_LOG("%3d %-12s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
+			if ((l->sx +2*l->padding -l->ksize) % l->stride > 0) CATS_LOG("\n\t↑ warning: kernel or stride is strange!\n");
 			break;
 		case CATS_GAP:
 			l->outputs = l->ch = l->ich;
 			l->ox = 1;
 			l->oy = 1;
-			printf("%3d %-12s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
+			CATS_LOG("%3d %-12s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
 		case CATS_PIXELSHUFFLER:
@@ -1584,7 +1618,7 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			l->ox = l->sx * l->r;
 			l->oy = l->sy * l->r;
 			l->outputs = l->ch * l->ox * l->oy;
-			printf("%3d %-12s %10d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
+			CATS_LOG("%3d %-12s %10d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
 		/*case CATS_RECURRENT:
@@ -1608,7 +1642,7 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 //			n[i] = l->hiddens;
 			n[i] = l->inputs;
 			m[i] = l->hiddens;
-			printf("%3d %-12s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
+			CATS_LOG("%3d %-12s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;*/
 
 		case CATS_PADDING:
@@ -1616,7 +1650,7 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			l->ox = l->sx + l->padding*2;
 			l->oy = l->sy + l->padding*2;
 			l->outputs = l->ch * l->ox * l->oy;
-			printf("%3d %-12s %4d     %d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->ch, l->padding, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
+			CATS_LOG("%3d %-12s %4d     %d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->ch, l->padding, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
 		case CATS_BATCHNORMAL:
@@ -1631,10 +1665,11 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			m[i] = 2; // mu, var, gamma, beta
 //			m[i] = 4; // mu, var, gamma, beta
 			l->wsize = n[i] * m[i];
-			printf("%3d %-12s %10d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
+			CATS_LOG("%3d %-12s %10d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
 		case CATS_SHORTCUT:
+			if (CatsEye_getLayer(this, l->layer)<0) { fprintf(stderr, "CatsEye: layer <%s> not found\n", l->layer ? l->layer : "(null)"); exit(1); }
 			l->l = &this->layer[CatsEye_getLayer(this, l->layer)];
 		case CATS_ACT_RRELU:
 			l->min = 0;
@@ -1649,10 +1684,11 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			l->outputs = l->inputs;
 			l->ox = l->sx;
 			l->oy = l->sy;
-			printf("%3d %-12s %10d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
+			CATS_LOG("%3d %-12s %10d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
 
 		case CATS_CONCAT:
+			if (CatsEye_getLayer(this, l->layer)<0) { fprintf(stderr, "CatsEye: layer <%s> not found\n", l->layer ? l->layer : "(null)"); exit(1); }
 			l->l = &this->layer[CatsEye_getLayer(this, l->layer)];
 		case CATS_LINEAR:
 		case CATS_LOSS_0_1:
@@ -1660,7 +1696,7 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		default:
 			if (i<this->layers-1 && !l->outputs) {
 				if ((l+1)->inputs>0) l->outputs = (l+1)->inputs;
-				else { l->outputs = l->inputs; printf("\t↓ warning: out:%d\n", l->outputs); }
+				else { l->outputs = l->inputs; CATS_LOG("\t↓ warning: out:%d\n", l->outputs); }
 			}
 			if (l->type==CATS_LINEAR) {
 				l->wsize = l->inputs * l->outputs;
@@ -1674,14 +1710,14 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 				l->ox = l->oy = 1;
 				l->ch = l->outputs;
 			}
-			printf("%3d %-12s %10d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
-//			printf("%3d %-12s %10d %4d x%4d x%4d -> loss", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich);
+			CATS_LOG("%3d %-12s %10d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
+//			CATS_LOG("%3d %-12s %10d %4d x%4d x%4d -> loss", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich);
 		}
-		if (l->name) printf(" <%s>\n", l->name);
-		else if (l->layer) printf(" +<%s:%d>\n", l->layer, l->r);
-		else printf("\n");
+		if (l->name) CATS_LOG(" <%s>\n", l->name);
+		else if (l->layer) CATS_LOG(" +<%s:%d>\n", l->layer, l->r);
+		else CATS_LOG("\n");
 		if (!l->inputs) {
-			printf("\t↑ warning: input is strange!\n");
+			CATS_LOG("\t↑ warning: input is strange!\n");
 		}
 		wsize[i] = this->wsize;
 		this->ws[i] = (n[i]+b[i])*m[i];
@@ -1722,8 +1758,8 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 //		this->o[i][l->outputs] = 1;	// FIXME: bias
 
 		if (i==this->layers-1) {
-			if ((l->type==CATS_SOFTMAX_CE && (l-1)->type==CATS_ACT_SOFTMAX) ||
-				(l->type==CATS_SIGMOID_BCE && (l-1)->type==CATS_ACT_SIGMOID)) {
+			if (i>=2 && ((l->type==CATS_SOFTMAX_CE && (l-1)->type==CATS_ACT_SOFTMAX) ||
+				(l->type==CATS_SIGMOID_BCE && (l-1)->type==CATS_ACT_SIGMOID))) {
 				// FIXME: for loss function
 				// https://www.renom.jp/ja/notebooks/tutorial/basic_algorithm/lossfunction/notebook.html
 				(l-1)->backward = CatsEye_none;
@@ -1732,9 +1768,9 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			break;
 		}
 /*		if (l->type == CATS_BATCHNORMAL) {
-			printf("+!\n");
+			CATS_LOG("+!\n");
 			for (int n=0; n<l->inputs; n++) {
-			printf("%d\n",n);
+			CATS_LOG("%d\n",n);
 				l->gamma[n] = 1.0;
 				l->beta[n] = 0;
 			}
@@ -1744,18 +1780,13 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		// initialize weights, range depends on the research of Y. Bengio et al. (2010)
 		// http://jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf
 		// https://ntacoffee.com/xavier-initialization/
-typedef enum {
-	CATS_RAND, /*CATS_UNIFORM,*/ CATS_GLOROT_UNIFORM/*Xavier*/, CATS_GLOROT_NORMAL, CATS_HE_UNIFORM/*Kaiming*/, CATS_HE_NORMAL
-} CATS_WEIGHT;
-		xor128_init(time(0));
-		xoroshiro128plus_init(time(0));
 		real range = sqrt(2)/sqrt(l->inputs+l->outputs);
 		// https://pytorch.org/docs/stable/nn.init.html
 		real gain = 1;
 		int fin = l->ksize ? l->ksize*l->ksize*l->ich : l->inputs;
 		if (i<this->layers-1) {
 			int n = (l+1)->type==CATS_BATCHNORMAL ? 2 : 1;
-			switch ((l+n)->type) {
+			switch (i+n<this->layers ? (l+n)->type : -1) {
 			case CATS_ACT_TANH:
 				gain = 5.0/3.0;
 				break;
@@ -1785,12 +1816,12 @@ typedef enum {
 			for (int n=0; n<l->wsize; n++) l->w[n] = rand_normal(0, range); // normal
 			break;
 		case CATS_HE_UNIFORM: // ReLU
-			range = gain * sqrt(6 / fin);
+			range = gain * sqrt(6.0 / fin);
 //			range = gain * sqrt(3 / (l->inputs/l->ich));
 			for (int n=0; n<l->wsize; n++) l->w[n] = 2.0*range*frand()-range; // uniform
 			break;
 		case CATS_HE_NORMAL: // ReLU
-			range = gain * sqrt(2 / fin);
+			range = gain * sqrt(2.0 / fin);
 //			range = gain / sqrt(l->inputs/l->ich);
 			for (int n=0; n<l->wsize; n++) l->w[n] = rand_normal(0, range); // normal
 			break;
@@ -1807,21 +1838,25 @@ typedef enum {
 	}
 	this->clasify = (int16_t*)this->layer[this->layers-1].z;
 	this->label = this->layer[this->layers-1].z;
-	printf("\n");
+	CATS_LOG("\n");
 
 	uint64_t max = 0;
 	for (int i=0; i<this->layers; i++) {
 		CatsEye_layer *l = &this->layer[i];
-		printf("L%02d in:%d out:%d weight:%d[%f] (z:%ld-d:%ld-w:%ld)\n", i+1, l->inputs, l->outputs, l->wsize, l->wrange, l->z-this->odata, this->d[i]-this->ddata, this->w[i]-this->wdata);
-//		printf("L%02d in:%d out:%d weight:%d (x:%ld-z:%ld-d:%ld-w:%ld)\n", i+1, l->inputs, l->outputs, l->wsize, l->x-this->odata, l->z-this->odata, this->d[i]-this->ddata, this->w[i]-this->wdata);
-		//printf("  (dIn:%ld-dOut:%ld)\n", l->dIn, l->dOut);
+		CATS_LOG("L%02d in:%d out:%d weight:%d[%f] (z:%ld-d:%ld-w:%ld)\n", i+1, l->inputs, l->outputs, l->wsize, l->wrange, l->z-this->odata, this->d[i]-this->ddata, this->w[i]-this->wdata);
+//		CATS_LOG("L%02d in:%d out:%d weight:%d (x:%ld-z:%ld-d:%ld-w:%ld)\n", i+1, l->inputs, l->outputs, l->wsize, l->x-this->odata, l->z-this->odata, this->d[i]-this->ddata, this->w[i]-this->wdata);
+		//CATS_LOG("  (dIn:%ld-dOut:%ld)\n", l->dIn, l->dOut);
 
-		uint64_t s = l->ox*l->oy*l->ksize*l->ksize*l->ich; // col2im
+		uint64_t s = (uint64_t)l->ox*l->oy*l->ksize*l->ksize*l->ich; // col2im
 		if (max < s) max = s;
+		if (l->type==CATS_DECONV) { // gemm output before col2im
+			s = (uint64_t)l->sx*l->sy*l->ksize*l->ksize*l->ch;
+			if (max < s) max = s;
+		}
 	}
 	this->mem = calloc(max/**this->batch*/, sizeof(real));
-	uint64_t wmem = sizeof(real) * this->osize*this->batch+this->dsize*this->batch+this->wsize*3;
-	printf("Memory: %.1f MiB [%lu B], Working Memory: %.1f MiB [%lu B]\n\n", sizeof(real)*this->wsize/1024/1024., sizeof(real)*this->wsize, wmem/1024/1024., wmem);
+	uint64_t wmem = sizeof(real) * ((uint64_t)this->osize*this->batch+(uint64_t)this->dsize*this->batch+(uint64_t)this->wsize*3);
+	CATS_LOG("Memory: %.1f MiB [%lu B], Working Memory: %.1f MiB [%lu B]\n\n", sizeof(real)*this->wsize/1024/1024., sizeof(real)*this->wsize, wmem/1024/1024., wmem);
 
 	this->start = this->stop = 0;
 	this->end = this->layers-1;
@@ -1837,7 +1872,7 @@ void CatsEye__destruct(CatsEye *this)
 	sgemm_finish();
 
 	// delete arrays
-//	printf("%x %x %x %x %x %x %x %x %x\n",this->z,this->odata,this->o,this->ddata,this->d,this->ws,this->wdata,this->w,this->u);
+//	CATS_LOG("%x %x %x %x %x %x %x %x %x\n",this->z,this->odata,this->o,this->ddata,this->d,this->ws,this->wdata,this->w,this->u);
 	if (this->shuffle_buffer) {
 		free(this->shuffle_buffer);
 		this->shuffle_buffer = 0;
@@ -1908,34 +1943,47 @@ int CatsEye_accuracy(CatsEye *this, real *x, int16_t *t, int verify)
 	for (int i=0; i<verify; i++) {
 		int16_t p = CatsEye_predict(this, x+i*this->slide);
 		if (p==t[i]) r++;
-		//else printf("%d/%d ",p,t[i]);
+		//else CATS_LOG("%d/%d ",p,t[i]);
 	}
 	return r;
 }
 
 static inline void _CatsEye_DA_zoom(real *p, real *s, int w, int h, int ch, real r)
 {
+	if (r < 0.1) r = 0.1;	// r<1: zoom out (outside the image is 0), r>1: zoom in
 	for (int c=0; c<ch; c++) {
 		for (int y=0; y<h; y++) {
+			int sy = (int)(y/r);
 			for (int x=0; x<w; x++) {
-				*p++ = s[(int)(y/r*w +x/r)];
+				int sx = (int)(x/r);
+				*p++ = (sx<w && sy<h) ? s[sy*w +sx] : 0;
 			}
 		}
 		s += w*h;
 	}
 }
+// shift by (px,py), the uncovered border is mirrored
+static inline int _CatsEye_DA_mirror(int i, int n)
+{
+	if (i<0) i = -i;
+	if (i>=n) i = 2*n -2 -i;
+	return i<0 ? 0 : i>=n ? n-1 : i;
+}
 static inline void _CatsEye_DA_translationXY(real *p, real *s, int w, int h, int ch, int px, int py)
 {
 	for (int c=0; c<ch; c++) {
-		for (int y=0; y<py; y++) {
-			for (int x=0; x<px; x++) p[x] = s[(py-y)*w +px-x];
-			memcpy(p+px, s+(py-y)*w, (w-px)*sizeof(real));
-			p += w;
+		for (int y=0; y<h; y++) {
+			real *row = s + _CatsEye_DA_mirror(y-py, h)*w;
+			for (int x=0; x<w; x++) *p++ = row[_CatsEye_DA_mirror(x-px, w)];
 		}
-		for (int y=0; y<(h-py); y++) {
-			for (int x=0; x<px; x++) p[x] = s[(py-y)*w +px-x];
-			memcpy(p+px, s+(py-y)*w, (w-px)*sizeof(real));
-			p += w;
+		s += w*h;
+	}
+}
+static inline void _CatsEye_DA_flip(real *p, real *s, int w, int h, int ch)
+{
+	for (int c=0; c<ch; c++) {
+		for (int y=0; y<h; y++) {
+			for (int x=0; x<w; x++) *p++ = s[y*w +w-1-x];
 		}
 		s += w*h;
 	}
@@ -1988,7 +2036,7 @@ static inline void _CatsEye_DataAugmentation(real *p, real *s, int sx, int sy, i
 		_CatsEye_DA_translationXY(p, s, sx, sy, ch, 0, irand(0, sy));
 		break;
 	case CATS_FLIP:
-		_CatsEye_DA_translationXY(p, s, sx, sy, ch, sx, sy/*0?*/);
+		_CatsEye_DA_flip(p, s, sx, sy, ch);
 		break;
 
 	case CATS_ORIGINAL: // original
@@ -1998,19 +2046,18 @@ static inline void _CatsEye_DataAugmentation(real *p, real *s, int sx, int sy, i
 }
 static inline void _CatsEye_shuffle(int *array, int n)
 {
-//	printf("_CatsEye_shuffle: %d\n", n);
+//	CATS_LOG("_CatsEye_shuffle: %d\n", n);
 	for (int i=0; i<n-1; i++) {
 //		int j = i + rand() / (RAND_MAX / (n - i) + 1);
-		int j = i + (int)(xrand() / (XOR128_MAX / (n-i) +1));
-		if (j>=n) printf(" %d\n", j); // FIXME: err in espcn.c at here??
+		int j = i + (int)(xrand() % (uint64_t)(n-i));
 		int t = array[j];
 		array[j] = array[i];
 		array[i] = t;
 	}
 /*	for (int i=0; i<n; i++) {
-		printf(" %d", array[i]);
+		CATS_LOG(" %d", array[i]);
 	}
-	printf("\n");*/
+	CATS_LOG("\n");*/
 }
 static inline void _CatsEye_data_transfer(CatsEye *this, real *x, void *l, int n)
 {
@@ -2032,12 +2079,12 @@ static inline void _CatsEye_data_transfer(CatsEye *this, real *x, void *l, int n
 void _CatsEye_set_data(CatsEye *this, CatsEye_layer *l, int n, int b)
 {
 	memcpy(l->x +l->inputs*b, this->learning_data+n*this->slide, l->inputs*sizeof(real));
-	memcpy(this->label +this->label_size*b, this->label_data+this->label_size*n, this->label_size/*bytes*/);
+	memcpy((int8_t*)this->label +this->label_size*b, (int8_t*)this->label_data +this->label_size*n, this->label_size/*bytes*/);
 }
 void _CatsEye_set_data_with_da(CatsEye *this, CatsEye_layer *l, int n, int b)
 {
 	_CatsEye_DataAugmentation(l->x +l->inputs*b, this->learning_data+n*this->slide, l->sx, l->sy, l->ich, this->da);
-	memcpy(this->label +this->label_size*b, this->label_data+this->label_size*n, this->label_size/*bytes*/);
+	memcpy((int8_t*)this->label +this->label_size*b, (int8_t*)this->label_data +this->label_size*n, this->label_size/*bytes*/);
 }
 #if 0
 void _CatsEye_set_data(CatsEye *this, CatsEye_layer *l, void *data, void *label, void *x, void *t)
@@ -2171,20 +2218,23 @@ static inline void _CatsEye_zero_grad(CatsEye *this)
 	//memset(this->ddata, 0, this->dsize*this->batch*sizeof(real)); // clear all l->d (zero_grad)
 	memset(this->wdata +this->wsize, 0, this->wsize*sizeof(real)); // clear all l->dw
 }
-int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random, int verify)
+int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int samples, int verify)
 {
 	int a = this->end;	// layers-1
 	this->layer[a].z = t;	// FIXME
 
 	if (verify) N -= verify;	// for test
 	int repeat = N;			// for random
-	if (random) repeat = random;
+	if (samples) repeat = samples;	// samples per epoch (0: all)
 	if (this->batch>1) {
 		repeat /= this->batch;
-		printf(" batch: %d, repeat: %d\n", this->batch, repeat);
+		CATS_LOG(" batch: %d, repeat: %d\n", this->batch, repeat);
 	}
-	if (N<=0) printf("sample is strange!! %d\n", N);
-	printf("epoch    loss     elapsed time\n");
+	if (N<=0) {
+		fprintf(stderr, "sample is strange!! %d\n", N);
+		return 0;
+	}
+	CATS_LOG("epoch    loss     elapsed time\n");
 
 	struct timespec start, stop;
 	clock_gettime(CLOCK_REALTIME, &start);
@@ -2213,13 +2263,13 @@ int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random,
 		err /= (this->batch * l->inputs);*/
 
 		clock_gettime(CLOCK_REALTIME, &stop);
-		printf("%7d, %f %f [%.2fs]", times, this->loss, err, time_diff(&start, &stop));
+		CATS_LOG("%7d, %f %f [%.2fs]", times, this->loss, err, time_diff(&start, &stop));
 
 		if (verify) {
 			int r = CatsEye_accuracy(this, x+this->layer[0].inputs*N, (int16_t*)t+N, verify);
-			printf(" %.1f%%", (float)r/verify*100.0);
+			CATS_LOG(" %.1f%%", (float)r/verify*100.0);
 		}
-		printf("\n");
+		CATS_LOG("\n");
 #ifdef CATS_CHECK
 		FILE *fp = fopen("/tmp/"NAME"_time.txt", "w");
 		for (int i=this->start; i<=this->end; i++) {
@@ -2230,24 +2280,24 @@ int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random,
 		fclose(fp);
 #endif
 		if (isnan(err) || isinf(err)) { // Ofast or O3
-			printf("\nnan or inf error!\n");
+			CATS_LOG("\nnan or inf error!\n");
 			CatsEye_layer *l = &this->layer[this->start];
 			for (int i=this->start; i<=this->end; i++) {
 				for (int n=0; n<this->ws[i]; n++) {
 					if (isnan(l->w[n]) || isinf(l->w[n])) {
-						printf(" layer[%d] weight[%d]:%f\n", i, n, l->w[n]);
+						CATS_LOG(" layer[%d] weight[%d]:%f\n", i, n, l->w[n]);
 						break;
 					}
 				}
 				for (int n=0; n<l->outputs; n++) {
 					if (isnan(l->z[n]) || isinf(l->z[n])) {
-						printf(" layer[%d] z[%d]:%f\n", i, n, l->z[n]);
+						CATS_LOG(" layer[%d] z[%d]:%f\n", i, n, l->z[n]);
 						break;
 					}
 				}
 				for (int n=0; n<l->inputs; n++) {
 					if (isnan(l->dIn[n]) || isinf(l->dIn[n])) {
-						printf(" layer[%d] d[%d]\n", i, n);
+						CATS_LOG(" layer[%d] d[%d]\n", i, n);
 						break;
 					}
 				}
@@ -2263,33 +2313,35 @@ int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int random,
 	return 1;
 }
 
-int CatsEye_saveCats(CatsEye *this, char *filename)
+int CatsEye_saveCats(CatsEye *this, const char *filename)
 {
 	FILE *fp = fopen(filename, "wb");
 	if (fp==NULL) return -1;
 
-	printf("Saving #%d weight... %lu bytes\n", this->epoch, this->wsize*sizeof(real));
-	fwrite(this->wdata, this->wsize*sizeof(real), 1, fp);
-	fwrite(&this->epoch, sizeof(int), 1, fp);
+	CATS_LOG("Saving #%d weight... %lu bytes\n", this->epoch, (unsigned long)(this->wsize*sizeof(real)));
+	int ok = fwrite(this->wdata, this->wsize*sizeof(real), 1, fp)==1 &&
+		fwrite(&this->epoch, sizeof(int), 1, fp)==1;
 
-	fclose(fp);
-	return 0;
+	if (fclose(fp)!=0) ok = 0;
+	return ok ? 0 : -1;
 }
-int CatsEye_loadCats(CatsEye *this, char *filename)
+int CatsEye_loadCats(CatsEye *this, const char *filename)
 {
 	FILE *fp = fopen(filename, "rb");
 	if (fp==NULL) return -1;
 
-	fread(this->wdata, this->wsize*sizeof(real), 1, fp);
-	fread(&this->epoch, sizeof(int), 1, fp);
-	printf("Loading #%d weight... %lu bytes\n", this->epoch++, this->wsize*sizeof(real));
+	if (fread(this->wdata, this->wsize*sizeof(real), 1, fp)!=1 || fread(&this->epoch, sizeof(int), 1, fp)!=1) {
+		fclose(fp);
+		return -2;	// file is too short: the network does not match
+	}
+	CATS_LOG("Loading #%d weight... %lu bytes\n", this->epoch++, (unsigned long)(this->wsize*sizeof(real)));
 
 	fclose(fp);
 	return 0;
 }
 
 // save weights to json file
-int CatsEye_saveJson(CatsEye *this, char *filename)
+int CatsEye_saveJson(CatsEye *this, const char *filename)
 {
 	FILE *fp = fopen(filename, "w");
 	if (fp==NULL) return -1;
@@ -2312,11 +2364,9 @@ int CatsEye_saveJson(CatsEye *this, char *filename)
 	for (int n=0; n<this->layers-1; n++) {
 		fprintf(fp, "var w%d = [", n+1);
 //		if (l->type != CATS_MAXPOOL) {
-			int i;
-			for (i=0; i<this->ws[i]; i++) {
-				fprintf(fp, "%lf,", this->w[n][i]);
+			for (int i=0; i<this->ws[n]; i++) {
+				fprintf(fp, i ? ",%lf" : "%lf", (double)this->w[n][i]);
 			}
-			fprintf(fp, "%lf", this->w[n][i]);
 //		}
 		fprintf(fp, "];\n");
 		l++;
@@ -2343,9 +2393,11 @@ void CatsEye_visualize(real *o, int n, int sx, uint8_t *p, int width, int ch)
 		if (max < o[i]) max = o[i];
 		if (min > o[i]) min = o[i];
 	}
+	real range = max - min;
+	if (range==0) range = 1;	// flat input: avoid 0/0
 	for (int c=0; c<ch; c++) {
 		for (int i=0; i<n; i++) {
-			p[((i/sx)*width + i%sx)*ch +c] = (uint8_t)((o[i+c*n] - min) / (max - min) * 255.0);
+			p[((i/sx)*width + i%sx)*ch +c] = (uint8_t)((o[i+c*n] - min) / range * 255.0);
 		}
 	}
 }
@@ -2359,9 +2411,11 @@ void _CatsEye_visualize(real *o, int n, int sx, uint8_t *p, int width, int ch, r
 			if (min > o[i]) min = o[i];
 		}
 	}
+	real range = max - min;
+	if (range==0) range = 1;
 	for (int c=0; c<ch; c++) {
 		for (int i=0; i<n; i++) {
-			p[((i/sx)*width + i%sx)*ch +c] = (uint8_t)((o[i+c*n] - min) / (max - min) * 255.0);
+			p[((i/sx)*width + i%sx)*ch +c] = (uint8_t)((o[i+c*n] - min) / range * 255.0);
 		}
 	}
 }
@@ -2393,40 +2447,30 @@ void CatsEye_visualizeYUV(real *s, int n, int sx, uint8_t *p, int width)
 }*/
 
 // https://www.cs.toronto.edu/~kriz/cifar.html
-real *CatsEye_loadCifar(char *name, int size, int lsize, int sample, int16_t **label)
+real *CatsEye_loadCifar(const char *name, int size, int lsize, int sample, int16_t **label)
 {
-	uint8_t *data = malloc((size+lsize)*sample);	// +1 for label
-	if (!data) { printf("Can't open %s\n", name); return 0; }
-	int16_t *t = malloc(sizeof(int16_t)*sample);
-	if (!t) { printf("Can't open %s\n", name); return 0; }
-//	real *x = malloc(sizeof(real)*(size+1)*(sample+1));	// +1 for bias
-	real *x = malloc(sizeof(real)*size*sample);
-	if (!x) { printf("Can't open %s\n", name); return 0; }
-
 	FILE *fp = fopen(name, "rb");
-	if (!fp) { printf("Can't open %s\n", name); return 0; }
-	fread(data, (size+lsize)*sample, 1, fp);
+	if (!fp) { fprintf(stderr, "Can't open %s\n", name); return 0; }
+	uint8_t *data = malloc((size_t)(size+lsize)*sample);	// +lsize for label
+	int16_t *t = malloc(sizeof(int16_t)*sample);
+	real *x = malloc(sizeof(real)*size*sample);
+	if (!data || !t || !x || fread(data, (size_t)(size+lsize)*sample, 1, fp)!=1) {
+		fprintf(stderr, "Can't read %s\n", name);
+		fclose(fp);
+		free(data); free(t); free(x);
+		return 0;
+	}
+	fclose(fp);
 	for (int n=0; n<sample; n++) {
 		if (lsize==2) {
-			int16_t *p = (int16_t*)&data[n*(size+2)];
-			t[n] = *p;
+			int16_t p;
+			memcpy(&p, &data[n*(size+2)], sizeof(p));
+			t[n] = p;
 		} else {
 			t[n] = data[n*(size+lsize)];
 		}
 		for (int i=0; i<size; i++) x[n*size+i] = data[n*(size+lsize)+lsize+i] * (1.0/255.0);
 	}
-	// shuffle
-	/*for (int n=0; n<sample; n++) {
-		int a = (int)(frand()*sample);
-		real d[size];
-		memcpy(d, &x[n*size], sizeof(real)*size);
-		memcpy(&x[n*size], &x[a*size], sizeof(real)*size);
-		memcpy(&x[a*size], d, sizeof(real)*size);
-		int16_t tt = t[n];
-		t[n] = t[a];
-		t[a] = tt;
-	}*/
-	fclose(fp);
 	free(data);
 
 	*label = t;
@@ -2481,28 +2525,27 @@ real *CatsEye_loadCifar(char *name, int size, int lsize, int sample, int16_t **l
 	return 0;
 }*/
 
-real *CatsEye_loadMnist(char *name, char *name2, int sample, int **label)
+real *CatsEye_loadMnist(const char *name, const char *name2, int sample, int **label)
 {
 	int size = 784;
-	uint8_t *data = malloc((size+1)*sample);		// +1 for label
-	if (!data) return 0;
+	uint8_t *data = malloc((size_t)(size+1)*sample + 16);		// +1 for label, 16 for the header
 	int *t = malloc(sizeof(int)*sample);
-	if (!t) return 0;
-	real *x = malloc(sizeof(real)*(size+1)*(sample+1));	// +1 for bias
-	if (!x) return 0;
-
+	real *x = calloc((size_t)(size+1)*(sample+1), sizeof(real));	// +1 for bias
 	FILE *fp = fopen(name, "rb");
-	if (!fp) return 0;
-	fread(data, 16, 1, fp);		// header
-	fread(data, size, sample, fp);	// data
+	FILE *fp2 = fopen(name2, "rb");
+	if (!data || !t || !x || !fp || !fp2 ||
+		fread(data, 16, 1, fp)!=1 || fread(data, size, sample, fp)!=(size_t)sample ||	// header, data
+		fread(data +(size_t)size*sample, 8, 1, fp2)!=1 || fread(data +(size_t)size*sample, 1, sample, fp2)!=(size_t)sample) {	// header, labels
+		fprintf(stderr, "Can't read %s / %s\n", name, name2);
+		if (fp) fclose(fp);
+		if (fp2) fclose(fp2);
+		free(data); free(t); free(x);
+		return 0;
+	}
+	fclose(fp);
+	fclose(fp2);
 	for (int i=0; i<sample*size; i++) x[i] = data[i] / 255.0;
-	fclose(fp);
-	fp = fopen(name2, "rb");
-	if (!fp) return 0;
-	fread(data, 8, 1, fp);		// header
-	fread(data, 1, sample, fp);	// data
-	for (int i=0; i<sample; i++) t[i] = data[i];
-	fclose(fp);
+	for (int i=0; i<sample; i++) t[i] = data[(size_t)size*sample +i];
 	free(data);
 
 	*label = t;
@@ -2510,3 +2553,1009 @@ real *CatsEye_loadMnist(char *name, char *name2, int sample, int **label)
 }
 
 #undef SOLVER
+
+#endif /* !CATS_INFER_ONLY */
+
+// ---------------------------------------------------------------------------
+// Inference primitives: CPU feature detection, SIMD dot / GEMM, fp16 / bf16, norms and
+// activations. Float-only and independent of the training macros (`real`, sqrt -> sqrtf ...).
+// CATS_INFER_ONLY (define before including) skips the training code above.
+// ---------------------------------------------------------------------------
+#include <stdatomic.h>
+#include <limits.h>
+#if (defined(__x86_64__) || defined(__i386__)) && (defined(__GNUC__) || defined(__clang__))
+#define CATS_SIMD_X86 1
+#include <immintrin.h>
+#define CATS_AVX_FN __attribute__((target("avx")))
+#define CATS_AVX2_FN __attribute__((target("avx2,fma")))
+#define CATS_AVX512_FN __attribute__((target("avx512f,avx2,fma")))
+#else
+#define CATS_SIMD_X86 0
+#endif
+
+/* Environment override: CATS_SIMD=scalar|avx|avx2|avx512|auto.
+   Unsupported requests safely use the highest supported lower level. */
+static inline int cats_cpu_simd_level(void)
+{
+	static atomic_int cached=-1;
+	int old=atomic_load_explicit(&cached,memory_order_relaxed);
+	if (old>=0) {
+		return old;
+	}
+	int maxlevel=0;
+#if CATS_SIMD_X86
+	__builtin_cpu_init();
+	if (__builtin_cpu_supports("avx")) {
+		maxlevel=1;
+	}
+	if (__builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma")) {
+		maxlevel=2;
+	}
+	if (__builtin_cpu_supports("avx512f") && __builtin_cpu_supports("fma")) {
+		maxlevel=3;
+	}
+#endif
+	const char*env=getenv("CATS_SIMD");
+	if (env && (!strcmp(env,"scalar")||!strcmp(env,"off")||!strcmp(env,"0"))) {
+		maxlevel=0;
+	} else if (env && !strcmp(env,"avx") && maxlevel>1) {
+		maxlevel=1;
+	} else if (env && !strcmp(env,"avx2") && maxlevel>2) {
+		maxlevel=2;
+	}
+	/* A requested ISA is never used if the current CPU lacks it. */
+	atomic_store_explicit(&cached,maxlevel,memory_order_relaxed);
+	return maxlevel;
+}
+static inline const char*cats_cpu_simd_name(void)
+{
+	int x=cats_cpu_simd_level();
+	return x==3?"AVX-512F/FMA":x==2?"AVX2/FMA":x==1?"AVX":"scalar";
+}
+
+
+#ifdef CATS_GPU
+#include "cats_gpu.h"   // optional GPU GEMM; the CPU kernels remain the fallback
+#endif
+/* Stage 31: dependency-free SIMD matrix-vector kernel for audio tower.
+ * Runtime dispatch honors existing CATS_SIMD override. FP32 FMA may
+ * differ slightly from the former scalar FP64 accumulation path.
+ * No ISA-specific instructions are emitted on non-x86 targets. */
+#if CATS_SIMD_X86
+CATS_AVX2_FN static float cats_dot_fma(const float*x,const float*w,size_t n)
+{
+	__m256 a=_mm256_setzero_ps(),b=_mm256_setzero_ps(),
+	                             c=_mm256_setzero_ps(),d=_mm256_setzero_ps();
+	size_t i=0;
+	for (; i+32<=n; i+=32) {
+		a=_mm256_fmadd_ps(_mm256_loadu_ps(x+i),_mm256_loadu_ps(w+i),a);
+		b=_mm256_fmadd_ps(_mm256_loadu_ps(x+i+8),_mm256_loadu_ps(w+i+8),b);
+		c=_mm256_fmadd_ps(_mm256_loadu_ps(x+i+16),_mm256_loadu_ps(w+i+16),c);
+		d=_mm256_fmadd_ps(_mm256_loadu_ps(x+i+24),_mm256_loadu_ps(w+i+24),d);
+	}
+	a=_mm256_add_ps(_mm256_add_ps(a,b),_mm256_add_ps(c,d));
+	float parts[8];
+	_mm256_storeu_ps(parts,a);
+	double sum=0;
+	for (int j=0; j<8; j++) {
+		sum+=parts[j];
+	}
+	for (; i<n; i++) {
+		sum+=(double)x[i]*w[i];
+	}
+	return (float)sum;
+}
+#endif
+static inline float cats_dot_f32(const float*x,const float*w,size_t n)
+{
+#if CATS_SIMD_X86
+	if (n>=32&&cats_cpu_simd_level()>=2) {
+		return cats_dot_fma(x,w,n);
+	}
+#endif
+	double sum=0;
+	for (size_t j=0; j<n; j++) {
+		sum+=(double)x[j]*w[j];
+	}
+	return (float)sum;
+}
+
+/* ------------------------------------------------------------------------
+ * Batched dense kernel:  C[n,out] = X[n,in] . W[out,in]^T  (+ bias[out]).
+ * W is stored one output row after another, exactly as in the model files.
+ * A 4-token x 2-output register tile runs over K blocks of 512 so the
+ * weight panel stays in L1/L2 instead of being re-streamed from RAM for
+ * every token; independent (token chunk, output block) tasks are spread
+ * over OpenMP threads when built with -fopenmp (serial otherwise).
+ * Dispatch follows CATS_SIMD: AVX2/FMA, plain AVX (no FMA), or scalar
+ * (double accumulation, as before).
+ * ------------------------------------------------------------------------ */
+#ifndef CATS_GEMM_OB
+#define CATS_GEMM_OB 16
+#endif
+#ifndef CATS_GEMM_TB
+#define CATS_GEMM_TB 256
+#endif
+#ifndef CATS_GEMM_KC
+#define CATS_GEMM_KC 512
+#endif
+typedef void (*cats_tile_fn)(float*,size_t,const float*,size_t,const float*,
+                               size_t,size_t,size_t,size_t,int,const float*);
+static void cats_tile_generic(float*c,size_t ldc,const float*x,size_t ldx,
+                                const float*w,size_t ldw,size_t klen,size_t nt,size_t no,int acc,const float*bias)
+{
+	for (size_t t=0; t<nt; t++)for (size_t o=0; o<no; o++) {
+			double sum=0;
+			for (size_t k=0; k<klen; k++) {
+				sum+=(double)x[t*ldx+k]*w[o*ldw+k];
+			}
+			float r=(float)sum;
+			if (acc) {
+				r+=c[t*ldc+o];
+			} else if (bias) {
+				r+=bias[o];
+			}
+			c[t*ldc+o]=r;
+		}
+}
+#if CATS_SIMD_X86
+CATS_AVX_FN static inline float cats_hsum8(__m256 v)
+{
+	__m128 s=_mm_add_ps(_mm256_castps256_ps128(v),_mm256_extractf128_ps(v,1));
+	s=_mm_hadd_ps(s,s);
+	s=_mm_hadd_ps(s,s);
+	return _mm_cvtss_f32(s);
+}
+#define CATS_MAC_AVX(a,b,c) _mm256_add_ps((c),_mm256_mul_ps((a),(b)))
+#define CATS_MAC_FMA(a,b,c) _mm256_fmadd_ps((a),(b),(c))
+#define CATS_DEF_TILE(NAME,ATTR,MAC) \
+ATTR static void NAME(float*c,size_t ldc,const float*x,size_t ldx,const float*w, \
+        size_t ldw,size_t klen,size_t nt,size_t no,int acc,const float*bias){ \
+    if(nt!=4||no!=2){cats_tile_generic(c,ldc,x,ldx,w,ldw,klen,nt,no,acc,bias);return;} \
+    const float*x0=x,*x1=x+ldx,*x2=x+2*ldx,*x3=x+3*ldx,*w0=w,*w1=w+ldw; \
+    __m256 a00=_mm256_setzero_ps(),a01=a00,a10=a00,a11=a00,a20=a00,a21=a00,a30=a00,a31=a00; \
+    size_t k=0; \
+    for(;k+8<=klen;k+=8){ \
+        __m256 b0=_mm256_loadu_ps(w0+k),b1=_mm256_loadu_ps(w1+k),v; \
+        v=_mm256_loadu_ps(x0+k);a00=MAC(v,b0,a00);a01=MAC(v,b1,a01); \
+        v=_mm256_loadu_ps(x1+k);a10=MAC(v,b0,a10);a11=MAC(v,b1,a11); \
+        v=_mm256_loadu_ps(x2+k);a20=MAC(v,b0,a20);a21=MAC(v,b1,a21); \
+        v=_mm256_loadu_ps(x3+k);a30=MAC(v,b0,a30);a31=MAC(v,b1,a31); \
+    } \
+    float r[4][2]={{cats_hsum8(a00),cats_hsum8(a01)},{cats_hsum8(a10),cats_hsum8(a11)}, \
+                   {cats_hsum8(a20),cats_hsum8(a21)},{cats_hsum8(a30),cats_hsum8(a31)}}; \
+    for(;k<klen;k++){ \
+        r[0][0]+=x0[k]*w0[k];r[0][1]+=x0[k]*w1[k];r[1][0]+=x1[k]*w0[k];r[1][1]+=x1[k]*w1[k]; \
+        r[2][0]+=x2[k]*w0[k];r[2][1]+=x2[k]*w1[k];r[3][0]+=x3[k]*w0[k];r[3][1]+=x3[k]*w1[k]; \
+    } \
+    for(int t=0;t<4;t++)for(int o=0;o<2;o++){ \
+        float v=r[t][o]; \
+        if(acc)v+=c[(size_t)t*ldc+o];else if(bias)v+=bias[o]; \
+        c[(size_t)t*ldc+o]=v; \
+    } \
+}
+CATS_DEF_TILE(cats_tile_avx,CATS_AVX_FN,CATS_MAC_AVX)
+CATS_DEF_TILE(cats_tile_avx2,CATS_AVX2_FN,CATS_MAC_FMA)
+#endif
+static inline void cats_gemm_nt_cpu(float*c,const float*x,const float*w,size_t n,
+                                      size_t in,size_t out,const float*bias);
+static inline void cats_gemm_nt(float*c,const float*x,const float*w,size_t n,
+                                  size_t in,size_t out,const float*bias)
+{
+	if (!n||!in||!out) {
+		return;
+	}
+#ifdef CATS_GPU
+	/* Weights are cached on the GPU by pointer: whoever frees or rewrites W
+	 * must call cs_gpu_forget_weights() (CS_GPU_FORGET) first.  The rows are
+	 * shared out: the GPU takes whole 128-row tiles (about CS_GPU_SHARE percent
+	 * of them), the CPU computes the remaining rows while the GPU runs. */
+	if (cs_gpu_ready()&&n>=32&&in%16==0&&(double)n*in*out>=2.0e7) {
+		size_t ng=((n*cs_gpu_share()/100+CS_GPU_TILE-1)/CS_GPU_TILE)*CS_GPU_TILE;
+		if (ng>n||n-ng<16) {
+			ng=n;
+		}
+		if (!cs_gpu_gemm_begin(x,w,ng,in,out,bias)) {
+			if (ng<n) {
+				cats_gemm_nt_cpu(c+ng*out,x+ng*in,w,n-ng,in,out,bias);
+			}
+			if (!cs_gpu_gemm_end(c)) {
+				return;
+			}
+			cats_gemm_nt_cpu(c,x,w,ng,in,out,bias);   /* GPU failed: redo its rows */
+			return;
+		}
+	}
+#endif
+	cats_gemm_nt_cpu(c,x,w,n,in,out,bias);
+}
+static inline void cats_gemm_nt_cpu(float*c,const float*x,const float*w,size_t n,
+                                      size_t in,size_t out,const float*bias)
+{
+	if (!n||!in||!out) {
+		return;
+	}
+	cats_tile_fn tile=cats_tile_generic;
+#if CATS_SIMD_X86
+	{
+		int level=cats_cpu_simd_level();
+		if (level>=2) {
+			tile=cats_tile_avx2;
+		} else if (level==1) {
+			tile=cats_tile_avx;
+		}
+	}
+#endif
+	const long ntb=(long)((n+CATS_GEMM_TB-1)/CATS_GEMM_TB);
+	const long nob=(long)((out+CATS_GEMM_OB-1)/CATS_GEMM_OB);
+	const int big=(double)n*(double)in*(double)out>1.0e6;
+	(void)big;
+	#pragma omp parallel for collapse(2) schedule(dynamic,1) if(big)
+	for (long tb=0; tb<ntb; tb++)for (long ob=0; ob<nob; ob++) {
+			size_t t0=(size_t)tb*CATS_GEMM_TB,t1=t0+CATS_GEMM_TB;
+			if (t1>n) {
+				t1=n;
+			}
+			size_t o0=(size_t)ob*CATS_GEMM_OB,o1=o0+CATS_GEMM_OB;
+			if (o1>out) {
+				o1=out;
+			}
+			for (size_t k0=0; k0<in; k0+=CATS_GEMM_KC) {
+				size_t klen=in-k0<CATS_GEMM_KC?in-k0:CATS_GEMM_KC;
+				int acc=k0!=0;
+				for (size_t t=t0; t<t1; t+=4) {
+					size_t nt=t1-t<4?t1-t:4;
+					for (size_t o=o0; o<o1; o+=2) {
+						size_t no=o1-o<2?o1-o:2;
+						tile(c+t*out+o,out,x+t*in+k0,in,w+o*in+k0,in,klen,nt,no,acc,
+						     bias?bias+o:NULL);
+					}
+				}
+			}
+		}
+}
+static inline float cats_half_to_float(unsigned h)
+{
+#ifdef __F16C__
+	return _cvtsh_ss((unsigned short)h);
+#else
+	uint32_t sign=(uint32_t)(h&0x8000u)<<16,exp=(h>>10)&0x1fu,man=h&0x3ffu,bits;
+	if (!exp) {
+		if (!man) {
+			bits=sign;
+		} else {
+			int e=-1;
+			do {
+				e++;
+				man<<=1;
+			} while (!(man&0x400u));
+			man&=0x3ffu;
+			bits=sign|((uint32_t)(112-e)<<23)|(man<<13);
+		}
+	} else if (exp==31) {
+		bits=sign|0x7f800000u|(man<<13);
+	} else {
+		bits=sign|((exp+112u)<<23)|(man<<13);
+	}
+	float f;
+	memcpy(&f,&bits,4);
+	return f;
+#endif
+}
+
+// bfloat16 is the upper half of an IEEE float
+static inline float cats_bf16_to_float(unsigned h)
+{
+	uint32_t bits = (uint32_t)(h & 0xffffu) << 16;
+	float f;
+	memcpy(&f, &bits, 4);
+	return f;
+}
+static inline float cats_silu(float x)
+{
+	return x/(1.0f+expf(-x));
+}
+static inline float cats_softplus(float x)
+{
+	return fmaxf(x,0.0f)+log1pf(expf(-fabsf(x)));
+}
+static inline float cats_clampf(float x,float low,float high)
+{
+	return fminf(high,fmaxf(low,x));
+}
+static inline void cats_rmsnorm(float*dst,const float*src,const float*weight,unsigned d)
+{
+	double sum=0;
+	for (unsigned i=0; i<d; i++) {
+		sum+=(double)src[i]*src[i];
+	}
+	float scale=1.0f/sqrtf((float)(sum/d)+1.e-6f);
+	for (unsigned i=0; i<d; i++) {
+		dst[i]=src[i]*scale*weight[i];
+	}
+}
+
+// tanh approximation of GELU (gelu_pytorch_tanh)
+static inline float cats_gelu_tanh(float x)
+{
+	return 0.5f * x * (1.0f + tanhf(0.7978845608028654f * (x + 0.044715f * x * x * x)));
+}
+// Softmax of row[lo..hi) after multiplying by `scale`; everything outside [lo, hi) of the n entries becomes 0.
+// The AVX path evaluates exp 8 lanes at a time (Cephes polynomial, relative error ~1e-7, comparable to expf).
+#if CATS_SIMD_X86
+CATS_AVX_FN static inline __m256 cats_exp_ps_avx(__m256 x)
+{
+	x = _mm256_max_ps(x, _mm256_set1_ps(-87.3f));
+	__m256 fx = _mm256_floor_ps(_mm256_add_ps(_mm256_mul_ps(x, _mm256_set1_ps(1.44269504088896341f)), _mm256_set1_ps(0.5f)));
+	__m256 r = _mm256_sub_ps(x, _mm256_mul_ps(fx, _mm256_set1_ps(0.693359375f)));
+	r = _mm256_sub_ps(r, _mm256_mul_ps(fx, _mm256_set1_ps(-2.12194440e-4f)));
+	__m256 y = _mm256_set1_ps(1.9875691500e-4f);
+	y = _mm256_add_ps(_mm256_mul_ps(y, r), _mm256_set1_ps(1.3981999507e-3f));
+	y = _mm256_add_ps(_mm256_mul_ps(y, r), _mm256_set1_ps(8.3334519073e-3f));
+	y = _mm256_add_ps(_mm256_mul_ps(y, r), _mm256_set1_ps(4.1665795894e-2f));
+	y = _mm256_add_ps(_mm256_mul_ps(y, r), _mm256_set1_ps(1.6666665459e-1f));
+	y = _mm256_add_ps(_mm256_mul_ps(y, r), _mm256_set1_ps(5.0000001201e-1f));
+	y = _mm256_add_ps(_mm256_add_ps(_mm256_mul_ps(y, _mm256_mul_ps(r, r)), r), _mm256_set1_ps(1.0f));
+	// 2^n built with 128-bit integer ops (AVX has no 256-bit integer shifts)
+	__m256i n = _mm256_cvtps_epi32(fx);
+	__m128i lo = _mm_slli_epi32(_mm_add_epi32(_mm256_castsi256_si128(n), _mm_set1_epi32(127)), 23);
+	__m128i hi = _mm_slli_epi32(_mm_add_epi32(_mm256_extractf128_si256(n, 1), _mm_set1_epi32(127)), 23);
+	__m256 pow2 = _mm256_insertf128_ps(_mm256_castps128_ps256(_mm_castsi128_ps(lo)), _mm_castsi128_ps(hi), 1);
+	return _mm256_mul_ps(y, pow2);
+}
+CATS_AVX_FN static void cats_softmax_scaled_avx(float *row, size_t lo, size_t hi, float scale)
+{
+	const __m256 sc = _mm256_set1_ps(scale);
+	size_t j = lo;
+	__m256 vmax = _mm256_set1_ps(-FLT_MAX);
+	for (; j + 8 <= hi; j += 8) {
+		__m256 v = _mm256_mul_ps(_mm256_loadu_ps(row + j), sc);
+		_mm256_storeu_ps(row + j, v);
+		vmax = _mm256_max_ps(vmax, v);
+	}
+	float tmp[8], mx = -FLT_MAX;
+	_mm256_storeu_ps(tmp, vmax);
+	for (int i = 0; i < 8; i++) if (tmp[i] > mx) mx = tmp[i];
+	for (; j < hi; j++) { row[j] *= scale; if (row[j] > mx) mx = row[j]; }
+	const __m256 vm = _mm256_set1_ps(mx);
+	__m256 vsum = _mm256_setzero_ps();
+	for (j = lo; j + 8 <= hi; j += 8) {
+		__m256 e = cats_exp_ps_avx(_mm256_sub_ps(_mm256_loadu_ps(row + j), vm));
+		_mm256_storeu_ps(row + j, e);
+		vsum = _mm256_add_ps(vsum, e);
+	}
+	_mm256_storeu_ps(tmp, vsum);
+	double sum = 0;
+	for (int i = 0; i < 8; i++) sum += tmp[i];
+	for (; j < hi; j++) { row[j] = expf(row[j] - mx); sum += row[j]; }
+	const __m256 inv = _mm256_set1_ps((float)(1.0 / sum));
+	for (j = lo; j + 8 <= hi; j += 8) _mm256_storeu_ps(row + j, _mm256_mul_ps(_mm256_loadu_ps(row + j), inv));
+	for (; j < hi; j++) row[j] *= (float)(1.0 / sum);
+}
+#endif
+static inline void cats_softmax_scaled(float *row, size_t n, size_t lo, size_t hi, float scale)
+{
+	if (lo >= hi) { memset(row, 0, n * sizeof(float)); return; }
+#if CATS_SIMD_X86
+	if (cats_cpu_simd_level() >= 1) {
+		cats_softmax_scaled_avx(row, lo, hi, scale);
+		memset(row, 0, lo * sizeof(float));
+		memset(row + hi, 0, (n - hi) * sizeof(float));
+		return;
+	}
+#endif
+	float mx = -FLT_MAX;
+	for (size_t j = lo; j < hi; j++) { row[j] *= scale; if (row[j] > mx) mx = row[j]; }
+	double sum = 0;
+	for (size_t j = lo; j < hi; j++) { row[j] = expf(row[j] - mx); sum += row[j]; }
+	const float inv = (float)(1.0 / sum);
+	memset(row, 0, lo * sizeof(float));
+	for (size_t j = lo; j < hi; j++) row[j] *= inv;
+	memset(row + hi, 0, (n - hi) * sizeof(float));
+}
+// in-place softmax over n values
+static inline void cats_softmax_inplace(float *x, size_t n)
+{
+	cats_softmax_scaled(x, n, 0, n, 1.0f);
+}
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+// Threads to use when the user gave neither -j nor OMP_NUM_THREADS: one per physical core.
+// Hyper-threads share the FP units, so they add no GEMM throughput and only add barrier cost.
+// Returns 0 = leave the OpenMP default.
+static inline int cats_physical_threads(void)
+{
+#ifdef _OPENMP
+	FILE*f=fopen("/sys/devices/system/cpu/cpu0/topology/thread_siblings_list","r");
+	if (!f) {
+		return 0;
+	}
+	char line[256];
+	int siblings=0;
+	if (fgets(line,sizeof(line),f)) {
+		for (const char*p=line; *p&&*p!='\n';) {
+			char*end;
+			long a=strtol(p,&end,10);
+			if (end==p) {
+				break;
+			}
+			long b=a;
+			if (*end=='-') {
+				p=end+1;
+				b=strtol(p,&end,10);
+			}
+			siblings+=(int)(b-a+1);
+			p=*end==','?end+1:end;
+			if (*end!=','&&*end!='-') {
+				break;
+			}
+		}
+	}
+	fclose(f);
+	int procs=omp_get_num_procs();
+	return siblings>1&&procs>=siblings?procs/siblings:0;
+#else
+	return 0;
+#endif
+}
+// Applies `requested` threads (> 0), else one per physical core unless OMP_NUM_THREADS is set.
+static inline void cats_set_threads(int requested)
+{
+#ifdef _OPENMP
+	if (requested > 0) omp_set_num_threads(requested);
+	else if (!getenv("OMP_NUM_THREADS") && cats_physical_threads() > 0) omp_set_num_threads(cats_physical_threads());
+#else
+	(void)requested;
+#endif
+}
+
+// ---------------------------------------------------------------------------
+// safetensors reader (mmap). Tensors are looked up by name and widened to float32 on demand,
+// so bf16 / fp16 checkpoints from Hugging Face can be used without conversion.
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Q4_0: 4-bit weights in blocks of 32 along the input dimension (the GGML layout, 18 bytes per block):
+//   fp16 scale d, then 16 bytes where byte j holds element j (low nibble) and j+16 (high nibble).
+//   value = (nibble - 8) * d.  A row of n weights (n % 32 == 0) takes n / 32 * 18 bytes.
+// ---------------------------------------------------------------------------
+#define CATS_Q4_0_BLOCK	32
+#define CATS_Q4_0_BYTES	18
+static inline size_t cats_q4_0_row_bytes(size_t n) { return n / CATS_Q4_0_BLOCK * CATS_Q4_0_BYTES; }
+
+// float -> IEEE half, round to nearest even (subnormals and overflow handled)
+static inline uint16_t cats_float_to_half(float f)
+{
+#ifdef __F16C__
+	return (uint16_t)_cvtss_sh(f, 0);
+#else
+	uint32_t x;
+	memcpy(&x, &f, 4);
+	uint32_t sign = (x >> 16) & 0x8000u, e = (x >> 23) & 0xffu, m = x & 0x7fffffu;
+	if (e == 0xff) return (uint16_t)(sign | 0x7c00u | (m ? 0x200u : 0));
+	int ne = (int)e - 127 + 15;
+	if (ne >= 31) return (uint16_t)(sign | 0x7c00u);
+	if (ne <= 0) {
+		if (ne < -10) return (uint16_t)sign;
+		m |= 0x800000u;
+		int shift = 14 - ne;
+		uint32_t half = m >> shift, rem = m & ((1u << shift) - 1), mid = 1u << (shift - 1);
+		if (rem > mid || (rem == mid && (half & 1))) half++;
+		return (uint16_t)(sign | half);
+	}
+	uint32_t half = ((uint32_t)ne << 10) | (m >> 13), rem = m & 0x1fffu;
+	if (rem > 0x1000u || (rem == 0x1000u && (half & 1))) half++;	// a carry into the exponent is correct
+	return (uint16_t)(sign | half);
+#endif
+}
+static inline uint16_t cats_load_u16(const uint8_t *p) { return (uint16_t)(p[0] | (p[1] << 8)); }
+
+// Quantizes n floats (n % 32 == 0) into n/32*18 bytes. The scale is chosen as max/-8 on the element of
+// largest magnitude (so that element is exact), then refined by a small search that minimises the
+// block's squared error; refine = 0 gives plain GGML Q4_0.
+static inline void cats_q4_0_quantize_row(const float *x, size_t n, uint8_t *out, int refine)
+{
+	for (size_t b = 0; b < n / CATS_Q4_0_BLOCK; b++, x += CATS_Q4_0_BLOCK, out += CATS_Q4_0_BYTES) {
+		float amax = 0, mx = 0;
+		for (int j = 0; j < CATS_Q4_0_BLOCK; j++) if (fabsf(x[j]) > amax) { amax = fabsf(x[j]); mx = x[j]; }
+		float best_d = mx / -8.0f, best_err = FLT_MAX;
+		const int tries = refine ? 17 : 1;
+		const float base = best_d;
+		for (int t = 0; t < tries; t++) {
+			float d = base * (1.0f + 0.0125f * (t - (tries - 1) / 2));	// +-10 % around max/-8
+			uint16_t dh = cats_float_to_half(d);
+			float dq = cats_half_to_float(dh), id = dq ? 1.0f / dq : 0.0f, err = 0;
+			for (int j = 0; j < CATS_Q4_0_BLOCK; j++) {
+				int q = (int)(x[j] * id + 8.5f);
+				q = q < 0 ? 0 : q > 15 ? 15 : q;
+				float e = x[j] - (q - 8) * dq;
+				err += e * e;
+			}
+			if (err < best_err) { best_err = err; best_d = d; }
+			if (!refine) break;
+		}
+		uint16_t dh = cats_float_to_half(best_d);
+		float dq = cats_half_to_float(dh), id = dq ? 1.0f / dq : 0.0f;
+		out[0] = (uint8_t)(dh & 0xff); out[1] = (uint8_t)(dh >> 8);
+		for (int j = 0; j < 16; j++) {
+			int q0 = (int)(x[j] * id + 8.5f), q1 = (int)(x[j + 16] * id + 8.5f);
+			q0 = q0 < 0 ? 0 : q0 > 15 ? 15 : q0;
+			q1 = q1 < 0 ? 0 : q1 > 15 ? 15 : q1;
+			out[2 + j] = (uint8_t)(q0 | (q1 << 4));
+		}
+	}
+}
+static inline void cats_q4_0_dequantize_row(const uint8_t *in, size_t n, float *out)
+{
+	for (size_t b = 0; b < n / CATS_Q4_0_BLOCK; b++, in += CATS_Q4_0_BYTES, out += CATS_Q4_0_BLOCK) {
+		float d = cats_half_to_float(cats_load_u16(in));
+		for (int j = 0; j < 16; j++) {
+			out[j]      = ((in[2 + j] & 0x0f) - 8) * d;
+			out[j + 16] = ((in[2 + j] >> 4) - 8) * d;
+		}
+	}
+}
+// ---- Q8_0 activations (36 bytes per 32 values: 32 int8, then the float scale) and the Q4_0 x Q8_0 dot ----
+#define CATS_Q8_0_BYTES	36
+static inline size_t cats_q8_0_row_bytes(size_t n) { return n / CATS_Q4_0_BLOCK * CATS_Q8_0_BYTES; }
+
+#if CATS_SIMD_X86
+// horizontally add 8 floats (hadd order)
+CATS_AVX_FN static inline float cats_hsum_ps(__m256 acc)
+{
+	acc = _mm256_hadd_ps(acc, acc);
+	acc = _mm256_hadd_ps(acc, acc);
+	return _mm_cvtss_f32(_mm_add_ps(_mm256_extractf128_ps(acc, 1), _mm256_castps256_ps128(acc)));
+}
+// sum of the 16 products of two int8 vectors, as 4 int32 lanes (x is used for its sign and magnitude)
+CATS_AVX_FN static inline __m128i cats_mul_sum_i8_pairs(const __m128i x, const __m128i y)
+{
+	const __m128i ax = _mm_sign_epi8(x, x);
+	const __m128i sy = _mm_sign_epi8(y, x);
+	const __m128i dot = _mm_maddubs_epi16(ax, sy);
+	return _mm_madd_epi16(_mm_set1_epi16(1), dot);
+}
+CATS_AVX_FN static float cats_dot_q4_0_q8_0_avx(const uint8_t *x, const int8_t *y, int n)
+{
+	const __m128i lowMask = _mm_set1_epi8(0xF), off = _mm_set1_epi8(8);
+	int nb = n >> 5;
+	__m256 acc = _mm256_setzero_ps();
+	do {
+		float delta = cats_half_to_float(cats_load_u16(x));
+		const __m128i tmp = _mm_loadu_si128((const __m128i*)(x + 2));
+		x += CATS_Q4_0_BYTES;
+		__m128i bx = _mm_sub_epi8(_mm_and_si128(lowMask, tmp), off);
+		const __m128i i32_0 = cats_mul_sum_i8_pairs(bx, _mm_loadu_si128((const __m128i*)y));
+		bx = _mm_sub_epi8(_mm_and_si128(lowMask, _mm_srli_epi64(tmp, 4)), off);
+		const __m128i i32_1 = cats_mul_sum_i8_pairs(bx, _mm_loadu_si128((const __m128i*)(y + 16)));
+		const __m256 p = _mm256_cvtepi32_ps(_mm256_set_m128i(i32_0, i32_1));
+		float ds;
+		memcpy(&ds, y + 32, 4);
+		y += CATS_Q8_0_BYTES;
+		acc = _mm256_add_ps(acc, _mm256_mul_ps(_mm256_set1_ps(delta * ds), p));
+	} while (--nb > 0);
+	return cats_hsum_ps(acc);
+}
+// Quantizes n floats (n % 32 == 0) to Q8_0 blocks: scale = max|x| / 127, round to nearest.
+CATS_AVX_FN static void cats_q8_0_quantize_avx(int8_t *p, const float *x, int n)
+{
+	int nb = n >> 5;
+	do {
+		__m256 v0 = _mm256_loadu_ps(x), v1 = _mm256_loadu_ps(x + 8), v2 = _mm256_loadu_ps(x + 16), v3 = _mm256_loadu_ps(x + 24);
+		x += 32;
+		const __m256 signBit = _mm256_set1_ps(-0.0f);
+		__m256 maxAbs = _mm256_andnot_ps(signBit, v0);
+		maxAbs = _mm256_max_ps(maxAbs, _mm256_andnot_ps(signBit, v1));
+		maxAbs = _mm256_max_ps(maxAbs, _mm256_andnot_ps(signBit, v2));
+		maxAbs = _mm256_max_ps(maxAbs, _mm256_andnot_ps(signBit, v3));
+		__m128 max4 = _mm_max_ps(_mm256_extractf128_ps(maxAbs, 1), _mm256_castps256_ps128(maxAbs));
+		max4 = _mm_max_ps(max4, _mm_movehl_ps(max4, max4));
+		max4 = _mm_max_ss(max4, _mm_movehdup_ps(max4));
+		const float maxScalar = _mm_cvtss_f32(max4);
+		const float d = maxScalar / 127.0f;
+		const float id = maxScalar != 0.0f ? 127.0f / maxScalar : 0.0f;
+		const __m256 mul = _mm256_set1_ps(id);
+		v0 = _mm256_round_ps(_mm256_mul_ps(v0, mul), _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
+		v1 = _mm256_round_ps(_mm256_mul_ps(v1, mul), _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
+		v2 = _mm256_round_ps(_mm256_mul_ps(v2, mul), _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
+		v3 = _mm256_round_ps(_mm256_mul_ps(v3, mul), _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
+		__m256i i0 = _mm256_cvtps_epi32(v0), i1 = _mm256_cvtps_epi32(v1), i2 = _mm256_cvtps_epi32(v2), i3 = _mm256_cvtps_epi32(v3);
+		__m128i ni0 = _mm_packs_epi32(_mm256_castsi256_si128(i0), _mm256_extractf128_si256(i0, 1));
+		__m128i ni2 = _mm_packs_epi32(_mm256_castsi256_si128(i1), _mm256_extractf128_si256(i1, 1));
+		__m128i ni4 = _mm_packs_epi32(_mm256_castsi256_si128(i2), _mm256_extractf128_si256(i2, 1));
+		__m128i ni6 = _mm_packs_epi32(_mm256_castsi256_si128(i3), _mm256_extractf128_si256(i3, 1));
+		_mm_storeu_si128((__m128i*)(p), _mm_packs_epi16(ni0, ni2));
+		_mm_storeu_si128((__m128i*)(p + 16), _mm_packs_epi16(ni4, ni6));
+		memcpy(p + 32, &d, 4);
+		p += CATS_Q8_0_BYTES;
+	} while (--nb > 0);
+}
+#endif
+static float cats_dot_q4_0_q8_0_scalar(const uint8_t *a, const int8_t *b, int n)
+{
+	float val = 0.0f;
+	for (int i = 0; i < n / CATS_Q4_0_BLOCK; i++, a += CATS_Q4_0_BYTES, b += CATS_Q8_0_BYTES) {
+		float delta = cats_half_to_float(cats_load_u16(a)), ds;
+		int32_t ival = 0;
+		for (int j = 0; j < 16; j++) {
+			ival += (int32_t)((a[2 + j] & 0x0F) - 8) * b[j];
+			ival += (int32_t)((a[2 + j] >> 4) - 8) * b[j + 16];
+		}
+		memcpy(&ds, b + 32, 4);
+		val += ival * (delta * ds);
+	}
+	return val;
+}
+static void cats_q8_0_quantize_scalar(int8_t *q, const float *x, int n)
+{
+	for (int g = 0; g < n / CATS_Q4_0_BLOCK; g++, x += CATS_Q4_0_BLOCK, q += CATS_Q8_0_BYTES) {
+		float amax = 0.0f;
+		for (int i = 0; i < CATS_Q4_0_BLOCK; i++) if (fabsf(x[i]) > amax) amax = fabsf(x[i]);
+		const float d = amax / 127.0f, id = d ? 1.0f / d : 0.0f;
+		for (int i = 0; i < CATS_Q4_0_BLOCK; i++) q[i] = (int8_t)roundf(x[i] * id);
+		memcpy(q + 32, &d, 4);
+	}
+}
+// Dispatching versions (AVX when the CPU has it, see cats_cpu_simd_level)
+static inline float cats_dot_q4_0_q8_0(const uint8_t *w, const int8_t *a, int n)
+{
+#if CATS_SIMD_X86
+	if (cats_cpu_simd_level() >= 1) return cats_dot_q4_0_q8_0_avx(w, a, n);
+#endif
+	return cats_dot_q4_0_q8_0_scalar(w, a, n);
+}
+static inline void cats_q8_0_quantize(int8_t *out, const float *x, int n)
+{
+#if CATS_SIMD_X86
+	if (cats_cpu_simd_level() >= 1) { cats_q8_0_quantize_avx(out, x, n); return; }
+#endif
+	cats_q8_0_quantize_scalar(out, x, n);
+}
+
+// C[n][out] = X[n][in] . W^T (+ bias) with W stored as Q4_0 rows.
+//   1..3 tokens: activations are quantized to Q8_0 and every output is an integer dot product, so the weights
+//     stay 4-bit in memory (a vector-matrix product is bound by reading the weights);
+//   4 or more tokens: the weights are expanded once into a scratch matrix (kept between calls, so this is not
+//     thread-safe) and the blocked float GEMM runs. Measured on an AVX-only Xeon this is 1.5x faster at n = 4 and
+//     about 4x at n = 100 and above; the threshold is a compile-time knob for machines with a faster int8 path.
+#ifndef CATS_Q4_0_DEQUANT_MIN
+#define CATS_Q4_0_DEQUANT_MIN	4
+#endif
+static inline void cats_gemm_nt_q4_0(float *c, const float *x, const uint8_t *w, size_t n, size_t in, size_t out,
+				     const float *bias)
+{
+	if (!n || !in || !out || in % CATS_Q4_0_BLOCK) return;
+	const size_t arow = cats_q8_0_row_bytes(in), wrow = cats_q4_0_row_bytes(in);
+	if (n >= CATS_Q4_0_DEQUANT_MIN) {
+		static float *scratch;
+		static size_t cap;
+		if (cap < in * out) {
+			(free)(scratch);
+			scratch = (float*)(malloc)(in * out * sizeof(float));
+			cap = scratch ? in * out : 0;
+			if (!scratch) return;
+		}
+		#pragma omp parallel for schedule(static)
+		for (long r = 0; r < (long)out; r++) cats_q4_0_dequantize_row(w + (size_t)r * wrow, in, scratch + (size_t)r * in);
+		cats_gemm_nt(c, x, scratch, n, in, out, bias);
+		return;
+	}
+	int8_t *xq = (int8_t*)(malloc)(n * arow);
+	if (!xq) return;
+	#pragma omp parallel for schedule(static)
+	for (long t = 0; t < (long)n; t++) cats_q8_0_quantize(xq + (size_t)t * arow, x + (size_t)t * in, (int)in);
+	#pragma omp parallel for schedule(static)
+	for (long r = 0; r < (long)out; r++) {
+		const uint8_t *wr = w + (size_t)r * wrow;
+		const float b = bias ? bias[r] : 0.0f;
+		for (size_t t = 0; t < n; t++) c[t * out + r] = cats_dot_q4_0_q8_0(wr, xq + t * arow, (int)in) + b;
+	}
+	(free)(xq);
+}
+
+#if !defined(_WIN32)
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#endif
+#define CATS_ST_F32	0
+#define CATS_ST_F16	1
+#define CATS_ST_BF16	2
+#define CATS_ST_Q4_0	3		// shape = logical [rows, cols]; rows are cats_q4_0 encoded
+typedef struct {
+	char name[192];
+	int dtype;			// CATS_ST_*, -1 = unsupported
+	int ndim;
+	int64_t shape[4];
+	uint64_t begin, end;		// byte range inside the data section
+} cats_st_tensor;
+typedef struct {
+	uint8_t *map;
+	size_t size;
+	const uint8_t *data;		// start of the data section
+	cats_st_tensor *tensor;
+	int count;
+} cats_st;
+
+static inline void cats_st_close(cats_st *s)
+{
+#if !defined(_WIN32)
+	if (s->map) munmap(s->map, s->size);
+#endif
+	(free)(s->tensor);
+	memset(s, 0, sizeof(*s));
+}
+// Reads the JSON header: {"name":{"dtype":"BF16","shape":[..],"data_offsets":[a,b]}, ...}
+static inline int cats_st_parse(cats_st *s, const char *j, size_t n)
+{
+	size_t cap = 64;
+	s->tensor = (cats_st_tensor*)(malloc)(cap * sizeof(cats_st_tensor));
+	if (!s->tensor) return -1;
+	size_t i = 0;
+	while (i < n && j[i] != '{') i++;
+	i++;
+	while (i < n) {
+		while (i < n && j[i] != '"' && j[i] != '}') i++;
+		if (i >= n || j[i] == '}') break;
+		size_t k0 = ++i;
+		while (i < n && j[i] != '"') i++;
+		size_t klen = i - k0;
+		i++;
+		while (i < n && j[i] != '{') i++;
+		size_t o0 = i;
+		int depth = 0;
+		do {	// matching brace of this entry
+			if (j[i] == '{') depth++;
+			else if (j[i] == '}') depth--;
+			i++;
+		} while (i < n && depth > 0);
+		if (klen == 12 && !strncmp(j + k0, "__metadata__", 12)) continue;
+		if (klen >= sizeof(((cats_st_tensor*)0)->name)) return -1;
+		if (s->count == (int)cap) {
+			cap *= 2;
+			cats_st_tensor *t = (cats_st_tensor*)(realloc)(s->tensor, cap * sizeof(cats_st_tensor));
+			if (!t) return -1;
+			s->tensor = t;
+		}
+		cats_st_tensor *t = &s->tensor[s->count++];
+		memset(t, 0, sizeof(*t));
+		memcpy(t->name, j + k0, klen);
+		t->dtype = -1;
+		for (size_t p = o0; p < i; p++) {
+			if (!strncmp(j + p, "\"dtype\"", 7)) {
+				const char *d = strchr(j + p + 7, '"') + 1;
+				t->dtype = !strncmp(d, "F32", 3) ? CATS_ST_F32 : !strncmp(d, "BF16", 4) ? CATS_ST_BF16 :
+					   !strncmp(d, "F16", 3) ? CATS_ST_F16 : !strncmp(d, "Q4_0", 4) ? CATS_ST_Q4_0 : -1;
+			} else if (!strncmp(j + p, "\"shape\"", 7)) {
+				const char *d = strchr(j + p + 7, '[') + 1;
+				while (*d != ']' && t->ndim < 4) {
+					t->shape[t->ndim++] = strtoll(d, (char**)&d, 10);
+					while (*d == ',' || *d == ' ') d++;
+				}
+			} else if (!strncmp(j + p, "\"data_offsets\"", 14)) {
+				const char *d = strchr(j + p + 14, '[') + 1;
+				t->begin = strtoull(d, (char**)&d, 10);
+				t->end = strtoull(strchr(d, ',') + 1, NULL, 10);
+			}
+		}
+	}
+	return 0;
+}
+static inline int cats_st_open(cats_st *s, const char *path)
+{
+	memset(s, 0, sizeof(*s));
+#if defined(_WIN32)
+	(void)path;
+	return -1;
+#else
+	int fd = open(path, O_RDONLY);
+	if (fd < 0) return -1;
+	struct stat st;
+	if (fstat(fd, &st) || st.st_size < 8) { close(fd); return -1; }
+	s->size = (size_t)st.st_size;
+	s->map = (uint8_t*)mmap(NULL, s->size, PROT_READ, MAP_PRIVATE, fd, 0);
+	close(fd);
+	if (s->map == MAP_FAILED) { s->map = NULL; return -1; }
+	uint64_t hl;
+	memcpy(&hl, s->map, 8);
+	if (hl > s->size - 8) { cats_st_close(s); return -1; }
+	s->data = s->map + 8 + hl;
+	if (cats_st_parse(s, (const char*)s->map + 8, (size_t)hl)) { cats_st_close(s); return -1; }
+	return 0;
+#endif
+}
+static inline const cats_st_tensor* cats_st_find(const cats_st *s, const char *name)
+{
+	for (int i = 0; i < s->count; i++) if (!strcmp(s->tensor[i].name, name)) return &s->tensor[i];
+	return NULL;
+}
+static inline int64_t cats_st_numel(const cats_st_tensor *t)
+{
+	int64_t n = 1;
+	for (int i = 0; i < t->ndim; i++) n *= t->shape[i];
+	return n;
+}
+// Bytes a tensor of this dtype and element count occupies
+static inline uint64_t cats_st_bytes(int dtype, int64_t n)
+{
+	return dtype == CATS_ST_F32 ? (uint64_t)n * 4 : dtype == CATS_ST_Q4_0 ? cats_q4_0_row_bytes((size_t)n) : (uint64_t)n * 2;
+}
+// Pointer to the tensor's bytes inside the mapping (valid until cats_st_close)
+static inline const uint8_t* cats_st_raw(const cats_st *s, const cats_st_tensor *t) { return s->data + t->begin; }
+// Widens (or copies) the whole tensor to float32. dst needs cats_st_numel() floats.
+static inline int cats_st_read_f32(const cats_st *s, const cats_st_tensor *t, float *dst)
+{
+	int64_t n = cats_st_numel(t);
+	const uint8_t *p = s->data + t->begin;
+	if (t->dtype < 0 || cats_st_bytes(t->dtype, n) != t->end - t->begin) return -1;
+	if (t->dtype == CATS_ST_Q4_0) {
+		if (t->ndim != 2 || t->shape[1] % CATS_Q4_0_BLOCK) return -1;
+		for (int64_t r = 0; r < t->shape[0]; r++)
+			cats_q4_0_dequantize_row(p + (size_t)r * cats_q4_0_row_bytes((size_t)t->shape[1]), (size_t)t->shape[1], dst + r * t->shape[1]);
+		return 0;
+	}
+	if (t->dtype == CATS_ST_F32) memcpy(dst, p, (size_t)n * 4);
+	else {
+		const int bf = t->dtype == CATS_ST_BF16;
+		#pragma omp parallel for schedule(static) if(n > (1 << 16))
+		for (int64_t i = 0; i < n; i++) {
+			uint16_t h = (uint16_t)(p[2*i] | (p[2*i+1] << 8));
+			dst[i] = bf ? cats_bf16_to_float(h) : cats_half_to_float(h);
+		}
+	}
+	return 0;
+}
+// One row of a 2-D tensor (e.g. an embedding table) without widening the rest.
+static inline int cats_st_read_row_f32(const cats_st *s, const cats_st_tensor *t, int64_t row, float *dst)
+{
+	if (t->ndim != 2 || row < 0 || row >= t->shape[0] || t->dtype < 0) return -1;
+	int64_t w = t->shape[1];
+	if (t->dtype == CATS_ST_Q4_0) {
+		if (w % CATS_Q4_0_BLOCK) return -1;
+		cats_q4_0_dequantize_row(s->data + t->begin + (size_t)row * cats_q4_0_row_bytes((size_t)w), (size_t)w, dst);
+		return 0;
+	}
+	const uint8_t *p = s->data + t->begin + (size_t)row * w * (t->dtype == CATS_ST_F32 ? 4 : 2);
+	if (t->dtype == CATS_ST_F32) memcpy(dst, p, (size_t)w * 4);
+	else for (int64_t i = 0; i < w; i++) {
+		uint16_t h = (uint16_t)(p[2*i] | (p[2*i+1] << 8));
+		dst[i] = t->dtype == CATS_ST_BF16 ? cats_bf16_to_float(h) : cats_half_to_float(h);
+	}
+	return 0;
+}
+
+// Writes a safetensors file. Each entry points at its bytes (data), which are copied in order.
+typedef struct {
+	const char *name;
+	const char *dtype;		// "F32", "F16", "BF16" or "Q4_0"
+	int ndim;
+	int64_t shape[4];
+	const void *data;
+	uint64_t bytes;
+} cats_st_entry;
+static inline int cats_st_write(const char *path, const cats_st_entry *e, int count, const char *format_note)
+{
+	size_t cap = 4096 + (size_t)count * 320;
+	char *js = (char*)(malloc)(cap);
+	if (!js) return -1;
+	size_t n = 0;
+	uint64_t off = 0;
+	n += (size_t)snprintf(js + n, cap - n, "{\"__metadata__\":{\"format\":\"%s\"}", format_note ? format_note : "pt");
+	for (int i = 0; i < count; i++) {
+		n += (size_t)snprintf(js + n, cap - n, ",\"%s\":{\"dtype\":\"%s\",\"shape\":[", e[i].name, e[i].dtype);
+		for (int d = 0; d < e[i].ndim; d++) n += (size_t)snprintf(js + n, cap - n, "%s%lld", d ? "," : "", (long long)e[i].shape[d]);
+		n += (size_t)snprintf(js + n, cap - n, "],\"data_offsets\":[%llu,%llu]}", (unsigned long long)off, (unsigned long long)(off + e[i].bytes));
+		off += e[i].bytes;
+	}
+	n += (size_t)snprintf(js + n, cap - n, "}");
+	while (n % 8) js[n++] = ' ';			// the data section starts 8-byte aligned
+	FILE *f = fopen(path, "wb");
+	int rc = -1;
+	if (f) {
+		uint64_t hl = n;
+		rc = fwrite(&hl, 8, 1, f) == 1 && fwrite(js, 1, n, f) == n ? 0 : -1;
+		for (int i = 0; i < count && !rc; i++) if (fwrite(e[i].data, 1, (size_t)e[i].bytes, f) != e[i].bytes) rc = -1;
+		if (fclose(f)) rc = -1;
+	}
+	(free)(js);
+	return rc;
+}
+
+// ---------------------------------------------------------------------------
+// Transformer building blocks (float32, row-major [tokens][channels])
+// ---------------------------------------------------------------------------
+// RMSNorm without a learned scale (e.g. value normalisation)
+static inline void cats_rmsnorm_noscale(float *dst, const float *src, unsigned d, float eps)
+{
+	double sum = 0;
+	for (unsigned i = 0; i < d; i++) sum += (double)src[i] * src[i];
+	float scale = 1.0f / sqrtf((float)(sum / d) + eps);
+	for (unsigned i = 0; i < d; i++) dst[i] = src[i] * scale;
+}
+// RoPE tables in the "rotate_half" layout: cos/sin [n][dim], the first and second half repeat.
+// theta^(-2j/dim) for j < dim/2; pos[i] is the position of token i.
+static inline void cats_rope_table(float *cs, float *sn, const float *pos, size_t n, unsigned dim, float theta)
+{
+	unsigned h = dim / 2;
+	for (size_t i = 0; i < n; i++) for (unsigned j = 0; j < h; j++) {
+		double a = (double)pos[i] * pow((double)theta, -2.0 * j / dim);
+		cs[i*dim + j] = cs[i*dim + j + h] = (float)cos(a);
+		sn[i*dim + j] = sn[i*dim + j + h] = (float)sin(a);
+	}
+}
+// Rotates one block of n channels in place: (x1, x2) -> (x1 c - x2 s, x2 c + x1 s).
+// Axial 2-D RoPE calls this once per spatial axis on consecutive blocks of the head.
+static inline void cats_rope_block(float *x, const float *cs, const float *sn, unsigned n)
+{
+	unsigned h = n / 2;
+	for (unsigned j = 0; j < h; j++) {
+		float a = x[j], b = x[j + h];
+		x[j]     = a * cs[j]     - b * sn[j];
+		x[j + h] = b * cs[j + h] + a * sn[j + h];
+	}
+}
+// Bidirectional multi-head attention with grouped K/V heads and no causal mask.
+//   q [t][nq*hd], k and v [t][nkv*hd] -> out [t][nq*hd]; scores are scaled by `scale`.
+//   window > 0 limits each token to keys with |i-j| < window (sliding window); 0 = full.
+// Heads are first repacked contiguously (Q and K as [head][t][hd], V transposed as [head][hd][t]); the work is
+// then cut into (head, block of CATS_ATT_ROWS queries) tasks spread over the OpenMP threads. Each task builds its
+// small score block with the serial blocked GEMM, applies the softmax and multiplies by V, so the score matrix
+// never exceeds CATS_ATT_ROWS x t floats and stays in cache. Cost is O(t^2 hd) per head.
+#ifndef CATS_ATT_ROWS
+#define CATS_ATT_ROWS	64
+#endif
+static inline int cats_attention_bidir(float *out, const float *q, const float *k, const float *v,
+				       size_t t, unsigned nq, unsigned nkv, unsigned hd, float scale, size_t window)
+{
+	if (!nkv || nq % nkv || !t) return -1;
+	const size_t qs = (size_t)nq * hd, ks = (size_t)nkv * hd, nb = (t + CATS_ATT_ROWS - 1) / CATS_ATT_ROWS;
+	float *qp = (float*)(malloc)(nq * t * hd * sizeof(float)), *kp = (float*)(malloc)(nkv * t * hd * sizeof(float)),
+	      *vt = (float*)(malloc)(nkv * hd * t * sizeof(float));
+	if (!qp || !kp || !vt) { (free)(qp); (free)(kp); (free)(vt); return -1; }
+	#pragma omp parallel for schedule(static)
+	for (long i = 0; i < (long)t; i++) {
+		for (unsigned h = 0; h < nq; h++) memcpy(qp + ((size_t)h * t + i) * hd, q + i * qs + (size_t)h * hd, hd * sizeof(float));
+		for (unsigned g = 0; g < nkv; g++) memcpy(kp + ((size_t)g * t + i) * hd, k + i * ks + (size_t)g * hd, hd * sizeof(float));
+	}
+	#pragma omp parallel for schedule(static) collapse(2)
+	for (long g = 0; g < (long)nkv; g++) for (long d = 0; d < (long)hd; d++) {
+		float *dst = vt + ((size_t)g * hd + d) * t;
+		for (size_t i = 0; i < t; i++) dst[i] = v[i * ks + (size_t)g * hd + d];
+	}
+	const unsigned group = nq / nkv;
+	int fail = 0;
+	#pragma omp parallel
+	{
+		float *sc = (float*)(malloc)(CATS_ATT_ROWS * t * sizeof(float)), *ob = (float*)(malloc)(CATS_ATT_ROWS * hd * sizeof(float));
+		if (!sc || !ob) {
+			#pragma omp atomic write
+			fail = 1;
+		}
+		#pragma omp for schedule(dynamic, 1)
+		for (long task = 0; task < (long)(nq * nb); task++) {
+			if (fail) continue;
+			const unsigned h = (unsigned)(task / nb), g = h / group;
+			const size_t i0 = (size_t)(task % nb) * CATS_ATT_ROWS, rows = t - i0 < CATS_ATT_ROWS ? t - i0 : CATS_ATT_ROWS;
+			cats_gemm_nt_cpu(sc, qp + ((size_t)h * t + i0) * hd, kp + (size_t)g * t * hd, rows, hd, t, NULL);	// q_i . k_j
+			for (size_t r = 0; r < rows; r++) {
+				float *row = sc + r * t;
+				const size_t i = i0 + r;
+				size_t lo = 0, hi = t;
+				if (window) {
+					lo = i + 1 > window ? i + 1 - window : 0;
+					hi = i + window < t ? i + window : t;
+				}
+				cats_softmax_scaled(row, t, lo, hi, scale);
+			}
+			cats_gemm_nt_cpu(ob, sc, vt + (size_t)g * hd * t, rows, t, hd, NULL);				// P . V
+			for (size_t r = 0; r < rows; r++) memcpy(out + (i0 + r) * qs + (size_t)h * hd, ob + r * hd, hd * sizeof(float));
+		}
+		(free)(sc); (free)(ob);
+	}
+	(free)(qp); (free)(kp); (free)(vt);
+	return fail ? -1 : 0;
+}
+
+#endif /* CATSEYE_H */

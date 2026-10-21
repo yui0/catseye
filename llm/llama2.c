@@ -6,7 +6,7 @@
 
 #include <stdlib.h>
 #include <ctype.h>
-#include "catseye_llm.h"
+#include "../catseye_llm.h"
 
 cats_llm_model llm_model;
 

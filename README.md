@@ -1,6 +1,21 @@
 # Cat's Eye
 
-Neural network library written in C and Javascript
+Neural network library and applications in C.
+
+[日本語](README.ja.md)
+
+| Location | Contents |
+|---|---|
+| `catseye.h` | Shared neural-network library |
+| `catseye_llm.h` | Shared GGUF/LLM inference runtime |
+| [`transcript/`](transcript/README.md) | Speech transcription CLI, speech/ONNX headers, model tools, Colab notebooks, fixtures and tests |
+| [`llm/`](llm/README.md) | Original LLM examples and GPU implementation |
+| `example/`, `super_resolution/`, `word2vec/` | Neural-network examples |
+| `tools/` | General library tools |
+
+Run `make help` for project commands. Build transcription with `make -C transcript`
+and run it from that directory so its default `models/` path resolves there.
+Use `make legacy` for the original root training examples.
 
 ## Features
 

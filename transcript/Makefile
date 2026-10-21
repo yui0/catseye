@@ -27,11 +27,11 @@ WAV ?=
 MODEL_ZIP ?=
 TEST_OPT ?= 2
 
-HEADERS := $(wildcard *.h)
+HEADERS := $(wildcard *.h) ../catseye_llm.h ../cats_gpu.h
 NATIVE_FLAGS := -DCATS_SPEECH_NATIVE
 
-.PHONY: all help debug hayamimi test test-smoke check clean asr \
-        bundle-english bundle-japanese verify-models fp16-models
+.PHONY: all help debug hayamimi test test-smoke test-adapter check clean asr \
+        bundle-english bundle-japanese bundle-mixed verify-models fp16-models
 
 all: $(TARGET)
 
@@ -57,12 +57,17 @@ test:
 # Fast focused check of the long-WAV, bundle and GEMM paths.
 test-smoke:
 	@set -eu; dir=$$(mktemp -d); trap 'rm -rf "$$dir"' EXIT HUP INT TERM; \
-	for src in test/test_eg2_stage31.c test/test_eg2_stage35.c test/test_eg2_stage39.c; do \
+	for src in test/test_eg2_stage31.c test/test_eg2_stage35.c test/test_eg2_stage39.c test/test_eg2_mixed.c test/test_eg2_hybrid.c; do \
 	  name=$$(basename $${src%.c}); \
 	  $(CC) $(CPPFLAGS) $(OMP_FLAGS) -O$(TEST_OPT) -std=gnu11 -I. -o "$$dir/$$name" "$$src" $(LDFLAGS) $(LDLIBS); \
 	  "$$dir/$$name"; \
 	done; \
-	printf 'PASS: 3 focused C tests\n'
+	printf 'PASS: 5 focused C tests\n'
+
+# Small adapter unit and synthetic end-to-end tests (require numpy/torch).
+test-adapter:
+	$(PYTHON) test/test_eg2_adapter.py
+	$(PYTHON) test/test_eg2_adapter_training.py
 
 # These commands use already-generated models; they DO NOT train or download weights.
 bundle-english:
@@ -73,10 +78,15 @@ bundle-japanese:
 	@test -n "$(MODEL_ZIP)" || { echo 'Usage: make bundle-japanese MODEL_ZIP=embeddinggemma2-reader-ja.zip'; exit 2; }
 	$(PYTHON) tools/eg2_bundle.py --from-zip "$(MODEL_ZIP)" --source ja --out "$(MODEL_DIR)"
 
+# Package a jointly-trained EN/JA Reader (not two monolingual readers joined).
+bundle-mixed:
+	@test -d "$(MIX_DIR)" || { echo 'Usage: make bundle-mixed MIX_DIR=/path/to/trained-reader'; exit 2; }
+	$(PYTHON) tools/eg2_bundle.py --mix-dir "$(MIX_DIR)" --out "$(MODEL_DIR)"
+
 verify-models:
 	@test -f "$(MODEL_DIR)/encoder.eg2m" || { echo 'Missing encoder.eg2m in $(MODEL_DIR)'; exit 2; }
 	$(PYTHON) tools/eg2_bundle.py --verify "$(MODEL_DIR)/encoder.eg2m"
-	@for lang in en ja; do \
+	@for lang in en ja mix; do \
 	  if test -f "$(MODEL_DIR)/$$lang.eg2m"; then \
 	    $(PYTHON) tools/eg2_bundle.py --verify "$(MODEL_DIR)/$$lang.eg2m" || exit 1; \
 	  fi; \
@@ -87,12 +97,12 @@ verify-models:
 fp16-models:
 	@test -f "$(MODEL_DIR)/encoder.eg2m" || { echo 'Missing encoder.eg2m in $(MODEL_DIR)'; exit 2; }
 	$(PYTHON) tools/eg2_bundle.py --to-fp16 "$(MODEL_DIR)/encoder.eg2m" --out "$(MODEL_DIR)_fp16"
-	@for lang in en ja; do \
+	@for lang in en ja mix; do \
 	  if test -f "$(MODEL_DIR)/$$lang.eg2m"; then cp -n "$(MODEL_DIR)/$$lang.eg2m" "$(MODEL_DIR)_fp16/"; fi; \
 	done
 
 asr: $(TARGET)
-	@test -n "$(WAV)" || { echo 'Usage: make asr WAV=audio.wav [ASR_LANG=ja] [MODEL_DIR=models]'; exit 2; }
+	@test -n "$(WAV)" || { echo 'Usage: make asr WAV=audio.wav [ASR_LANG=auto] [MODEL_DIR=models]'; exit 2; }
 	./$(TARGET) -a eg2-native-asr -m "$(MODEL_DIR)" -L "$(ASR_LANG)" -w "$(WAV)"
 
 clean:
@@ -106,11 +116,13 @@ help:
 	  'make debug                   Build ./cats-debug (-O0 -g3)' \
 	  'make hayamimi                Build ./cats-hayamimi (optional ASR path)' \
 	  'make check                   Show supported CPU SIMD' \
-	  'make test-smoke              Run 3 focused native C tests' \
-	  'make test                    Run all C and Python tests (about 4 minutes)' \
-	  'make asr WAV=audio.wav [ASR_LANG=ja] [MODEL_DIR=models]' \
+	  'make test-smoke              Run 4 focused native C tests' \
+	  'make test                    Run all C and Python tests (duration depends on hardware)' \
+	  'make test-adapter            Test C/Python adapter parity and synthetic CTC training' \
+	  'make asr WAV=audio.wav [ASR_LANG=auto] [MODEL_DIR=models]' \
 	  'make bundle-english MODEL_ZIP=official.zip' \
 	  'make bundle-japanese MODEL_ZIP=japanese.zip' \
+	  'make bundle-mixed MIX_DIR=/path/to/trained-mix' \
 	  'make verify-models           Validate existing *.eg2m files' \
 	  'make fp16-models             Write a half-size encoder to models_fp16/' \
-	  'make clean                   Remove compiled binaries (not models)'
+		  'make clean                   Remove compiled binaries (not models)'

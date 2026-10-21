@@ -91,7 +91,7 @@ def pack_zip(archive, mode, out, force=False):
     """Repack a legacy model ZIP directly, with no giant extracted staging tree."""
     out = Path(out)
     archive = Path(archive)
-    if mode not in ('full', 'en', 'ja'):
+    if mode not in ('full', 'en', 'ja', 'mix'):
         raise ValueError(f'Unknown mode: {mode}')
     tasks = ([('encoder.eg2m', ENCODER), ('en.eg2m', LANGUAGE)] if mode == 'full'
              else [(f'{mode}.eg2m', LANGUAGE)])
@@ -156,14 +156,14 @@ def _layer_counts(d, ff, heads, kernel):
             2*dd, d*kernel, d, dd, d, ff*d, d*ff, d, d]
 
 
-def _layer_header(f, pos, length):
+def _layer_header(f, pos, length, allow_half=False):
     f.seek(pos)
     raw = f.read(LAYER_HEADER.size)
     magic, ver, d, ff, heads, kernel, clips = LAYER_HEADER.unpack(raw)
-    if magic != b'EG2L' or ver != 1 or not (d and ff and heads and kernel) or d % heads:
+    if magic != b'EG2L' or ver not in ((1, 2) if allow_half else (1,)) or not (d and ff and heads and kernel) or d % heads:
         raise ValueError('Not an EG2L v1 layer (already converted?)')
     counts = _layer_counts(d, ff, heads, kernel)
-    if LAYER_HEADER.size + sum(counts)*4 + clips*16 != length:
+    if LAYER_HEADER.size + sum(c*(2 if ver == 2 and i in HALF_TENSORS else 4) for i,c in enumerate(counts)) + clips*16 != length:
         raise ValueError('EG2L layer size does not match its header')
     return (d, ff, heads, kernel, clips), counts
 
@@ -196,7 +196,47 @@ def _emit_layer_fp16(f, pos, length, out, stats):
     out.write(f.read(clips*16))
 
 
-def convert_fp16(src, out_dir, force=False):
+def _layer_q8_size(f, pos, length):
+    (_, _, _, _, clips), counts = _layer_header(f, pos, length, True)
+    return LAYER_HEADER.size + clips*16 + sum(
+        c + 4*((c+255)//256) if i in HALF_TENSORS else c*4
+        for i,c in enumerate(counts))
+
+
+def _emit_layer_q8(f, pos, length, out, stats):
+    import numpy as np
+    dims, counts = _layer_header(f, pos, length, True)
+    f.seek(pos+4)
+    version = struct.unpack('<I', f.read(4))[0]
+    out.write(LAYER_HEADER.pack(b'EG2L', 3, *dims))
+    f.seek(pos + LAYER_HEADER.size)
+    for i,count in enumerate(counts):
+        dtype = '<f2' if version == 2 and i in HALF_TENSORS else '<f4'
+        a = np.fromfile(f, dtype=dtype, count=count).astype('<f4')
+        if a.size != count or not np.isfinite(a).all():
+            raise ValueError('Invalid layer weights')
+        if i not in HALF_TENSORS:
+            out.write(a.tobytes())
+            continue
+        # Pad only for vectorized quantization; omit padding from the file.
+        padded = np.zeros(((count+255)//256)*256, dtype='<f4')
+        padded[:count] = a
+        blocks = padded.reshape(-1,256)
+        scales = np.maximum(np.abs(blocks).max(axis=1)/127, np.finfo(np.float32).tiny)
+        q = np.clip(np.rint(blocks/scales[:,None]),-127,127).astype('i1')
+        err = np.abs(q.astype('f4')*scales[:,None]-blocks).max()
+        stats['rel_err'] = max(stats['rel_err'], float(err)/(float(np.abs(a).max()) or 1))
+        packed = np.empty(len(scales), dtype=[('scale','<f4'),('q','i1',(256,))])
+        packed['scale'], packed['q'] = scales, q
+        data = packed.tobytes()
+        out.write(data[:len(data)-(len(padded)-count)] if count%256 else data)
+    tail = f.read(dims[-1]*16)
+    if len(tail) != dims[-1]*16:
+        raise ValueError('Truncated clip bounds')
+    out.write(tail)
+
+
+def convert_fp16(src, out_dir, force=False, q8=False):
     """Rewrite an .eg2m package with every EG2L v1 layer converted to v2."""
     src, out_dir = Path(src), Path(out_dir)
     dst = out_dir / src.name
@@ -212,7 +252,7 @@ def convert_fp16(src, out_dir, force=False):
         for name, pos, length in blocks:
             offset = (offset + 7) & ~7
             convert = bool(LAYER_NAME.fullmatch(name))
-            new_len = _layer_fp16_size(f, pos, length) if convert else length
+            new_len = (_layer_q8_size(f, pos, length) if q8 else _layer_fp16_size(f, pos, length)) if convert else length
             plan.append((name, pos, length, offset, new_len, convert))
             offset += new_len
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -225,7 +265,7 @@ def convert_fp16(src, out_dir, force=False):
             for name, pos, length, new_pos, new_len, convert in plan:
                 out.write(b'\0' * (new_pos - out.tell()))
                 if convert:
-                    _emit_layer_fp16(f, pos, length, out, stats)
+                    (_emit_layer_q8 if q8 else _emit_layer_fp16)(f, pos, length, out, stats)
                 else:
                     f.seek(pos)
                     left = length
@@ -244,7 +284,7 @@ def convert_fp16(src, out_dir, force=False):
         if tmp.exists():
             tmp.unlink()
     n = sum(1 for p in plan if p[5])
-    print(f'{dst}: {len(plan)} components ({n} layers -> float16), '
+    print(f'{dst}: {len(plan)} components ({n} layers converted), '
           f'{src.stat().st_size:,} -> {dst.stat().st_size:,} bytes, '
           f'max relative weight error {stats["rel_err"]:.2e}')
 
@@ -254,17 +294,22 @@ def main(argv=None):
     a.add_argument('--encoder-dir', type=Path)
     a.add_argument('--en-dir', type=Path)
     a.add_argument('--ja-dir', type=Path)
+    a.add_argument('--mix-dir', type=Path, help='trained bilingual Reader + mixed word table')
     a.add_argument('--out', type=Path, default=Path('models'))
     a.add_argument('--force', action='store_true')
     a.add_argument('--verify', type=Path, help='verify/list an existing .eg2m')
+    a.add_argument('--to-int8', type=Path, metavar='PKG', help='quantize FP32/FP16 encoder matrices to block INT8')
     a.add_argument('--to-fp16', type=Path, metavar='PKG',
                    help='rewrite an encoder .eg2m with float16 layer matrices into --out (about half the size)')
     a.add_argument('--from-zip', type=Path, help='legacy Stage34/35 ZIP; no manual extraction')
-    a.add_argument('--source', choices=['full','en','ja'], default='full', help='ZIP contents (full English model, English Reader, or Japanese Reader)')
+    a.add_argument('--source', choices=['full','en','ja','mix'], default='full', help='ZIP contents (full English model, English Reader, or Japanese Reader)')
     args = a.parse_args(argv)
     if args.verify:
         for name,pos,length in _components(args.verify):
             print(f'{name:24} offset={pos:12} bytes={length}')
+        return
+    if args.to_int8:
+        convert_fp16(args.to_int8, args.out, args.force, q8=True)
         return
     if args.to_fp16:
         convert_fp16(args.to_fp16, args.out, args.force)
@@ -272,11 +317,12 @@ def main(argv=None):
     if args.from_zip:
         pack_zip(args.from_zip,args.source,args.out,args.force)
         return
-    if not (args.encoder_dir or args.en_dir or args.ja_dir):
+    if not (args.encoder_dir or args.en_dir or args.ja_dir or args.mix_dir):
         a.error('Specify --encoder-dir, --en-dir and/or --ja-dir')
     for d, filename, components in ((args.encoder_dir,'encoder.eg2m',ENCODER),
                                     (args.en_dir,'en.eg2m',LANGUAGE),
-                                    (args.ja_dir,'ja.eg2m',LANGUAGE)):
+                                    (args.ja_dir,'ja.eg2m',LANGUAGE),
+                                    (args.mix_dir,'mix.eg2m',LANGUAGE)):
         if d is not None:
             pack(d, components, args.out/filename, args.force)
 

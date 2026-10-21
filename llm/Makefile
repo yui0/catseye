@@ -12,8 +12,8 @@ all::
 	@echo "$${MAKECMD}" > /tmp/$$$$ ; $(SHELL) /tmp/$$$$ ; rm -f /tmp/$$$$
 
 .PHONY: gpu
-gpu: catseye_llm.h llama2.c
-	gcc -o llama2 llama2.c -DGPGPU -Ofast -fopenmp -march=native -mfpmath=both -mavx -ffast-math -funroll-loops -lm -lglfw -lGL
+gpu: ../catseye_llm.h ../cats_gpu.h llama2.c
+	gcc -o llama2 llama2.c -DCATS_GPU -Ofast -fopenmp -march=native -mfpmath=both -mavx -ffast-math -funroll-loops -lm -lEGL -lGLESv2
 
 .PHONY: emscripten
 emscripten: llama2.c

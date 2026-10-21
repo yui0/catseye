@@ -112,7 +112,7 @@ def generate(model_dir, vocab_file, out_file, batch=32, device='cuda', dtype_nam
         while offset < len(vocab):
             count = min(working_batch, len(vocab) - offset)
             try:
-                v = model.encode([PROMPT+w for w in vocab[offset:offset+count]],
+                v = model.encode([PROMPT+(w[1:] if w.startswith('▁') else w) for w in vocab[offset:offset+count]],
                                  batch_size=count, convert_to_numpy=True,
                                  show_progress_bar=False)
                 v = np.asarray(v, dtype=np.float32)

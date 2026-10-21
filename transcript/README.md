@@ -1,4 +1,6 @@
-# Cat's eye
+# Cat's eye — Transcription
+
+[Project overview](../README.md) · [日本語](README.ja.md)
 
 ### Small C inference for speech recognition, ONNX models and LLMs. No Python at runtime.
 
@@ -44,6 +46,7 @@ Already have the converted ZIP? `make bundle-english MODEL_ZIP=embeddinggemma2-n
 ./cats -a eg2-native-asr -w speech.wav            # English, models in ./models
 ./cats -a eg2-native-asr -L ja -w speech_ja.wav   # Japanese (needs models/ja.eg2m)
 ./cats -a eg2-native-asr -m /path/to/models -w speech.wav
+./cats -a eg2-native-asr -L auto -w mixed.wav  # bilingual English/Japanese: requires models/mix.eg2m
 ```
 
 Any WAV works: 8/16/24/32-bit PCM or float, mono or multi-channel, any sample rate, any length.
@@ -66,7 +69,7 @@ weights round-trip with a relative error of 2e-7 and the transcript is unchanged
 | `-a eg2-native-asr` | Full pipeline: WAV → text. |
 | `-m DIR` | Model directory (default `models`). |
 | `-w FILE` | Input WAV. |
-| `-L en\|ja` | Language of the reader to use (default `en`). |
+| `-L en\|ja\|auto` | Reader language; `auto` uses a trained bilingual `mix.eg2m` (default `en`). |
 | `-j N` | Threads. Default: one per physical core (or `OMP_NUM_THREADS`). |
 | `-G auto\|off\|N` | GPU GEMM. `auto` (default) uses a hardware GPU when there is one; `N` picks an EGL device. |
 | `-o FILE` | Also write the per-frame scores (for debugging). |
@@ -112,9 +115,9 @@ Results match across all of these to float rounding: same words, scores within a
 | `cats_speech.h` | WAV reading and resampling, log-mel features, voice-activity detection. |
 | `cats_rnnt.h` | EmbeddingGemma 2 audio tower, reader, word search, CTC; RNN-T beam search. |
 | `cats_onnx.h` | ONNX parser, CPU SIMD kernels and a small graph runtime. |
-| `cats_gpu.h` | Optional GPU GEMM (EGL + OpenGL ES 3.1 compute). |
+| `../cats_gpu.h` | Optional GPU GEMM (EGL + OpenGL ES 3.1 compute). |
 | `cats_hayamimi.h` | Optional bridge to Sherpa-ONNX (`-a asr`, build with `make hayamimi`). |
-| `catseye.h`, `catseye_llm.h` | The original Cat's eye neural-network core and LLM runtime. |
+| `../catseye.h`, `../catseye_llm.h` | The original Cat's eye neural-network core and LLM runtime. |
 
 Each header can be included on its own.
 
@@ -181,7 +184,7 @@ bench/                     micro-benchmarks (GEMM, SIMD, INT8)
 ## Tests
 
 ```bash
-make test-smoke            # 3 focused tests, seconds
+make test-smoke            # 4 focused tests, seconds
 make test                  # 44 C tests and 7 Python tests, about 4 minutes
 ./cats -a cpu-info
 cc -O3 -fopenmp -I. bench/bench_eg2.c -lm -o bench_eg2 && ./bench_eg2   # GEMM speed
@@ -207,3 +210,19 @@ not recognition accuracy. The GPU test is skipped when no GPU is present.
 weights are under Google's Gemma terms).
 
 © 2016–2026 Yuichiro Nakada
+
+## English + Japanese in a single recording
+
+The new `-L auto` mode uses a **jointly trained single CTC Reader and vocabulary**
+(`models/mix.eg2m`) with the original shared `encoder.eg2m`. It can output
+Japanese characters and English words in the same utterance. English word
+boundaries are indicated by U+2581 (`▁`) vocabulary prefixes.
+
+Open `colab/EmbeddingGemma2_English_Japanese_Mixed_Colab.ipynb` to train
+and package the joint Reader. The default Colab demonstration mixes separate
+Japanese and English FLEURS sentences; real intra-sentence code switching
+requires training/validation audio containing actual Japanese/English switches.
+No bilingual trained weights are distributed in this source archive, and real
+mixed-language accuracy remains untested. `-L auto` deliberately errors when
+`mix.eg2m` is missing; placing independent `en.eg2m` and `ja.eg2m` files
+beside one another is **not** equivalent to joint bilingual training.
