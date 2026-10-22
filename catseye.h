@@ -518,11 +518,12 @@ static void CatsEye_linear_update(CatsEye_layer *l)
 		*w++ += a;	// bias!!
 	}
 #else
-	// W := W - eta * dOutT * x
-	gemm_rtn(l->outputs, l->inputs, l->p->batch, 1, l->dOut, l->x, 1, l->dw);
-//	SOLVER(l);
+	// dW = dOutT * x / batch: every layer accumulates the mean gradient over the batch in dw,
+	// the optimizer (SOLVER) applies it to the weights and to the bias, which follows the weights
+	gemm_rtn(l->outputs, l->inputs, l->p->batch, 1.0/l->p->batch, l->dOut, l->x, 1, l->dw);
+	real *db = l->dw +l->inputs*l->outputs;	// bias!!
 	for (int n=0; n<l->p->batch; n++) {
-		for (int i=0; i<l->outputs; i++) l->w[l->inputs*l->outputs +i] -= l->eta * l->dOut[n*l->outputs +i]; // bias!!
+		for (int i=0; i<l->outputs; i++) db[i] += l->dOut[n*l->outputs +i] / l->p->batch;
 	}
 //	for (int i=0; i<10; i++) CATS_LOG("%f ", l->dOut[i]);
 /*	for (int i=0; i<10; i++) CATS_LOG("%f ", l->w[i]);
@@ -683,7 +684,7 @@ static void CatsEye_deconvolutional_update(CatsEye_layer *l)
 {
 	for (int i=0; i<l->p->batch; i++) {
 		real *workspace = l->workspace +l->sx*l->sy*l->kw*l->kh*l->ch *i;
-		gemm_rnt(l->ich, l->ksize*l->ksize*l->ch, l->sx*l->sy*1, 1, l->x +l->inputs*i, workspace, 1, l->dw);
+		gemm_rnt(l->ich, l->ksize*l->ksize*l->ch, l->sx*l->sy*1, 1.0/l->p->batch, l->x +l->inputs*i, workspace, 1, l->dw);	// avg
 	}
 //	SOLVER(l);
 }
@@ -981,8 +982,8 @@ static void CatsEye_BatchNormalization_backward(CatsEye_layer *l)
 	}
 	// gamma/beta are shared by all channels: the summed gradients are applied by the optimizer
 	if (!(l->fix&1)) {
-		l->dw[2*l->r] += dgamma;
-		l->dw[2*l->r +1] += dbeta;
+		l->dw[2*l->r] += dgamma / batch;
+		l->dw[2*l->r +1] += dbeta / batch;
 	}
 }
 
@@ -1727,7 +1728,7 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 				else { l->outputs = l->inputs; CATS_LOG("\t↓ warning: out:%d\n", l->outputs); }
 			}
 			if (l->type==CATS_LINEAR) {
-				l->wsize = l->inputs * l->outputs;
+				l->wsize = (l->inputs +1) * l->outputs;	// weights and bias
 				n[i] = l->inputs;
 				m[i] = l->outputs;
 				b[i] = 1; // bias
@@ -1869,6 +1870,7 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		}
 //		memcpy(&this->wdata[this->wsize], this->wdata, this->wsize*sizeof(real)); // for debug
 		l->wrange = range;
+		if (l->type==CATS_LINEAR) memset(l->w +l->inputs*l->outputs, 0, sizeof(real)*l->outputs);	// bias starts at 0
 	}
 	this->clasify = (int16_t*)this->layer[this->layers-1].z;
 	this->label = this->layer[this->layers-1].z;

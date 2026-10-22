@@ -63,6 +63,13 @@ Use `make legacy` for the original root training examples.
   - MNIST
   - Data Augmentation (noise, zoom, translation)
 
+## Learning rate and batch size
+
+Every layer (dense, convolution, deconvolution, batch normalization) accumulates the **mean** gradient over the batch,
+and the bias is updated by the optimizer together with the weights. The learning rate `eta` therefore means the same
+thing in every layer. (Earlier versions averaged only in convolution layers; to keep an old setup, multiply `eta` of
+its dense/deconvolution layers by the batch size.)
+
 ## Usage
 
 Just include header files in your project.

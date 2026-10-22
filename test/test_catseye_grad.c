@@ -1,5 +1,5 @@
 // Gradient check: the analytic gradients of every layer type against central finite differences.
-// (The conv layer averages its weight gradient over the batch; linear/deconv/bn sum it.)
+// Every layer accumulates the mean gradient over the batch in dw (the loss itself is summed over the batch).
 #define CATS_QUIET
 #include "../catseye.h"
 
@@ -36,7 +36,7 @@ static int check_(const char *name, CatsEye_layer *u, int n, int batch, int clas
 	for (int b=0; b<batch; b++) cls[b] = (int16_t)(b % (classes?classes:1));
 	// nonzero BN gamma/beta etc are left default
 	real *Tp = classes ? NULL : T;
-	for (int i=0; i<n; i++) c.layer[i].eta = c.layer[i].type==CATS_LINEAR ? 1 : 0;
+	
 	// analytic
 	real *w0 = malloc(sizeof(real)*c.wsize);
 	memcpy(w0, c.wdata, sizeof(real)*c.wsize);
@@ -46,14 +46,6 @@ static int check_(const char *name, CatsEye_layer *u, int n, int batch, int clas
 	for (int i=c.end; i>=c.start; i--) { if (i>c.stop) l->backward(l); if (!(l->fix&1)) l->update(l); l--; }
 	real *an = malloc(sizeof(real)*c.wsize);
 	memcpy(an, c.wdata + c.wsize, sizeof(real)*c.wsize);
-	// linear bias: grad = old - new
-	for (int i=0; i<n; i++) {
-		CatsEye_layer *q = &c.layer[i];
-		if (q->type==CATS_LINEAR) {
-			int off = q->w - c.wdata;
-			for (int k=0; k<q->outputs; k++) an[off + q->inputs*q->outputs + k] = w0[off + q->inputs*q->outputs + k] - q->w[q->inputs*q->outputs + k];
-		}
-	}
 	memcpy(c.wdata, w0, sizeof(real)*c.wsize);
 	double maxerr = 0; int worst = -1; double worst_an=0, worst_nu=0;
 	for (int i=0; i<n; i++) {
@@ -69,7 +61,7 @@ static int check_(const char *name, CatsEye_layer *u, int n, int batch, int clas
 			c.wdata[off+k] = o-h; double Lm = fwd_loss(&c, X, Tp, classes?cls:NULL);
 			c.wdata[off+k] = o;
 			double nu = (Lp-Lm)/(2*h);
-			double a = an[off+k]; if (q->type==CATS_CONV||q->type==CATS_CONV1D) a *= batch; /* conv averages over the batch */
+			double a = an[off+k]; a *= batch;	// dw is the batch mean
 			double err = fabs(nu-a)/(fabs(nu)+fabs(a)+1e-8);
 			if (fabs(nu-a) < 1e-10) err = 0;	// below the finite-difference noise floor
 			if (!(err==err)) err = 1;	// NaN is a failure

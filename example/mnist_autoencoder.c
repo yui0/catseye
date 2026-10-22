@@ -14,7 +14,8 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
-#define ETA 1e-3
+#define BATCH 256
+#define ETA (1e-3*BATCH)	// the gradient is the batch mean: learning rate 1e-3 per sample
 //#define ETA 1e-5 // ぼやける
 
 int main()
@@ -37,8 +38,8 @@ int main()
 		{ size, CATS_ACT_SIGMOID },
 		{ size, CATS_LOSS_MSE },
 	};
-//	CatsEye cat = { .batch=1 };	// 0.0%
-	CatsEye cat = { .batch=256 };	// 0.0%
+//	CatsEye cat = { .batch=1 };	// (also set ETA without BATCH)	// 0.0%
+	CatsEye cat = { .batch=BATCH };	// 0.0%
 	CatsEye__construct(&cat, u);
 
 //	int16_t t[sample];	// ラベルデータ
