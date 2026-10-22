@@ -13,7 +13,7 @@ Neural network library and applications in C.
 | `example/`, `super_resolution/`, `word2vec/` | Neural-network examples |
 | `tools/` | General library tools |
 
-Run `make help` for project commands. Build transcription with `make -C transcript`
+Run `make help` for project commands. `make test` runs the library tests (`test/`: finite-difference gradient check of every layer type, batch-norm / augmentation / safetensors / quantization / GEMM checks, small end-to-end training runs). Build transcription with `make -C transcript`
 and run it from that directory so its default `models/` path resolves there.
 Use `make legacy` for the original root training examples.
 
@@ -54,7 +54,7 @@ Use `make legacy` for the original root training examples.
     - max pooling
     - average pooling
     - global average pooling (GAP)
-    - batch normalization
+    - batch normalization (per-channel statistics over the batch; running mean/variance, gamma and beta are stored in the weights and used by `CatsEye_forward()` / `CatsEye_predict()`)
     - concat
     - shortcut
 - Loader formats:

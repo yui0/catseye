@@ -354,6 +354,7 @@ typedef struct __CatsEye {
 	int shuffle_base;	// internal use
 
 	real loss;
+	int infer;		// 1 while CatsEye_forward() runs: batch normalization uses its running statistics
 
 	// output layers [o = f(z)]
 	real **z, **o, *odata;
@@ -435,7 +436,7 @@ static void CatsEye_optimizer_SGD(CatsEye_layer *l)
 {
 	for (int i=l->wsize-1; i>=0; i--) {
 //		l->w[i] -= l->p->lr * (l->dw[i] +l->p->lambda *l->w[i]); // L2 norm
-		l->w[i] -= l->eta * (l->dw[i] +/*l->p->lambda*/0.0 *l->w[i]); // L2 norm
+		l->w[i] -= l->eta * (l->dw[i] +l->p->lambda *l->w[i]); // L2 norm
 	}
 }
 #endif
@@ -885,88 +886,104 @@ static void CatsEye_padding_backward(CatsEye_layer *l)
 
 // https://qiita.com/t-tkd3a/items/14950dbf55f7a3095600
 // https://qiita.com/omiita/items/01855ff13cc6d3720ea4
+// x is laid out [batch][ch][h*w] and l->r groups (channels) are normalized separately, each over the whole
+// batch and all of its positions. Weight layout: w[0..r) running mean, w[r..2r) running variance,
+// w[2r] gamma, w[2r+1] beta (so they are saved and loaded with the other weights).
+// Training uses (and remembers in l->workspace) the batch statistics and updates the running ones;
+// CatsEye_forward() (p->infer) uses the running statistics, so a single sample is normalized like in training.
+#ifndef CATS_BN_MOMENTUM
+#define CATS_BN_MOMENTUM	0.9
+#endif
+#define CATS_BN_GAMMA(l)	((l)->w[2*(l)->r])
+#define CATS_BN_BETA(l)		((l)->w[2*(l)->r +1])
 static void CatsEye_BatchNormalization_forward(CatsEye_layer *l)
 {
-//	if (l->p->batch<4) return;
-
-	int len = l->p->batch *l->inputs /l->r/*ch*/;
-	real *x = l->x;
-	real *z = l->z;
+	const int hw = l->inputs /l->r/*ch*/;
+	const int batch = l->p->batch;
+	const real gamma = CATS_BN_GAMMA(l), beta = CATS_BN_BETA(l);
+	real *bmu = l->workspace, *bvar = l->workspace +l->r;	// batch statistics (for the backward pass)
 
 	for (int n=0; n<l->r; n++) {
-		// average/mean
-		real avg = 0;
-		for (int i=0; i<len; i++) avg += x[i];
-		avg /= len;
-
-		// variance
-		real var = 0;
-		for (int i=0; i<len; i++) {
-			z[i] = x[i] -avg;
-			var += z[i] * z[i];
+		real avg, var;
+		if (l->p->infer) {
+			avg = l->mu[n];
+			var = l->var[n];
+		} else {
+			avg = 0;
+			for (int b=0; b<batch; b++) {
+				const real *x = l->x +(size_t)b*l->inputs +(size_t)n*hw;
+				for (int i=0; i<hw; i++) avg += x[i];
+			}
+			avg /= (real)hw *batch;
+			var = 0;
+			for (int b=0; b<batch; b++) {
+				const real *x = l->x +(size_t)b*l->inputs +(size_t)n*hw;
+				for (int i=0; i<hw; i++) var += (x[i] -avg) * (x[i] -avg);
+			}
+			var /= (real)hw *batch;
+			bmu[n] = avg;
+			bvar[n] = var;
+			l->mu[n] = CATS_BN_MOMENTUM * l->mu[n] + (1 -CATS_BN_MOMENTUM) * avg;
+			l->var[n] = CATS_BN_MOMENTUM * l->var[n] + (1 -CATS_BN_MOMENTUM) * var;
 		}
-		var /= len;
-		real sigma = sqrt(var + 1e-8);
-
-		// normalize, scale and shift
-		for (int i=0; i<len; i++) {
-			z[i] = (z[i] / sigma) * l->gamma + l->beta;
+		const real sigma = sqrt(var + 1e-8);
+		for (int b=0; b<batch; b++) {
+			const real *x = l->x +(size_t)b*l->inputs +(size_t)n*hw;
+			real *z = l->z +(size_t)b*l->inputs +(size_t)n*hw;
+			for (int i=0; i<hw; i++) z[i] = (x[i] -avg) / sigma * gamma + beta;
 		}
-
-		l->mu[n] = avg;
-		l->var[n] = var;
-
-		x += len;
-		z += len;
 	}
 }
 // https://deepnotes.io/batchnorm
 static void CatsEye_BatchNormalization_backward(CatsEye_layer *l)
 {
-//	if (l->p->batch<4) return;
-
-	int len = l->p->batch *l->inputs /l->r;
-	real *x = l->x;
-	real *delta = l->dOut;
-	real *d = l->dIn;
-
+	const int hw = l->inputs /l->r;
+	const int batch = l->p->batch;
+	const real len = (real)hw *batch;
+	const real gamma = CATS_BN_GAMMA(l);
+	real *bmu = l->workspace, *bvar = l->workspace +l->r;
 	real dgamma = 0;
 	real dbeta = 0;
 
 	for (int n=0; n<l->r; n++) {
-		real sigma = sqrt(l->var[n] + 1e-8);
+		const real sigma = sqrt(bvar[n] + 1e-8);
 		real dvar = 0;
 		real dmu = 0;
 		real dmu2 = 0;
 
-		for (int i=0; i<len; i++) {
-			real X_mu = x[i] - l->mu[n];
+		for (int b=0; b<batch; b++) {
+			const real *x = l->x +(size_t)b*l->inputs +(size_t)n*hw;
+			const real *delta = l->dOut +(size_t)b*l->inputs +(size_t)n*hw;
+			real *d = l->dIn +(size_t)b*l->inputs +(size_t)n*hw;
+			for (int i=0; i<hw; i++) {
+				real X_mu = x[i] - bmu[n];
 
-			real dX_norm = delta[i] * l->gamma;
-			dvar += dX_norm * X_mu;
-			d[i] = dX_norm / sigma;
-			dmu += - d[i]; //dX_norm / -sigma;
-			dmu2 += -2.0 * X_mu;
+				real dX_norm = delta[i] * gamma;
+				dvar += dX_norm * X_mu;
+				d[i] = dX_norm / sigma;
+				dmu += - d[i]; //dX_norm / -sigma;
+				dmu2 += -2.0 * X_mu;
 
-			dbeta += delta[i];
-			dgamma += delta[i] * X_mu / sigma;
+				dbeta += delta[i];
+				dgamma += delta[i] * X_mu / sigma;
+			}
 		}
-		dvar *= -0.5 * pow(l->var[n] + 1e-8, -3.0/2.0);
+		dvar *= -0.5 * pow(bvar[n] + 1e-8, -3.0/2.0);
 		dmu += dvar * dmu2/len;
 
 		real a = dmu / len;
-		real b = dvar * 2.0 / len;
-		for (int i=0; i<len; i++) {
-			d[i] += a + b * (x[i] - l->mu[n]);
+		real c = dvar * 2.0 / len;
+		for (int b=0; b<batch; b++) {
+			const real *x = l->x +(size_t)b*l->inputs +(size_t)n*hw;
+			real *d = l->dIn +(size_t)b*l->inputs +(size_t)n*hw;
+			for (int i=0; i<hw; i++) d[i] += a + c * (x[i] - bmu[n]);
 		}
-
-		x += len;
-		delta += len;
-		d += len;
 	}
-	// gamma/beta are shared by all channels: one update from the summed gradients
-	l->beta -= l->eta * dbeta;
-	l->gamma -= l->eta * dgamma;
+	// gamma/beta are shared by all channels: the summed gradients are applied by the optimizer
+	if (!(l->fix&1)) {
+		l->dw[2*l->r] += dgamma;
+		l->dw[2*l->r +1] += dbeta;
+	}
 }
 
 static void CatsEye_concat_forward(CatsEye_layer *l)
@@ -1121,8 +1138,19 @@ static void CatsEye_act_softmax(CatsEye_layer *l)
 		for (int i=l->inputs/*out*/; i>0; i--) *z++ /= sum;
 	}
 }
-#define CATS_DACT_softmax(y, l)		((y) * (1.0 - (y)))
-CATS_DACT_ARRAY(softmax);
+// the Jacobian of softmax is not diagonal: dz_j = y_j * (dy_j - sum_k dy_k y_k)
+// (softmax followed by CATS_SOFTMAX_CE skips this layer: the loss delivers y - t directly)
+static void CatsEye_dact_softmax(CatsEye_layer *l)
+{
+	for (int n=0; n<l->p->batch; n++) {
+		const real *y = l->z +l->inputs*n;
+		const real *dOut = l->dOut +l->inputs*n;
+		real *d = l->dIn +l->inputs*n;
+		real dot = 0;
+		for (int i=0; i<l->inputs; i++) dot += dOut[i] * y[i];
+		for (int i=0; i<l->inputs; i++) d[i] = y[i] * (dOut[i] - dot);
+	}
+}
 
 // tanh function
 // https://github.com/nyanp/tiny-cnn/blob/master/tiny_cnn/activations/activation_function.h
@@ -1300,10 +1328,10 @@ static void CatsEye_loss_delivative_cross_entropy_multiclass(CatsEye_layer *l)
 		*d++ = -(*t++) / *y++;	// -t * log(y);
 	}*/
 	// y - t [ t <- one hot ]
-	memcpy(l->dIn, l->x, sizeof(real)*l->inputs *l->p->batch);
+	memset(l->dIn, 0, sizeof(real)*l->inputs *l->p->batch);	// d(-log y_t)/dy_j is 0 except for the target
 	int16_t *a = l->p->clasify;
 	for (int i=0; i<l->p->batch; i++) {
-		l->dIn[l->inputs*i + *a] = -1 / l->x[l->inputs*i + *a];
+		l->dIn[l->inputs*i + *a] = -1 / (l->x[l->inputs*i + *a] +1e-12);
 //		l->dIn[l->inputs*i + *a] /= l->p->batch; // FIXME: right?
 		a++;
 	}
@@ -1654,16 +1682,14 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			break;
 
 		case CATS_BATCHNORMAL:
-			l->gamma = 1.0;
-			l->beta = 0;
 			l->ch = l->ich;
 			l->outputs = l->inputs;
 			l->ox = l->sx;
 			l->oy = l->sy;
 			l->r = l->sx==1? 1: l->ch;
-			n[i] = l->r;
-			m[i] = 2; // mu, var, gamma, beta
-//			m[i] = 4; // mu, var, gamma, beta
+			l->workspace = malloc(sizeof(real)* 2*l->r);	// batch mean, variance
+			n[i] = l->r +1;
+			m[i] = 2; // mean, variance (running) / gamma, beta
 			l->wsize = n[i] * m[i];
 			CATS_LOG("%3d %-12s %10d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->inputs, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;
@@ -1680,6 +1706,8 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 		case CATS_ACT_SOFTMAX:
 		case CATS_ACT_TANH:
 		case CATS_ACT_RELU:
+		case CATS_ACT_ELU:	// element-wise: the output has the shape of the input
+		case CATS_ACT_LOG:
 			l->ch = l->ich;
 			l->outputs = l->inputs;
 			l->ox = l->sx;
@@ -1776,6 +1804,12 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			}
 		}*/
 		if (!l->wsize) { /*l->dw = 0;*/ continue; }
+		if (l->type==CATS_BATCHNORMAL) { // mean 0, variance 1, gamma 1, beta 0
+			for (int n=0; n<l->r; n++) { l->mu[n] = 0; l->var[n] = 1; }
+			CATS_BN_GAMMA(l) = 1;
+			CATS_BN_BETA(l) = 0;
+			continue;
+		}
 
 		// initialize weights, range depends on the research of Y. Bengio et al. (2010)
 		// http://jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf
@@ -1905,6 +1939,7 @@ void CatsEye_forward(CatsEye *this, real *x)
 {
 	int b = this->batch; // FIXME
 	this->batch = 1;
+	this->infer = 1;
 
 	CatsEye_layer *l = &this->layer[this->start];
 	memcpy(l->x, x, l->inputs*sizeof(real));
@@ -1916,6 +1951,7 @@ void CatsEye_forward(CatsEye *this, real *x)
 	}
 
 	this->batch = b; // FIXME
+	this->infer = 0;
 }
 
 // return most probable label to the input x
@@ -2017,7 +2053,7 @@ static inline void _CatsEye_DataAugmentation(real *p, real *s, int sx, int sy, i
 		for (int i=0; i<sx*sy*ch; i++) {
 			real sigma = 0.04;
 			//real a = binomial(/*0.7(30%)*/0.9);
-			p[i] = s[i] +rand_normal(0, sigma) -sigma/2;
+			p[i] = s[i] +rand_normal(0, sigma);	// zero-mean gaussian noise
 		}
 		break;
 	case CATS_ZOOM_IN: // zoom in
@@ -2027,13 +2063,13 @@ static inline void _CatsEye_DataAugmentation(real *p, real *s, int sx, int sy, i
 		_CatsEye_DA_zoom(p, s, sx, sy, ch, random(0, 1));
 		break;
 	case CATS_TRANSLATION: // translation
-		_CatsEye_DA_translationXY(p, s, sx, sy, ch, irand(0, sx), irand(0, sy));
+		_CatsEye_DA_translationXY(p, s, sx, sy, ch, irand(-(sx/4), sx/4), irand(-(sy/4), sy/4));
 		break;
 	case CATS_TRANSLATION_X: // translationX
-		_CatsEye_DA_translationXY(p, s, sx, sy, ch, irand(0, sx), sy/*0?*/);
+		_CatsEye_DA_translationXY(p, s, sx, sy, ch, irand(-(sx/4), sx/4), 0);
 		break;
 	case CATS_TRANSLATION_Y: // translationY
-		_CatsEye_DA_translationXY(p, s, sx, sy, ch, 0, irand(0, sy));
+		_CatsEye_DA_translationXY(p, s, sx, sy, ch, 0, irand(-(sy/4), sy/4));
 		break;
 	case CATS_FLIP:
 		_CatsEye_DA_flip(p, s, sx, sy, ch);
@@ -2061,6 +2097,10 @@ static inline void _CatsEye_shuffle(int *array, int n)
 }
 static inline void _CatsEye_data_transfer(CatsEye *this, real *x, void *l, int n)
 {
+	if (this->shuffle_buffer && this->data_num!=n) { // the data set changed size: reallocate
+		free(this->shuffle_buffer);
+		this->shuffle_buffer = 0;
+	}
 	if (!this->shuffle_buffer) this->shuffle_buffer = malloc(n * sizeof(int));
 	for (int i=0; i<n; i++) this->shuffle_buffer[i] = i;
 	_CatsEye_shuffle(this->shuffle_buffer, n);
@@ -2068,6 +2108,7 @@ static inline void _CatsEye_data_transfer(CatsEye *this, real *x, void *l, int n
 
 	this->label_size = this->layer[this->end].inputs *sizeof(real);
 	if (this->layer[this->end].type==CATS_LOSS_0_1 ||
+		this->layer[this->end].type==CATS_LOSS_CE ||	// these losses read class indices (clasify)
 		this->layer[this->end].type==CATS_SOFTMAX_CE /*|| this->layer[this->end].type==CATS_SIGMOID_BCE*/) {
 		this->label_size = sizeof(int16_t);
 	}
@@ -2228,6 +2269,7 @@ int CatsEye_train(CatsEye *this, real *x, void *t, int N, int epoch, int samples
 	if (samples) repeat = samples;	// samples per epoch (0: all)
 	if (this->batch>1) {
 		repeat /= this->batch;
+		if (repeat<1) repeat = 1;
 		CATS_LOG(" batch: %d, repeat: %d\n", this->batch, repeat);
 	}
 	if (N<=0) {
@@ -3304,6 +3346,7 @@ static inline int cats_st_parse(cats_st *s, const char *j, size_t n)
 		size_t klen = i - k0;
 		i++;
 		while (i < n && j[i] != '{') i++;
+		if (i >= n) return -1;
 		size_t o0 = i;
 		int depth = 0;
 		do {	// matching brace of this entry
@@ -3325,19 +3368,27 @@ static inline int cats_st_parse(cats_st *s, const char *j, size_t n)
 		t->dtype = -1;
 		for (size_t p = o0; p < i; p++) {
 			if (!strncmp(j + p, "\"dtype\"", 7)) {
-				const char *d = strchr(j + p + 7, '"') + 1;
+				const char *d = (const char*)memchr(j + p + 7, '"', i - (p + 7));
+				if (!d) return -1;
+				d++;
 				t->dtype = !strncmp(d, "F32", 3) ? CATS_ST_F32 : !strncmp(d, "BF16", 4) ? CATS_ST_BF16 :
 					   !strncmp(d, "F16", 3) ? CATS_ST_F16 : !strncmp(d, "Q4_0", 4) ? CATS_ST_Q4_0 : -1;
 			} else if (!strncmp(j + p, "\"shape\"", 7)) {
-				const char *d = strchr(j + p + 7, '[') + 1;
-				while (*d != ']' && t->ndim < 4) {
+				const char *d = (const char*)memchr(j + p + 7, '[', i - (p + 7));
+				if (!d) return -1;
+				d++;
+				while (d < j + i && *d != ']' && t->ndim < 4) {
 					t->shape[t->ndim++] = strtoll(d, (char**)&d, 10);
 					while (*d == ',' || *d == ' ') d++;
 				}
 			} else if (!strncmp(j + p, "\"data_offsets\"", 14)) {
-				const char *d = strchr(j + p + 14, '[') + 1;
+				const char *d = (const char*)memchr(j + p + 14, '[', i - (p + 14));
+				if (!d) return -1;
+				d++;
 				t->begin = strtoull(d, (char**)&d, 10);
-				t->end = strtoull(strchr(d, ',') + 1, NULL, 10);
+				d = (const char*)memchr(d, ',', j + i - d);
+				if (!d) return -1;
+				t->end = strtoull(d + 1, NULL, 10);
 			}
 		}
 	}
@@ -3363,6 +3414,10 @@ static inline int cats_st_open(cats_st *s, const char *path)
 	if (hl > s->size - 8) { cats_st_close(s); return -1; }
 	s->data = s->map + 8 + hl;
 	if (cats_st_parse(s, (const char*)s->map + 8, (size_t)hl)) { cats_st_close(s); return -1; }
+	const uint64_t avail = s->size - 8 - hl;	// every tensor must lie inside the data section
+	for (int i = 0; i < s->count; i++) {
+		if (s->tensor[i].begin > s->tensor[i].end || s->tensor[i].end > avail) { cats_st_close(s); return -1; }
+	}
 	return 0;
 #endif
 }
@@ -3437,8 +3492,9 @@ typedef struct {
 } cats_st_entry;
 static inline int cats_st_write(const char *path, const cats_st_entry *e, int count, const char *format_note)
 {
-	size_t cap = 4096 + (size_t)count * 320;
-	char *js = (char*)(malloc)(cap);
+	size_t cap = 4096 + (format_note ? strlen(format_note) : 0);
+	for (int i = 0; i < count; i++) cap += strlen(e[i].name) + strlen(e[i].dtype) + 256;	// 4 dims, 2 offsets and the punctuation
+	char *js = (char*)(malloc)(cap + 8);	// +8: padding to a multiple of 8
 	if (!js) return -1;
 	size_t n = 0;
 	uint64_t off = 0;

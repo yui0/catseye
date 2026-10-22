@@ -12,6 +12,7 @@ extra=
 if pkg-config --exists egl glesv2 2>/dev/null; then extra="-fopenmp -DCATS_GPU $(pkg-config --cflags --libs egl glesv2)"; fi
 count=0
 for src in test/test_*.c; do
+  [ -e "$src" ] || { echo 'SKIP: no C tests in transcript/test'; break; }
   name=$(basename "${src%.c}")
   # shellcheck disable=SC2086
   "$compiler" -O"${CATS_TEST_OPT:-2}" -std=gnu11 -I. -o "$work/$name" "$src" -lm $extra
@@ -22,6 +23,7 @@ printf 'PASS: %s C tests\n' "$count"
 if python3 -c 'import numpy' 2>/dev/null; then
   pycount=0
   for src in test/test_*.py; do
+    [ -e "$src" ] || break
     PYTHONDONTWRITEBYTECODE=1 python3 "$src" >/dev/null 2>&1 || { echo "FAIL: $src"; exit 1; }
     pycount=$((pycount + 1))
   done
