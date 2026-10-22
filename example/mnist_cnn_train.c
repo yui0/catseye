@@ -15,7 +15,8 @@
 #include "stb_image_write.h"
 
 //#define ETA 0.01	// batch 1
-#define ETA 0.001	// batch 64
+#define BATCH 64
+#define ETA 0.001	// batch 64 (conv layers; the dense layers use ETA*BATCH: the gradient is the batch mean)
 //#define ETA 0.0001	// batch 1500
 //#define ETA 0.00003	// batch 1500 (91.95%)
 
@@ -37,11 +38,11 @@ int main()
 		{  size, CATS_CONV, ETA, .ksize=7, .stride=1, .ch=32 },
 		{     0, CATS_ACT_LEAKY_RELU },
 		{     0, CATS_MAXPOOL, .ksize=2, .stride=2 },
-		{     0, CATS_LINEAR, ETA },
+		{     0, CATS_LINEAR, ETA*BATCH },
 		{ label, CATS_ACT_SOFTMAX },
 		{ label, CATS_SOFTMAX_CE },
 	};
-	CatsEye cat = { .batch=64 };	// 99.27%
+	CatsEye cat = { .batch=BATCH };	// 99.27%
 //	CatsEye cat = { .batch=1500 };	// 91.95%
 //	CatsEye cat = { .batch=1 };	// 99% (1 * 1500)
 	CatsEye__construct(&cat, u);

@@ -15,7 +15,8 @@
 
 //#define ETA	0.01 // epoch 70
 //#define ETA	0.005
-#define ETA	0.001
+#define BATCH 128
+#define ETA (0.001*BATCH)	// the gradient is the batch mean: learning rate 0.001 per sample
 
 int main(int argc,char *argv[])
 {
@@ -67,8 +68,8 @@ int main(int argc,char *argv[])
 //		{   3, CATS_ACT_SIGMOID },
 		{   3, CATS_LOSS_IDENTITY_MSE }, // RGB
 	};
-//	CatsEye cat = { .batch=1 };
-	CatsEye cat = { .batch=128 };
+//	CatsEye cat = { .batch=1 };	// (also set ETA without BATCH)
+	CatsEye cat = { .batch=BATCH };
 	CatsEye__construct(&cat, u);
 
 	real scale = 2.0;
