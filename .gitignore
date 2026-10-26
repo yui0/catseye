@@ -1,5 +1,7 @@
-test/bin/
-transcript/cats
-transcript/cats-debug
-transcript/cats-hayamimi
-embed/eg2e
+/transcript/cats
+/transcript/cats-debug
+/transcript/cats-hayamimi
+/transcript/models/
+/transcript/models_fp16/
+__pycache__/
+*.pyc

@@ -2524,10 +2524,15 @@ static inline int cx_load_weight(cx_graph *g,const cx_weight *w,cx_tensor *t)
 					v=(float)iv;
 				} else if (w->type==7) {
 					int64_t iv=(int64_t)u;
-					if (iv < -16777216LL || iv > 16777216LL) {
+					if (iv <= -2147483647LL || iv >= 2147483647LL) {
+						/* INT64 open-end sentinel (Slice ends etc.): kept as a huge float that
+						   Slice recognizes and every exact-index consumer (cx_i64) rejects. */
+						v=iv<0?-3.0e9f:3.0e9f;
+					} else if (iv < -16777216LL || iv > 16777216LL) {
 						goto fail;
+					} else {
+						v=(float)iv;
 					}
-					v=(float)iv;
 				}
 				t->v[done+j]=v;
 			}
@@ -4835,6 +4840,7 @@ static inline int cx_conv_op(cx_env*e,const cx_node*n,cx_tensor**v)
 			return 0;
 		}
 	}
+#pragma omp parallel for collapse(2) schedule(static)
 	for (int64_t b=0; b<batch; b++)for (int64_t oc=0; oc<co; oc++) {
 			int64_t group=oc/(co/groups);
 			for (int64_t h=0; h<HO; h++)for (int64_t z=0; z<WO; z++) {
@@ -5355,7 +5361,7 @@ static inline int cx_gather_elements(cx_env *e,const cx_node *node,
                                      const cx_tensor *data,const cx_tensor *indices)
 {
 	if (!data||!indices||data->nd<1||data->nd!=indices->nd||
-	                (indices->type!=6&&indices->type!=7)||node->ni!=2||node->no!=1) {
+	                (indices->type!=6&&indices->type!=7&&indices->type!=1)||node->ni!=2||node->no!=1) {
 		return -1;
 	}
 	int axis=(int)cx_attr_int(node,"axis",0);
@@ -5395,7 +5401,7 @@ static inline int cx_scatter_elements(cx_env *e,const cx_node *node,
 {
 	if (!data||!indices||!updates||data->nd<1||data->nd!=indices->nd||
 	                data->nd!=updates->nd||data->type!=updates->type||
-	                (indices->type!=6&&indices->type!=7)||node->ni!=3||node->no!=1||
+	                (indices->type!=6&&indices->type!=7&&indices->type!=1)||node->ni!=3||node->no!=1||
 	                !cx_same_shape(indices,updates)) {
 		return -1;
 	}
@@ -5481,7 +5487,7 @@ static inline int cx_more_supported(const char *op)
 {
 	static const char *names[]= {"Split","Pad","ReduceSum","ReduceMax","ReduceMin",
 	                             "ArgMax","ArgMin","LogSoftmax","CumSum","Clip","Max","Min","Erf",
-	                             "LeakyRelu","Elu","Softplus","Not","And","Or"
+	                             "LeakyRelu","Elu","Softplus","Not","And","Or","Ceil","ConvTranspose","GatherND","ScatterND","NonZero","RandomNormalLike"
 	                            };
 	for (size_t i=0; i<sizeof(names)/sizeof(*names); i++)if (cx_is(op,names[i])) {
 			return 1;
@@ -5507,6 +5513,8 @@ static inline int cx_more_unary(cx_env *e,const cx_node *n,const cx_tensor *x)
 			v=fmaxf(v,0)+log1pf(expf(-fabsf(v)));
 		} else if (cx_is(n->op,"Not")) {
 			v=v==0?1.f:0.f;
+		} else if (cx_is(n->op,"Ceil")) {
+			v=ceilf(v);
 		}
 		y->v[k]=v;
 	}
@@ -5900,11 +5908,239 @@ static inline int cx_more_pad(cx_env*e,const cx_node*n,const cx_tensor*x,const c
 	}
 	return 0;
 }
+
+/* ---- operators needed by VITS / Piper voices ---------------------------- */
+
+/* ConvTranspose, 1-D NCW: x [N,Ci,L], w [Ci,Co/group,K]; strides/pads/dilations/group/output_padding. */
+static inline int cx_convtranspose_op(cx_env *e,const cx_node *n,cx_tensor **v)
+{
+	const cx_tensor *x=v[0],*w=n->ni>1?v[1]:NULL,*bias=n->ni>2?v[2]:NULL;
+	if (!x||!w||x->nd!=3||w->nd!=3||w->d[0]!=x->d[1]) {
+		return -1;
+	}
+	int64_t groups=cx_attr_int(n,"group",1),N=x->d[0],Ci=x->d[1],L=x->d[2],K=w->d[2],Cog=w->d[1],Co=Cog*groups;
+	const cx_attr *p=cx_attr_get(n,"pads"),*st=cx_attr_get(n,"strides"),*dl=cx_attr_get(n,"dilations"),*op=cx_attr_get(n,"output_padding");
+	const cx_attr *aut=cx_attr_get(n,"auto_pad"),*os=cx_attr_get(n,"output_shape");
+	if (groups<1||Ci%groups||(bias&&bias->n!=(uint64_t)Co)||os||(aut&&strcmp(aut->sv,"NOTSET")&&aut->sv[0])) {
+		return -1;
+	}
+	int64_t s=st&&st->nints==1?st->ints[0]:1,d=dl&&dl->nints==1?dl->ints[0]:1,oadd=op&&op->nints==1?op->ints[0]:0;
+	int64_t p0=p&&p->nints==2?p->ints[0]:0,p1=p&&p->nints==2?p->ints[1]:0;
+	if (s<1||d<1||p0<0||p1<0) {
+		return -1;
+	}
+	int64_t O=(L-1)*s-p0-p1+d*(K-1)+oadd+1;
+	if (O<1) {
+		return -1;
+	}
+	int64_t od[3]= {N,Co,O};
+	cx_tensor *y=cx_env_new(e,n->output[0],od,3,1);
+	if (!y) {
+		return -1;
+	}
+	int64_t cig=Ci/groups;
+	for (int64_t b=0; b<N; b++)for (int64_t oc=0; oc<Co; oc++) {
+			float *dst=y->v+((uint64_t)b*Co+oc)*O;
+			float bv=bias?bias->v[oc]:0.f;
+			for (int64_t t=0; t<O; t++) {
+				dst[t]=bv;
+			}
+		}
+#pragma omp parallel for collapse(2) schedule(static)
+	for (int64_t b=0; b<N; b++)for (int64_t goc=0; goc<Co; goc++) {
+			int64_t g=goc/Cog,oc=goc%Cog;
+			float *dst=y->v+((uint64_t)b*Co+goc)*O;
+			for (int64_t ic=0; ic<cig; ic++) {
+				const float *src=x->v+((uint64_t)b*Ci+g*cig+ic)*L;
+				const float *wk=w->v+((uint64_t)(g*cig+ic)*Cog+oc)*K;
+				for (int64_t k=0; k<K; k++) {
+					float wv=wk[k];
+					int64_t off=k*d-p0;
+					for (int64_t i=0; i<L; i++) {
+						int64_t o=i*s+off;
+						if (o>=0&&o<O) {
+							dst[o]+=src[i]*wv;
+						}
+					}
+				}
+			}
+		}
+	return 0;
+}
+/* GatherND (batch_dims=0) and ScatterND (reduction none). */
+static inline int cx_nd_index(const cx_tensor *data,const cx_tensor *idx,uint64_t row,int64_t k,uint64_t *offset)
+{
+	uint64_t off=0;
+	for (int64_t j=0; j<k; j++) {
+		int64_t c;
+		if (cx_i64(cx_get(idx,row*(uint64_t)k+(uint64_t)j),&c)) {
+			return -1;
+		}
+		if (c<0) {
+			c+=data->d[j];
+		}
+		if (c<0||c>=data->d[j]) {
+			return -1;
+		}
+		off=off*(uint64_t)data->d[j]+(uint64_t)c;
+	}
+	*offset=off;
+	return 0;
+}
+static inline int cx_gather_nd(cx_env *e,const cx_node *n,const cx_tensor *data,const cx_tensor *idx)
+{
+	if (!data||!idx||idx->nd<1||cx_attr_int(n,"batch_dims",0)!=0) {
+		return -1;
+	}
+	int64_t k=idx->d[idx->nd-1];
+	if (k<1||k>data->nd) {
+		return -1;
+	}
+	int nd=idx->nd-1+data->nd-(int)k;
+	int64_t d[CX_DIMS];
+	if (nd>CX_DIMS) {
+		return -1;
+	}
+	for (int j=0; j<idx->nd-1; j++) {
+		d[j]=idx->d[j];
+	}
+	uint64_t slice=1,rows=1;
+	for (int j=(int)k; j<data->nd; j++) {
+		d[idx->nd-1+j-(int)k]=data->d[j];
+		slice*=(uint64_t)data->d[j];
+	}
+	for (int j=0; j<idx->nd-1; j++) {
+		rows*=(uint64_t)idx->d[j];
+	}
+	cx_tensor *y=cx_env_new(e,n->output[0],d,nd,data->type);
+	if (!y) {
+		return -1;
+	}
+	for (uint64_t r=0; r<rows; r++) {
+		uint64_t off;
+		if (cx_nd_index(data,idx,r,k,&off)) {
+			return -1;
+		}
+		for (uint64_t j=0; j<slice; j++) {
+			y->v[r*slice+j]=cx_get(data,off*slice+j);
+		}
+	}
+	return 0;
+}
+static inline int cx_scatter_nd(cx_env *e,const cx_node *n,const cx_tensor *data,const cx_tensor *idx,const cx_tensor *upd)
+{
+	if (!data||!idx||!upd||idx->nd<1) {
+		return -1;
+	}
+	const cx_attr *red=cx_attr_get(n,"reduction");
+	if (red&&red->sv[0]&&strcmp(red->sv,"none")) {
+		return -1;
+	}
+	int64_t k=idx->d[idx->nd-1];
+	if (k<1||k>data->nd) {
+		return -1;
+	}
+	uint64_t slice=1,rows=1;
+	for (int j=(int)k; j<data->nd; j++) {
+		slice*=(uint64_t)data->d[j];
+	}
+	for (int j=0; j<idx->nd-1; j++) {
+		rows*=(uint64_t)idx->d[j];
+	}
+	if (upd->n!=rows*slice) {
+		return -1;
+	}
+	cx_tensor *y=cx_env_new(e,n->output[0],data->d,data->nd,data->type);
+	if (!y) {
+		return -1;
+	}
+	for (uint64_t i=0; i<data->n; i++) {
+		y->v[i]=cx_get(data,i);
+	}
+	for (uint64_t r=0; r<rows; r++) {
+		uint64_t off;
+		if (cx_nd_index(data,idx,r,k,&off)) {
+			return -1;
+		}
+		for (uint64_t j=0; j<slice; j++) {
+			y->v[off*slice+j]=cx_get(upd,r*slice+j);
+		}
+	}
+	return 0;
+}
+/* NonZero: int64 [rank, count], coordinates in row-major order. */
+static inline int cx_nonzero_op(cx_env *e,const cx_node *n,const cx_tensor *x)
+{
+	if (!x||x->nd<1) {
+		return -1;
+	}
+	uint64_t cnt=0;
+	for (uint64_t i=0; i<x->n; i++) {
+		cnt+=cx_get(x,i)!=0.f;
+	}
+	int64_t d[2]= {x->nd,(int64_t)cnt};
+	cx_tensor *y=cx_env_new(e,n->output[0],d,2,7);
+	if (!y) {
+		return -1;
+	}
+	uint64_t at=0;
+	int64_t c[CX_DIMS];
+	for (uint64_t i=0; i<x->n; i++) {
+		if (cx_get(x,i)==0.f) {
+			continue;
+		}
+		cx_unravel(i,x->d,x->nd,c);
+		for (int j=0; j<x->nd; j++) {
+			y->v[(uint64_t)j*cnt+at]=(float)c[j];
+		}
+		at++;
+	}
+	return 0;
+}
+/* RandomNormalLike: deterministic (fixed or attribute seed) so synthesis is reproducible. */
+static inline int cx_randn_like_op(cx_env *e,const cx_node *n,const cx_tensor *x)
+{
+	if (!x) {
+		return -1;
+	}
+	cx_tensor *y=cx_env_new(e,n->output[0],x->d,x->nd,1);
+	if (!y) {
+		return -1;
+	}
+	float mean=cx_attr_float(n,"mean",0.f),scale=cx_attr_float(n,"scale",1.f);
+	uint64_t s=0x9E3779B97F4A7C15ull^(uint64_t)cx_attr_float(n,"seed",0.f);
+	for (uint64_t i=0; i<y->n; i++) {
+		double u[2];
+		for (int k=0; k<2; k++) {
+			s^=s<<13;
+			s^=s>>7;
+			s^=s<<17;
+			u[k]=((double)(s>>11)+1.0)/9007199254740994.0;
+		}
+		y->v[i]=mean+scale*(float)(sqrt(-2.0*log(u[0]))*cos(6.283185307179586*u[1]));
+	}
+	return 0;
+}
 static inline int cx_more_execute(cx_graph*g,cx_env*e,const cx_node*n,cx_tensor**v)
 {
 	(void)g;
 	const char*op=n->op;
-	if (cx_is(op,"Erf")||cx_is(op,"LeakyRelu")||cx_is(op,"Elu")||cx_is(op,"Softplus")||cx_is(op,"Not")) {
+	if (cx_is(op,"ConvTranspose")) {
+		return cx_convtranspose_op(e,n,v);
+	}
+	if (cx_is(op,"GatherND")) {
+		return n->ni==2?cx_gather_nd(e,n,v[0],v[1]):-1;
+	}
+	if (cx_is(op,"ScatterND")) {
+		return n->ni==3?cx_scatter_nd(e,n,v[0],v[1],v[2]):-1;
+	}
+	if (cx_is(op,"NonZero")) {
+		return cx_nonzero_op(e,n,v[0]);
+	}
+	if (cx_is(op,"RandomNormalLike")) {
+		return cx_randn_like_op(e,n,v[0]);
+	}
+	if (cx_is(op,"Erf")||cx_is(op,"LeakyRelu")||cx_is(op,"Elu")||cx_is(op,"Softplus")||cx_is(op,"Not")||cx_is(op,"Ceil")) {
 		return cx_more_unary(e,n,v[0]);
 	}
 	if (cx_is(op,"Clip")) {
@@ -6201,6 +6437,30 @@ static inline void cx_trace_after(cx_graph*g,const cx_env*e,
 		        t->n==nan_count?NAN:sum/(double)(t->n-nan_count),nan_count,hash);
 	}
 }
+/* CATS_ONNX_DEBUG=1: on a failing node, dump its input tensors (type, shape, first values). */
+static inline void cx_debug_node(cx_env *e,const cx_node *n)
+{
+	if (!getenv("CATS_ONNX_DEBUG")) {
+		return;
+	}
+	for (int k=0; k<n->ni; k++) {
+		cx_tensor *t=n->input[k][0]?cx_env_find(e,n->input[k]):NULL;
+		fprintf(stderr,"  in[%d] %s",k,n->input[k]);
+		if (t) {
+			fprintf(stderr," type=%d shape=[",t->type);
+			for (int j=0; j<t->nd; j++) {
+				fprintf(stderr,"%s%lld",j?",":"",(long long)t->d[j]);
+			}
+			fprintf(stderr,"] v=");
+			for (uint64_t j=0; j<t->n&&j<6; j++) {
+				fprintf(stderr,"%g ",t->v[j]);
+			}
+		} else {
+			fprintf(stderr," (missing)");
+		}
+		fputc('\n',stderr);
+	}
+}
 static inline int cx_graph_run(cx_graph*g,cx_env*e)
 {
 	if (!g||!e) {
@@ -6223,6 +6483,7 @@ static inline int cx_graph_run(cx_graph*g,cx_env*e)
 		}
 		if (node_failed) {
 			fprintf(stderr,"native ONNX: node %zu (%s) failed (missing tensor, shape or datatype)\n",i,n->op);
+			cx_debug_node(e,n);
 			return -1;
 		}
 		cx_trace_after(g,e,n,i);
@@ -6363,6 +6624,7 @@ static inline int cx_graph_run_compact_cached(cx_graph*g,cx_env*e,int cache_weig
 		}
 		if (node_failed) {
 			fprintf(stderr,"native ONNX: node %zu (%s) failed\n",i,n->op);
+			cx_debug_node(e,n);
 			return -1;
 		}
 		cx_trace_after(g,e,n,i);

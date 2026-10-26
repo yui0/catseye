@@ -24,6 +24,17 @@
   #include <immintrin.h>
 #endif
 
+#ifdef CATS_GPU
+  #include "cats_gpu.h"
+#endif
+
+// Shared inference kernels (fp16, Q4_0 / Q8_0 quantization and dot products, SIMD dispatch)
+#define CATS_INFER_ONLY
+#define CATS_NO_ALLOC_MACROS
+#include "catseye.h"
+#undef CATS_INFER_ONLY
+#undef CATS_NO_ALLOC_MACROS
+
 #ifdef DTYPE
 typedef DTYPE	real; // _Float16
 #else
@@ -68,186 +79,7 @@ static uint16_t table_silu_f16[1 << 16];
 #define QK4_0	32
 #define QK8	32
 
-// FP16 <-> FP32
-#ifdef __F16C__
-#ifdef _MSC_VER
-#define cats_fp16_to_fp32(x) _mm_cvtss_f32(_mm_cvtph_ps(_mm_cvtsi32_si128(x)))
-#define cats_fp32_to_fp16(x) _mm_extract_epi16(_mm_cvtps_ph(_mm_set_ss(x), 0), 0)
-#else
-#define cats_fp16_to_fp32(x) _cvtsh_ss(x)
-#define cats_fp32_to_fp16(x) _cvtss_sh(x, 0)
-#endif
-#else
-// ref: https://github.com/Maratyszcza/FP16
-static inline float fp32_from_bits(uint32_t w)
-{
-	union {
-		uint32_t as_bits;
-		float as_value;
-	} fp32;
-	fp32.as_bits = w;
-	return fp32.as_value;
-}
-static inline uint32_t fp32_to_bits(real f)
-{
-	union {
-		float as_value;
-		uint32_t as_bits;
-	} fp32;
-	fp32.as_value = f;
-	return fp32.as_bits;
-}
-static inline float cats_fp16_to_fp32(uint16_t h)
-{
-	const uint32_t w = (uint32_t) h << 16;
-	const uint32_t sign = w & UINT32_C(0x80000000);
-	const uint32_t two_w = w + w;
-
-	const uint32_t exp_offset = UINT32_C(0xE0) << 23;
-#if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L) || defined(__GNUC__) && !defined(__STRICT_ANSI__)
-	const float exp_scale = 0x1.0p-112f;
-#else
-	const float exp_scale = fp32_from_bits(UINT32_C(0x7800000));
-#endif
-	const float normalized_value = fp32_from_bits((two_w >> 4) + exp_offset) * exp_scale;
-
-	const uint32_t magic_mask = UINT32_C(126) << 23;
-	const float magic_bias = 0.5f;
-	const float denormalized_value = fp32_from_bits((two_w >> 17) | magic_mask) - magic_bias;
-
-	const uint32_t denormalized_cutoff = UINT32_C(1) << 27;
-	const uint32_t result = sign |
-		(two_w < denormalized_cutoff ? fp32_to_bits(denormalized_value) : fp32_to_bits(normalized_value));
-	return fp32_from_bits(result);
-}
-static inline uint16_t cats_fp32_to_fp16(real f)
-{
-#if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L) || defined(__GNUC__) && !defined(__STRICT_ANSI__)
-	const float scale_to_inf = 0x1.0p+112f;
-	const float scale_to_zero = 0x1.0p-110f;
-#else
-	const float scale_to_inf = fp32_from_bits(UINT32_C(0x77800000));
-	const float scale_to_zero = fp32_from_bits(UINT32_C(0x08800000));
-#endif
-	float base = (fabsf(f) * scale_to_inf) * scale_to_zero;
-
-	const uint32_t w = fp32_to_bits(f);
-	const uint32_t shl1_w = w + w;
-	const uint32_t sign = w & UINT32_C(0x80000000);
-	uint32_t bias = shl1_w & UINT32_C(0xFF000000);
-	if (bias < UINT32_C(0x71000000)) {
-		bias = UINT32_C(0x71000000);
-	}
-
-	base = fp32_from_bits((bias >> 1) + UINT32_C(0x07800000)) + base;
-	const uint32_t bits = fp32_to_bits(base);
-	const uint32_t exp_bits = (bits >> 13) & UINT32_C(0x00007C00);
-	const uint32_t mantissa_bits = bits & UINT32_C(0x00000FFF);
-	const uint32_t nonsign = exp_bits + mantissa_bits;
-	return (sign >> 16) | (shl1_w > UINT32_C(0xFF000000) ? UINT16_C(0x7E00) : nonsign);
-}
-#endif
-
-#ifdef __AVX__
-static void quantize_q8(int8_t* p, real* x, int n)
-{
-	int nb = n>>5; // QK8: 32
-	do {
-		// Load elements into 4 AVX vectors
-		__m256 v0 = _mm256_load_ps(x);
-		__m256 v1 = _mm256_load_ps(x+8);
-		__m256 v2 = _mm256_load_ps(x+16);
-		__m256 v3 = _mm256_load_ps(x+24);
-		x += 32;
-
-		// Compute max(abs(e)) for the block
-		const __m256 signBit = _mm256_set1_ps(-0.0);
-		__m256 maxAbs = _mm256_andnot_ps(signBit, v0);
-		maxAbs = _mm256_max_ps(maxAbs, _mm256_andnot_ps(signBit, v1));
-		maxAbs = _mm256_max_ps(maxAbs, _mm256_andnot_ps(signBit, v2));
-		maxAbs = _mm256_max_ps(maxAbs, _mm256_andnot_ps(signBit, v3));
-
-		__m128 max4 = _mm_max_ps(_mm256_extractf128_ps(maxAbs, 1), _mm256_castps256_ps128(maxAbs));
-		max4 = _mm_max_ps(max4, _mm_movehl_ps(max4, max4));
-		max4 = _mm_max_ss(max4, _mm_movehdup_ps(max4));
-		const float maxScalar = _mm_cvtss_f32(max4);
-
-		// Quantize these floats
-		const float d = maxScalar / 127.;
-		const float id = ( maxScalar != 0.0 ) ? 127. / maxScalar : 0.0;
-		const __m256 mul = _mm256_broadcast_ss(&id);
-
-		// Apply the multiplier
-		v0 = _mm256_mul_ps(v0, mul);
-		v1 = _mm256_mul_ps(v1, mul);
-		v2 = _mm256_mul_ps(v2, mul);
-		v3 = _mm256_mul_ps(v3, mul);
-
-		// Round to nearest integer
-		v0 = _mm256_round_ps(v0, _MM_ROUND_NEAREST);
-		v1 = _mm256_round_ps(v1, _MM_ROUND_NEAREST);
-		v2 = _mm256_round_ps(v2, _MM_ROUND_NEAREST);
-		v3 = _mm256_round_ps(v3, _MM_ROUND_NEAREST);
-
-		// Convert floats to integers
-		__m256i i0 = _mm256_cvtps_epi32(v0);
-		__m256i i1 = _mm256_cvtps_epi32(v1);
-		__m256i i2 = _mm256_cvtps_epi32(v2);
-		__m256i i3 = _mm256_cvtps_epi32(v3);
-
-		__m128i ni0 = _mm256_castsi256_si128(i0);
-		__m128i ni1 = _mm256_extractf128_si256(i0, 1);
-		__m128i ni2 = _mm256_castsi256_si128(i1);
-		__m128i ni3 = _mm256_extractf128_si256(i1, 1);
-		__m128i ni4 = _mm256_castsi256_si128(i2);
-		__m128i ni5 = _mm256_extractf128_si256(i2, 1);
-		__m128i ni6 = _mm256_castsi256_si128(i3);
-		__m128i ni7 = _mm256_extractf128_si256(i3, 1);
-
-		// Convert int32 to int16
-		ni0 = _mm_packs_epi32(ni0, ni1);
-		ni2 = _mm_packs_epi32(ni2, ni3);
-		ni4 = _mm_packs_epi32(ni4, ni5);
-		ni6 = _mm_packs_epi32(ni6, ni7);
-		// Convert int16 to int8
-		ni0 = _mm_packs_epi16(ni0, ni2);
-		ni4 = _mm_packs_epi16(ni4, ni6);
-
-//		int8_t *p = q + i*(32+sizeof(float));
-		_mm_storeu_si128((__m128i *)(p +  0), ni0);
-		_mm_storeu_si128((__m128i *)(p + 16), ni4);
-		*(float*)(p + 32) = d;
-		p += 36;
-	} while (--nb > 0);
-}
-#else
-static void quantize_q8(int8_t* q, real* x, int n)
-{
-	int num_groups = n / QK8;
-	for (int group=0; group<num_groups; group++) {
-		// find the max absolute value in the current group
-		real amax = 0.0;
-		for (int i=0; i<QK8; i++) {
-			real v = fabsf(x[group * QK8 + i]);
-			amax = MAX(amax, v);
-		}
-
-		// calculate and write the scaling factor
-		int8_t* p = q + group * (32+sizeof(float));
-		const float d = amax / 127.0;
-		const float id = d ? 1.0/d : 0.0;
-
-		// calculate and write the quantized values
-		for (int i=0; i<QK8; i++) {
-			float quant_value = x[group * QK8 + i] * id;
-			*p++ = roundf(quant_value); // round and clamp
-		}
-		*((float*)p) = d;
-		p += sizeof(float);
-	}
-}
-#endif
-static void no_quantize(int8_t* q, real* x, int n) {}
+static void no_quantize(int8_t* q, const real* x, int n) {}
 
 static inline int nearest_int(float fval)
 {
@@ -256,7 +88,7 @@ static inline int nearest_int(float fval)
 	int i; memcpy(&i, &val, sizeof(int));
 	return (i & 0x007fffff) - 0x00400000;
 }
-static inline void quantize_q8_K(int8_t* y, real* x, int k)
+static inline void quantize_q8_K(int8_t* y, const real* x, int k)
 {
 	const int nb = k>>8; // 256
 	for (int i=0; i<nb; i++) {
@@ -354,7 +186,7 @@ static inline void* dequantize_q3_K(void * restrict _y, const void * restrict x,
 	const int8_t * scales = (const int8_t*)aux;
 	for (int i=0; i<nb; i++) {
 		uint8_t *p = (uint8_t*)(x + i*(256/8 +256/4 +12 +2));
-		const float d_all = cats_fp16_to_fp32(*((uint16_t*)(p +256/8 +256/4 +12)));
+		const float d_all = cats_half_to_float(*((uint16_t*)(p +256/8 +256/4 +12)));
 
 		const uint8_t * restrict q = p +256/8;
 		const uint8_t * restrict hm = p;
@@ -395,7 +227,7 @@ static inline void* dequantize_q6_K(void * restrict _y, const void * restrict x,
 	float * restrict y = (float*)_y;
 	for (int i=0; i<nb; i++) {
 		uint8_t *p = (uint8_t*)(x + i*(256/2 +256/4 +256/16 +2));
-		const float d = cats_fp16_to_fp32(*((uint16_t*)(p +256/2 +256/4 +256/16)));
+		const float d = cats_half_to_float(*((uint16_t*)(p +256/2 +256/4 +256/16)));
 
 		const uint8_t * restrict ql = p;
 		const uint8_t * restrict qh = p +256/2;
@@ -421,54 +253,6 @@ static inline void* dequantize_q6_K(void * restrict _y, const void * restrict x,
 	}
 	return 0;
 }
-static inline void* dequantize_q4_0(void * restrict y, const void * restrict x, size_t k)
-{
-	const int nb = k>>5; // 32
-	for (int i=0; i<nb; i++) {
-		uint8_t *p = (uint8_t*)(x + i*18);
-		const float delta = cats_fp16_to_fp32(*((uint16_t*)p));
-		p += 2;
-
-		float *y0 = (float*)(y + i*32*sizeof(float));
-		float *y1 = y0 + 16;
-		*y0++ = ((*p   & 0x0F) - 8)*delta;
-		*y1++ = ((*p++ >>   4) - 8)*delta;
-		*y0++ = ((*p   & 0x0F) - 8)*delta;
-		*y1++ = ((*p++ >>   4) - 8)*delta;
-		*y0++ = ((*p   & 0x0F) - 8)*delta;
-		*y1++ = ((*p++ >>   4) - 8)*delta;
-		*y0++ = ((*p   & 0x0F) - 8)*delta;
-		*y1++ = ((*p++ >>   4) - 8)*delta;
-
-		*y0++ = ((*p   & 0x0F) - 8)*delta;
-		*y1++ = ((*p++ >>   4) - 8)*delta;
-		*y0++ = ((*p   & 0x0F) - 8)*delta;
-		*y1++ = ((*p++ >>   4) - 8)*delta;
-		*y0++ = ((*p   & 0x0F) - 8)*delta;
-		*y1++ = ((*p++ >>   4) - 8)*delta;
-		*y0++ = ((*p   & 0x0F) - 8)*delta;
-		*y1++ = ((*p++ >>   4) - 8)*delta;
-
-		*y0++ = ((*p   & 0x0F) - 8)*delta;
-		*y1++ = ((*p++ >>   4) - 8)*delta;
-		*y0++ = ((*p   & 0x0F) - 8)*delta;
-		*y1++ = ((*p++ >>   4) - 8)*delta;
-		*y0++ = ((*p   & 0x0F) - 8)*delta;
-		*y1++ = ((*p++ >>   4) - 8)*delta;
-		*y0++ = ((*p   & 0x0F) - 8)*delta;
-		*y1++ = ((*p++ >>   4) - 8)*delta;
-
-		*y0++ = ((*p   & 0x0F) - 8)*delta;
-		*y1++ = ((*p++ >>   4) - 8)*delta;
-		*y0++ = ((*p   & 0x0F) - 8)*delta;
-		*y1++ = ((*p++ >>   4) - 8)*delta;
-		*y0++ = ((*p   & 0x0F) - 8)*delta;
-		*y1++ = ((*p++ >>   4) - 8)*delta;
-		*y0++ = ((*p   & 0x0F) - 8)*delta;
-		*y1++ = ((*p++ >>   4) - 8)*delta;
-	}
-	return 0;
-}
 static void* _dequantize_q3_K(void * restrict a, const void * restrict b, int n, int k)
 {
 	return dequantize_q3_K(a, b +n*k/256*110, k);
@@ -479,7 +263,13 @@ static void* _dequantize_q6_K(void * restrict a, const void * restrict b, int n,
 }
 static void* _dequantize_q4_0(void * restrict a, const void * restrict b, int n, int k)
 {
-	return dequantize_q4_0(a, b +n*(k/32*18), k);
+	cats_q4_0_dequantize_row((const uint8_t*)b + n*cats_q4_0_row_bytes(k), k, (float*)a);
+	return a;
+}
+static void* _dequantize_q8_0(void * restrict a, const void * restrict b, int n, int k)
+{
+	cats_q8_0w_dequantize_row((const uint8_t*)b + n*cats_q8_0w_row_bytes(k), k, (float*)a);
+	return a;
 }
 static void* _dequantize_memcpy(void * restrict a, const void * restrict b, int n, int k)
 {
@@ -489,7 +279,7 @@ static void* _dequantize_f16(void * restrict a, const void * restrict b, int n, 
 {
 	const uint16_t *src = (const uint16_t*)b + (size_t)n * k;
 	float *dst = (float*)a;
-	for (int i=0; i<k; i++) dst[i] = cats_fp16_to_fp32(src[i]);
+	for (int i=0; i<k; i++) dst[i] = cats_half_to_float(src[i]);
 	return a;
 }
 
@@ -523,7 +313,7 @@ static float random_f32()
 // define struct
 
 static void* (*dequantize)(void * restrict, const void * restrict, int, int) = _dequantize_memcpy;
-static void (*quantize)(int8_t*, real*, int) = no_quantize;
+static void (*quantize)(int8_t*, const real*, int) = no_quantize;
 static void (*matmul)(real* restrict, void* restrict, void* restrict, int, int);
 
 #define CATS_NAME_MAX		48
@@ -535,7 +325,7 @@ typedef struct {
 	uint64_t dim[CATS_MAX_DIM];
 	void *data;
 
-	void (*quantize)(int8_t*, real*, int);
+	void (*quantize)(int8_t*, const real*, int);
 	void (*matmul)(real* restrict, void* restrict, void* restrict, int, int);
 
 	uint64_t size;		// size of the file
@@ -635,6 +425,9 @@ static void cats_llm_malloc(cats_llm_model* m)
 		exit(1);
 	}
 	rope_cache_init(m->seq_len, m->n_embd / m->n_head);
+#ifdef CATS_GPU
+	cs_gpu_init(NULL);
+#endif
 
 	size_t size;
 	size = m->n_embd*4 +m->n_hidden*2 +m->n_embd +m->n_embd*m->seq_len +m->n_vocab +m->n_layer * m->seq_len * kv_dim *2;
@@ -643,6 +436,9 @@ static void cats_llm_malloc(cats_llm_model* m)
 
 static void cats_llm_free(cats_llm_model* m)
 {
+#ifdef CATS_GPU
+	cs_gpu_term();
+#endif
 	free(m->x);
 	free(m->xb);
 	free(m->xb2);
@@ -802,37 +598,6 @@ static inline void sgemm7_(const int M, const int N, const int K, const float *A
 }*/
 
 // multiply int8_t, add results pairwise twice
-static inline __m128i mul_sum_i8_pairs(const __m128i x, const __m128i y)
-{
-	// Get absolute values of x vectors
-	const __m128i ax = _mm_sign_epi8(x, x);
-	// Sign the values of the y vectors
-	const __m128i sy = _mm_sign_epi8(y, x);
-	// Perform multiplication and create 16-bit values
-	const __m128i dot = _mm_maddubs_epi16(ax, sy);
-	const __m128i ones = _mm_set1_epi16(1);
-	return _mm_madd_epi16(ones, dot);
-}
-// horizontally add 8 floats
-/*static inline float hsum_float_8(const __m256 x)
-{
-	__m128 res = _mm256_extractf128_ps(x, 1);
-	res = _mm_add_ps(res, _mm256_castps256_ps128(x)); // ( x3+x7, x2+x6, x1+x5, x0+x4 )
-	res = _mm_add_ps(res, _mm_movehl_ps(res, res)); // ( -, -, x1+x3+x5+x7, x0+x2+x4+x6 )
-	res = _mm_add_ss(res, _mm_movehdup_ps(res)); // ( -, -, -, x0+x1+x2+x3+x4+x5+x6+x7 )
-	return _mm_cvtss_f32(res);
-}*/
-static inline float hsum_float_8(__m256 acc)
-{
-/*	acc = _mm256_hadd_ps(acc, acc);
-	acc = _mm256_hadd_ps(acc, acc);
-	static __attribute__((aligned(32))) float vals[8];
-	_mm256_store_ps(vals, acc);
-	return vals[0] + vals[4];*/
-	acc = _mm256_hadd_ps(acc, acc);
-	acc = _mm256_hadd_ps(acc, acc);
-	return _mm_cvtss_f32(_mm_add_ps(_mm256_extractf128_ps(acc, 1), _mm256_castps256_ps128(acc)));
-}
 static inline __m256i __mm256_cvtepi8_epi32(__m128i v)
 {
 	// expand signed 16bit
@@ -848,42 +613,6 @@ static inline __m256i __mm256_cvtepi8_epi32(__m128i v)
 }
 //#define MM256_SET_M128I(a, b) _mm256_insertf128_si256(_mm256_castsi128_si256(b), (a), 1)
 #define MM256_SET_M128I(a, b) _mm256_set_m128i((a), (b))
-static inline float dot_q4_0_q8_avx(uint8_t* __restrict x, int8_t* __restrict y, int n)
-{
-	const __m128i lowMask = _mm_set1_epi8(0xF);
-	const __m128i off = _mm_set1_epi8(8);
-	int nb = n>>5; // 32
-	__m256 acc = _mm256_setzero_ps();
-
-	do {
-		// Compute combined scale for the block
-		float delta = cats_fp16_to_fp32(*(uint16_t*)x);
-
-		const __m128i tmp = _mm_loadu_si128((const __m128i *)(x+2)); // 4bit * 16 = 32byte
-		x += 16+2;
-
-		__m128i bx = _mm_and_si128(lowMask, tmp); // 4bit -> 8 bit
-		__m128i by = _mm_loadu_si128((const __m128i *)y); // 8bit * 16 = 128byte
-		bx = _mm_sub_epi8(bx, off);
-		const __m128i i32_0 = mul_sum_i8_pairs(bx, by);
-
-		bx = _mm_and_si128(lowMask, _mm_srli_epi64(tmp, 4));
-		by = _mm_loadu_si128((const __m128i *)(y +16));
-		bx = _mm_sub_epi8(bx, off);
-		const __m128i i32_1 = mul_sum_i8_pairs(bx, by);
-
-		// Convert int32_t to float
-		__m256 p = _mm256_cvtepi32_ps(MM256_SET_M128I(i32_0, i32_1));
-
-		// Apply the scale, and accumulate
-		delta *= *((float*)(y +32));
-		y += 32+4;
-		const __m256 d = _mm256_broadcast_ss(&delta);
-		acc = _mm256_add_ps(acc, _mm256_mul_ps(d, p));
-	} while (--nb > 0);
-
-	return hsum_float_8(acc);
-}
 static inline float dot_avx_q4_0(uint8_t* __restrict a, real* __restrict b, int n)
 {
 	int nn = n>>5; // 32
@@ -896,7 +625,7 @@ static inline float dot_avx_q4_0(uint8_t* __restrict a, real* __restrict b, int 
 	for (int i=0; i<nn; i++) {
 		uint8_t *p = a +i*18;
 		_mm_prefetch(p, _MM_HINT_T0);
-		const __m256 d = _mm256_set1_ps(cats_fp16_to_fp32(*((uint16_t*)p)));
+		const __m256 d = _mm256_set1_ps(cats_half_to_float(*((uint16_t*)p)));
 		p += 2;
 
 		const __m128i w = _mm_loadu_si128((const __m128i *)p); // 16 byte
@@ -917,66 +646,9 @@ static inline float dot_avx_q4_0(uint8_t* __restrict a, real* __restrict b, int 
 		acc = _mm256_add_ps(acc, _mm256_mul_ps(w2, *b_ptr++));
 		acc = _mm256_add_ps(acc, _mm256_mul_ps(w3, *b_ptr++));
 	}
-	return hsum_float_8(acc);
+	return cats_hsum_ps(acc);
 }
 #else
-static inline real dot_q4_0_q8(uint8_t* __restrict a, int8_t* __restrict b, int n)
-{
-	int nn = n>>5; // 32
-	real val = 0.0;
-	for (int i=0; i<nn; i++) {
-		uint8_t *p = a +i*18;
-		real delta = cats_fp16_to_fp32(*((uint16_t*)p));
-		p += sizeof(uint16_t);
-
-		int8_t *b0 = b +i*(32+sizeof(float));
-//		delta *= *((float*)b0);
-//		b0 += 4;//sizeof(float);
-		int8_t *b1 = b0+16;
-
-		int32_t ival;
-		ival  = ((int32_t)((*p   & 0x0F) - 8) * *b0++); // 0
-		ival += ((int32_t)((*p++ >>   4) - 8) * *b1++);
-		ival += ((int32_t)((*p   & 0x0F) - 8) * *b0++);
-		ival += ((int32_t)((*p++ >>   4) - 8) * *b1++);
-		ival += ((int32_t)((*p   & 0x0F) - 8) * *b0++);
-		ival += ((int32_t)((*p++ >>   4) - 8) * *b1++);
-		ival += ((int32_t)((*p   & 0x0F) - 8) * *b0++);
-		ival += ((int32_t)((*p++ >>   4) - 8) * *b1++);
-
-		ival += ((int32_t)((*p   & 0x0F) - 8) * *b0++);
-		ival += ((int32_t)((*p++ >>   4) - 8) * *b1++);
-		ival += ((int32_t)((*p   & 0x0F) - 8) * *b0++);
-		ival += ((int32_t)((*p++ >>   4) - 8) * *b1++);
-		ival += ((int32_t)((*p   & 0x0F) - 8) * *b0++);
-		ival += ((int32_t)((*p++ >>   4) - 8) * *b1++);
-		ival += ((int32_t)((*p   & 0x0F) - 8) * *b0++);
-		ival += ((int32_t)((*p++ >>   4) - 8) * *b1++);
-
-		ival += ((int32_t)((*p   & 0x0F) - 8) * *b0++);
-		ival += ((int32_t)((*p++ >>   4) - 8) * *b1++);
-		ival += ((int32_t)((*p   & 0x0F) - 8) * *b0++);
-		ival += ((int32_t)((*p++ >>   4) - 8) * *b1++);
-		ival += ((int32_t)((*p   & 0x0F) - 8) * *b0++);
-		ival += ((int32_t)((*p++ >>   4) - 8) * *b1++);
-		ival += ((int32_t)((*p   & 0x0F) - 8) * *b0++);
-		ival += ((int32_t)((*p++ >>   4) - 8) * *b1++);
-
-		ival += ((int32_t)((*p   & 0x0F) - 8) * *b0++);
-		ival += ((int32_t)((*p++ >>   4) - 8) * *b1++);
-		ival += ((int32_t)((*p   & 0x0F) - 8) * *b0++);
-		ival += ((int32_t)((*p++ >>   4) - 8) * *b1++);
-		ival += ((int32_t)((*p   & 0x0F) - 8) * *b0++);
-		ival += ((int32_t)((*p++ >>   4) - 8) * *b1++);
-		ival += ((int32_t)((*p   & 0x0F) - 8) * *b0++);
-		ival += ((int32_t)((*p++ >>   4) - 8) * *b1++);
-
-		delta *= *((float*)b1);
-//		b1 += 4;//sizeof(float);
-		val += ival * delta;
-	}
-	return val;
-}
 static inline real dot_q4_0(uint8_t* __restrict a, real* __restrict b, int n)
 {
 	int nn = n>>5; // 32
@@ -984,7 +656,7 @@ static inline real dot_q4_0(uint8_t* __restrict a, real* __restrict b, int n)
 	real val = 0.0;
 	for (int i=0; i<nn; i++) {
 		uint8_t *p = a +i*18;
-		real delta = cats_fp16_to_fp32(*((uint16_t*)p));
+		real delta = cats_half_to_float(*((uint16_t*)p));
 		p += 2;
 		w[ 0] = (((*p   & 0x0F) - 8)*delta);
 		w[ 1] = (((*p++ >>   4) - 8)*delta);
@@ -1197,11 +869,11 @@ static inline real dot_q3_K_q8_K_avx(uint8_t* __restrict x, int8_t* __restrict y
 		}
 
 		// multiply with block scale and accumulate
-		const float d = cats_fp16_to_fp32(*((uint16_t*)(p +256/8 +256/4 +12))) * (*(float*)q8);
+		const float d = cats_half_to_float(*((uint16_t*)(p +256/8 +256/4 +12))) * (*(float*)q8);
 		__m256i sumi = _mm256_set_m128i(sumi_1, sumi_0);
 		acc = _mm256_add_ps(_mm256_mul_ps(_mm256_broadcast_ss(&d), _mm256_cvtepi32_ps(sumi)), acc);
 	}
-	return hsum_float_8(acc);
+	return cats_hsum_ps(acc);
 }
 #else
 static inline real dot_q3_K_q8_K(uint8_t* __restrict x, int8_t* __restrict y, int n)
@@ -1259,7 +931,7 @@ static inline real dot_q3_K_q8_K(uint8_t* __restrict x, int8_t* __restrict y, in
 			for (int l=0; l<8; ++l) aux32[l] += (scales[j] - 32) * aux16[l];
 			q8 += 8; a += 8;
 		}
-		const float d = cats_fp16_to_fp32(*((uint16_t*)(p +256/8 +256/4 +12))) * (*(float*)q8);
+		const float d = cats_half_to_float(*((uint16_t*)(p +256/8 +256/4 +12))) * (*(float*)q8);
 		for (int l=0; l<8; ++l) sums[l] += d * aux32[l];
 	}
 	for (int l=0; l<8; ++l) sumf += sums[l];
@@ -1352,7 +1024,7 @@ static inline real dot_q6_K_q8_K_avx(uint8_t* __restrict x, int8_t* __restrict y
 		const uint8_t * restrict qh = p +256/2;
 		const int8_t * restrict sc = p +256/2 +256/4;
 		const int8_t * restrict q8 = y +i*(4+256);
-//		const float d = cats_fp16_to_fp32(*((uint16_t*)(p +256/2 +256/4 +256/16))) * (*(float*)(q8+256));
+//		const float d = cats_half_to_float(*((uint16_t*)(p +256/2 +256/4 +256/16))) * (*(float*)(q8+256));
 
 		const __m128i scales = _mm_loadu_si128((const __m128i*)sc);
 
@@ -1447,11 +1119,11 @@ static inline real dot_q6_K_q8_K_avx(uint8_t* __restrict x, int8_t* __restrict y
 			sumi_1 = _mm_add_epi32(sumi_1, _mm_add_epi32(p16_5, p16_7));
 		}
 
-		const float d = cats_fp16_to_fp32(*((uint16_t*)(p +256/2 +256/4 +256/16))) * (*(float*)q8);
+		const float d = cats_half_to_float(*((uint16_t*)(p +256/2 +256/4 +256/16))) * (*(float*)q8);
 		__m256i sumi = MM256_SET_M128I(sumi_1, sumi_0);
 		acc = _mm256_add_ps(_mm256_mul_ps(_mm256_broadcast_ss(&d), _mm256_cvtepi32_ps(sumi)), acc);
 	}
-	return hsum_float_8(acc);
+	return cats_hsum_ps(acc);
 }
 static inline float dot_avx(const real* __restrict a, const real* __restrict b, int n)
 {
@@ -1466,7 +1138,7 @@ static inline float dot_avx(const real* __restrict a, const real* __restrict b, 
 		acc = _mm256_add_ps(acc, _mm256_mul_ps(x0, y0));
 		acc = _mm256_add_ps(acc, _mm256_mul_ps(x1, y1));
 	}
-	float val = hsum_float_8(acc);
+	float val = cats_hsum_ps(acc);
 	for (; i<n; ++i) val += a[i] * b[i];
 	return val;
 }
@@ -1510,7 +1182,7 @@ static inline real dot_q6_K_q8_K(uint8_t* __restrict x, int8_t* __restrict y, in
 			q8 += 8; a += 8;
 			sc++;
 		}
-		const float d = cats_fp16_to_fp32(*((uint16_t*)(p +256/2 +256/4 +256/16))) * (*(float*)q8);
+		const float d = cats_half_to_float(*((uint16_t*)(p +256/2 +256/4 +256/16))) * (*(float*)q8);
 		for (int l=0; l<8; ++l) sums[l] += d * aux32[l];
 	}
 	for (int l=0; l<8; ++l) sumf += sums[l];
@@ -1537,7 +1209,6 @@ static void name(real* __restrict xout, void* __restrict x, void* __restrict w, 
 #ifdef __AVX__
 MATMUL_FUNC(matmul_f32, dot_avx, real, real, i*n); // 611
 MATMUL_FUNC(matmul_q4_0, dot_avx_q4_0, uint8_t, real, i*n/32*18); // 2.9
-MATMUL_FUNC(matmul_q4_0_q8, dot_q4_0_q8_avx, uint8_t, int8_t, i*n/32*18); // 6.2
 MATMUL_FUNC(matmul_q3_K_q8_K, dot_q3_K_q8_K_avx, uint8_t, int8_t, i*n/256*110); // 4.5
 MATMUL_FUNC(matmul_q6_K_q8_K, dot_q6_K_q8_K_avx, uint8_t, int8_t, i*n/256*210); // 5.4
 // BitNet b1.58: int8 ternary {-1,0,+1} row weights + float scale in first 8 bytes
@@ -1565,7 +1236,7 @@ static void matmul_f16(real* __restrict xout, void* __restrict _x, void* __restr
 	for (int i=0; i<d; i++) {
 		const uint16_t *row = w + (size_t)i * n;
 		float val = 0.0f;
-		for (int j=0; j<n; j++) val += cats_fp16_to_fp32(row[j]) * x[j];
+		for (int j=0; j<n; j++) val += cats_half_to_float(row[j]) * x[j];
 		xout[i] = val;
 	}
 }
@@ -1590,7 +1261,6 @@ static void matmul_f32(real* __restrict xout, void* __restrict _x, void* __restr
 	}
 }
 //MATMUL_FUNC(matmul_f32, matmul_naive, real, real, i*n);
-MATMUL_FUNC(matmul_q4_0_q8, dot_q4_0_q8, uint8_t, int8_t, i*n/32*18); // 1.0
 MATMUL_FUNC(matmul_q3_K_q8_K, dot_q3_K_q8_K, uint8_t, int8_t, i*n/256*110); // 0.95
 MATMUL_FUNC(matmul_q6_K_q8_K, dot_q6_K_q8_K, uint8_t, int8_t, i*n/256*210); // 4.9 (case of only 1 use)
 static float dot_t158(const int8_t *w, const real *x, int n)
@@ -1617,11 +1287,15 @@ static void matmul_f16(real* __restrict xout, void* __restrict _x, void* __restr
 	for (int i=0; i<d; i++) {
 		const uint16_t *row = w + (size_t)i * n;
 		float val = 0.0f;
-		for (int j=0; j<n; j++) val += cats_fp16_to_fp32(row[j]) * x[j];
+		for (int j=0; j<n; j++) val += cats_half_to_float(row[j]) * x[j];
 		xout[i] = val;
 	}
 }
 #endif
+// Q4_0 weights x Q8_0 activations (AVX or scalar, chosen at run time by catseye.h)
+MATMUL_FUNC(matmul_q4_0_q8, cats_dot_q4_0_q8_0, uint8_t, int8_t, i*n/32*18);
+// Q8_0 weights x Q8_0 activations
+MATMUL_FUNC(matmul_q8_0_q8, cats_dot_q8_0w_q8_0, uint8_t, int8_t, i*n/32*34);
 /*static void matmul_arm(float *xout, float *x, float *w, int n, int d)
 {
 	int i;
@@ -1738,10 +1412,10 @@ static real* cats_llama2_transformer(int token, int pos, cats_llm_model* m)
 		// initialize GELU, Quick GELU, SILU and EXP F32 tables
 		for (int i=0; i<(1<<16); ++i) {
 			uint16_t ii = i;
-			const float f = cats_fp16_to_fp32(ii); // table_f32_f16[i]
+			const float f = cats_half_to_float(ii); // table_f32_f16[i]
 //			table_gelu_f16[i] = GGML_FP32_TO_FP16(ggml_gelu_f32(f));
 //			table_gelu_quick_f16[i] = GGML_FP32_TO_FP16(ggml_gelu_quick_f32(f));
-			table_silu_f16[i] = cats_fp32_to_fp16(f/(1.0 + expf(-f)));
+			table_silu_f16[i] = cats_float_to_half(f/(1.0 + expf(-f)));
 //			table_exp_f16[i]  = GGML_FP32_TO_FP16(expf(f));
 		}
 		is_first_call = 0;
@@ -1853,7 +1527,7 @@ static real* cats_llama2_transformer(int token, int pos, cats_llm_model* m)
 			real val = m->hb[i];
 			// silu(x)=x*σ(x), where σ(x) is the logistic sigmoid
 			val *= (1.0 / (1.0 + expf(-val)));
-//			val = cats_fp16_to_fp32(table_silu_f16[cats_fp32_to_fp16(val)]);
+//			val = cats_half_to_float(table_silu_f16[cats_float_to_half(val)]);
 			// elementwise multiply with w3(x)
 			val *= m->hb2[i];
 			m->hb[i] = val;
@@ -2014,7 +1688,7 @@ void bpe_encode(char *text, int bos, int eos, char **vocab, real *vocab_scores, 
 		int best_idx = -1;
 
 		for (int i=0; i < (*n_tokens-1); i++) {
-			snprintf(str_buffer, max_token_length*2+1+2, "%s%s", vocab[tokens[i]], vocab[tokens[i+1]]);
+			sprintf(str_buffer, "%s%s", vocab[tokens[i]], vocab[tokens[i+1]]);
 			int id = str_lookup(str_buffer, sorted_vocab, vocab_size);
 			if (id != -1 && vocab_scores[id] > best_score) {
 				best_score = vocab_scores[id];
@@ -2236,7 +1910,7 @@ static void cats_llm_chat(cats_llm_model *m, char *cli_user_prompt, char *cli_sy
 
 	// start the main loop
 	int8_t user_turn = 1; // user starts
-	int next = 1;    // will store the next token in the sequence (BOS until something is sampled)
+	int next;        // will store the next token in the sequence
 	int token;       // stores the current token to feed into the transformer
 	int prev_token;
 	int pos = 0;     // position in the sequence
@@ -2251,13 +1925,13 @@ static void cats_llm_chat(cats_llm_model *m, char *cli_user_prompt, char *cli_sy
 					read_stdin("Enter system prompt (optional): ", system_prompt, sizeof(system_prompt));
 				} else {
 					// system prompt was passed in, use it
-					snprintf(system_prompt, sizeof(system_prompt), "%s", cli_system_prompt);
+					strcpy(system_prompt, cli_system_prompt);
 				}
 			}
 			// get the user prompt
 			if (pos == 0 && cli_user_prompt != NULL) {
 				// user prompt for position 0 was passed in, use it
-				snprintf(user_prompt, sizeof(user_prompt), "%s", cli_user_prompt);
+				strcpy(user_prompt, cli_user_prompt);
 			} else {
 				// otherwise get user prompt from stdin
 				read_stdin("User: ", user_prompt, sizeof(user_prompt));
@@ -2265,10 +1939,10 @@ static void cats_llm_chat(cats_llm_model *m, char *cli_user_prompt, char *cli_sy
 			// render user/system prompts into the Llama 2 Chat schema
 			if (pos == 0 && system_prompt[0] != '\0') {
 				char system_template[] = "[INST] <<SYS>>\n%s\n<</SYS>>\n\n%s [/INST]";
-				snprintf(rendered_prompt, sizeof(rendered_prompt), system_template, system_prompt, user_prompt);
+				sprintf(rendered_prompt, system_template, system_prompt, user_prompt);
 			} else {
 				char user_template[] = "[INST] %s [/INST]";
-				snprintf(rendered_prompt, sizeof(rendered_prompt), user_template, user_prompt);
+				sprintf(rendered_prompt, user_template, user_prompt);
 			}
 			// encode the rendered prompt into tokens
 			bpe_encode(rendered_prompt, 1, 0, m->vocab, m->score, m->n_vocab, m->max_token_length, prompt_tokens, &num_prompt_tokens);
@@ -2385,7 +2059,7 @@ static void cats_read_vocab(int fd, int size, char **word, float *score, int typ
 static void dequantize_file(int fd, cats_tensor *t, int f)
 {
 	if (f) {
-		t->quantize = quantize_q8;
+		t->quantize = cats_q8_0_quantize;
 		t->matmul = matmul_q4_0_q8;
 		read(fd, t->data, t->size);
 		return;
@@ -2400,7 +2074,7 @@ static void dequantize_file(int fd, cats_tensor *t, int f)
 	case LLAMA_FTYPE_MOSTLY_Q4_0:
 		{uint8_t *d = malloc(t->size);
 		read(fd, d, t->size);
-		dequantize_q4_0(t->data, d, (t->size/18)*32);
+		cats_q4_0_dequantize_row(d, (t->size/18)*32, (float*)t->data);
 		free(d);
 		break;}
 	default:
@@ -2484,16 +2158,11 @@ static int cats_ggml_load(char *name, cats_llm_model *m)
 		read(fd, &len, sizeof(uint32_t));
 		read(fd, &type, sizeof(uint32_t));
 
-		if (shape_len == 0 || shape_len > CATS_MAX_DIM || n >= (int)(sizeof(m->tensor)/sizeof(m->tensor[0]))) {
-			printf("Unsupported tensor (rank %u, #%d)\n", shape_len, n);
-			return 1;
-		}
-		uint32_t shape[CATS_MAX_DIM];
+		uint32_t shape[shape_len];
 		read(fd, shape, sizeof(uint32_t)*shape_len);
 //		for (int i=0; i<shape_len; i++) printf("shape[%d]: %d\n", i, shape[i]);
 
 		char name[256];
-		if (len >= sizeof(name)) { printf("tensor name is too long (%u)\n", len); return 1; }
 		read(fd, name, len);
 		name[len] = 0;
 
@@ -2522,7 +2191,7 @@ static int cats_ggml_load(char *name, cats_llm_model *m)
 		}*/
 
 		// set weights informaton
-		snprintf(m->tensor[n].name, CATS_NAME_MAX, "%s", name);
+		strncpy(m->tensor[n].name, name, CATS_NAME_MAX);
 		m->tensor[n].type = type;
 		m->tensor[n].dim[1] = 0;
 		for (int i=0; i<shape_len; i++) m->tensor[n].dim[i] = shape[i];
@@ -2647,7 +2316,7 @@ static int cats_ggml_load(char *name, cats_llm_model *m)
 //	matmul = matmul_q4_0_avx;
 	// q4_0 * q8: 5.4 tokens/sec
 	dequantize = _dequantize_q4_0;
-	quantize = quantize_q8;
+	quantize = cats_q8_0_quantize;
 	matmul = matmul_q4_0_q8;
 
 	close(fd);
@@ -2688,7 +2357,7 @@ static void cats_f16_to_f32_1d(cats_tensor *t)
 	int n = (int)(t->size / sizeof(uint16_t));
 	float *out = (float*)malloc((size_t)n * sizeof(float));
 	const uint16_t *src = (const uint16_t*)t->data;
-	for (int i=0; i<n; i++) out[i] = cats_fp16_to_fp32(src[i]);
+	for (int i=0; i<n; i++) out[i] = cats_half_to_float(src[i]);
 	free(t->data);
 	t->data = out;
 	t->size = (size_t)n * sizeof(float);
@@ -2702,20 +2371,34 @@ static int cats_name_ends_with(const char *s, const char *suffix)
 void matmul_null(real* restrict o, void* restrict x, void* restrict w, int n, int d)
 {
 }
+#if defined(CATS_GPU) && !defined(DTYPE)
+// F32 weights on the GPU (cats_gpu.h GEMM with n=1); any failure falls back to the CPU kernel
+static void matmul_gpu(real* restrict o, void* restrict x, void* restrict w, int n, int d)
+{
+	if (cs_gpu_ready() && !cs_gpu_gemv(o, (const float*)x, (const float*)w, n, d)) return;
+	matmul_f32(o, x, w, n, d);
+}
+#endif
 void (*gguf_matmul[])(real* restrict, void* restrict, void* restrict, int, int) = {
+#if defined(CATS_GPU) && !defined(DTYPE)
+	[GGML_TYPE_F32]  = matmul_gpu,
+#else
 	[GGML_TYPE_F32]  = matmul_f32,
+#endif
 	[GGML_TYPE_Q4_0] = matmul_q4_0_q8,
+	[GGML_TYPE_Q8_0] = matmul_q8_0_q8,
 	[GGML_TYPE_Q3_K] = matmul_q3_K_q8_K,
 	[GGML_TYPE_Q6_K] = matmul_q6_K_q8_K,
 	[GGML_TYPE_F16]  = matmul_f16,
 	[GGML_TYPE_B158] = matmul_b158,
 };
-void quantize_null(int8_t* p, real* x, int n)
+void quantize_null(int8_t* p, const real* x, int n)
 {
 }
-void (*gguf_quantize[])(int8_t*, real*, int) = {
+void (*gguf_quantize[])(int8_t*, const real*, int) = {
 	[GGML_TYPE_F32]  = quantize_null,
-	[GGML_TYPE_Q4_0] = quantize_q8,
+	[GGML_TYPE_Q4_0] = cats_q8_0_quantize,
+	[GGML_TYPE_Q8_0] = cats_q8_0_quantize,
 	[GGML_TYPE_Q3_K] = quantize_q8_K,
 	[GGML_TYPE_Q6_K] = quantize_q8_K,
 	[GGML_TYPE_F16]  = quantize_null,
@@ -2724,6 +2407,7 @@ void (*gguf_quantize[])(int8_t*, real*, int) = {
 void* (*gguf_dequantize[])(void * restrict, const void * restrict, int, int) = {
 	[GGML_TYPE_F32]  = _dequantize_memcpy,
 	[GGML_TYPE_Q4_0] = _dequantize_q4_0,
+	[GGML_TYPE_Q8_0] = _dequantize_q8_0,
 	[GGML_TYPE_Q3_K] = _dequantize_q3_K,
 	[GGML_TYPE_Q6_K] = _dequantize_q6_K,
 	[GGML_TYPE_F16]  = _dequantize_f16,
@@ -2826,19 +2510,6 @@ static void cats_gguf_bind_b158(cats_tensor *tensors, int n)
 	}
 }
 
-// Reads a GGUF string (uint64 length + bytes) into dst[cap]: the part that does not fit is skipped, the result is
-// always NUL-terminated. Returns the full length in the file, or -1 on a read error.
-static int64_t cats_gguf_read_str(int fd, char *dst, size_t cap)
-{
-	uint64_t len;
-	if (read(fd, &len, sizeof(uint64_t)) != sizeof(uint64_t)) { if (cap) dst[0] = 0; return -1; }
-	size_t n = len < cap - 1 ? (size_t)len : cap - 1;
-	if (n && read(fd, dst, n) != (ssize_t)n) { dst[0] = 0; return -1; }
-	dst[n] = 0;
-	if (len > n) lseek(fd, (off_t)(len - n), SEEK_CUR);
-	return (int64_t)len;
-}
-
 static int cats_gguf_load(char *name, cats_llm_model *m)
 {
 	int fd = open(name, O_RDONLY);
@@ -2863,22 +2534,19 @@ static int cats_gguf_load(char *name, cats_llm_model *m)
 		return 1;
 	}
 
-	if (header.n_tensors > sizeof(m->tensor)/sizeof(m->tensor[0])) {
-		printf("Too many tensors: %llu\n", (unsigned long long)header.n_tensors);
-		close(fd);
-		return 1;
-	}
-	struct gguf_kv* kv = calloc(header.n_kv ? header.n_kv : 1, sizeof(struct gguf_kv));
-	if (!kv) { close(fd); return 1; }
+	struct gguf_kv* kv = malloc(header.n_kv * sizeof(struct gguf_kv));
 	for (uint64_t i=0; i<header.n_kv; i++) {
 		uint64_t len;
-		cats_gguf_read_str(fd, kv[i].key, sizeof(kv[i].key));
+		read(fd, &len, sizeof(uint64_t));
+		read(fd, kv[i].key, len);
 		read(fd, &kv[i].type, sizeof(uint32_t));
+		kv[i].key[len] = 0;
 		printf("key #%llu: %s (%u)\n", (unsigned long long)i, kv[i].key, kv[i].type);
 
 		switch (kv[i].type) {
 		case GGUF_TYPE_STRING:
-			len = (uint64_t)cats_gguf_read_str(fd, kv[i].value.str, sizeof(kv[i].value.str));
+			read(fd, &len, sizeof(uint64_t));
+			read(fd, &kv[i].value, len);
 			printf("string: %s(%llu)\n", kv[i].value.str, (unsigned long long)len);
 			break;
 		case GGUF_TYPE_ARRAY:
@@ -2891,8 +2559,7 @@ static int cats_gguf_load(char *name, cats_llm_model *m)
 				m->vocab = (char**)malloc(m->n_vocab * sizeof(char*));
 				for (int n=0; n<kv[i].value.arr.n; n++) {
 					read(fd, &len, sizeof(uint64_t));
-					char *buff = (char*)malloc(len +1);	// tokens can be longer than any fixed buffer
-					if (!buff) { close(fd); return 1; }
+					char buff[256];
 					read(fd, buff, len);
 					buff[len] = 0;
 					uint8_t byte_val;
@@ -2906,9 +2573,8 @@ static int cats_gguf_load(char *name, cats_llm_model *m)
 						m->vocab[n][1] = 0;
 					}*/ else {
 						m->vocab[n] = (char*)malloc(len+1);
-						memcpy(m->vocab[n], buff, len +1);
+						strcpy(m->vocab[n], buff);
 					}
-					free(buff);
 				}
 				continue;
 			} else if (!strcmp(kv[i].key, "tokenizer.ggml.scores")) {
@@ -2921,7 +2587,9 @@ static int cats_gguf_load(char *name, cats_llm_model *m)
 			if (kv[i].value.arr.type==GGUF_TYPE_STRING) {
 				for (int n=0; n<kv[i].value.arr.n; n++) {
 					char d[256];
-					cats_gguf_read_str(fd, d, sizeof(d));
+					read(fd, &len, sizeof(uint64_t));
+					read(fd, d, len);
+					d[len] = 0;
 					if (n<5 || n>kv[i].value.arr.n-5) printf("%s ", d);
 				}
 				printf("\n");
@@ -2962,14 +2630,12 @@ static int cats_gguf_load(char *name, cats_llm_model *m)
 	size_t size = 0;
 	cats_tensor* tensor = m->tensor;
 	for (uint64_t i=0; i<header.n_tensors; i++) {
-		cats_gguf_read_str(fd, tensor[i].name, sizeof(tensor[i].name));
+		uint64_t len;
+		read(fd, &len, sizeof(uint64_t));
+		read(fd, tensor[i].name, len);
+		tensor[i].name[len] = 0;
 
 		read(fd, &tensor[i].n_dim, sizeof(uint32_t));
-		if (tensor[i].n_dim == 0 || tensor[i].n_dim > CATS_MAX_DIM) {
-			printf("Unsupported tensor rank: %u (%s)\n", tensor[i].n_dim, tensor[i].name);
-			close(fd);
-			return 1;
-		}
 		read(fd, tensor[i].dim, sizeof(uint64_t)*tensor[i].n_dim);
 		read(fd, &tensor[i].type, sizeof(uint32_t));
 		read(fd, &tensor[i].offset, sizeof(uint64_t));
@@ -2993,6 +2659,9 @@ static int cats_gguf_load(char *name, cats_llm_model *m)
 		case GGML_TYPE_Q4_1:
 			tensor[i].size = (tensor[i].size * 24) / 32;
 			break;
+		case GGML_TYPE_Q8_0: // 8
+			tensor[i].size = (tensor[i].size * 34) / 32;
+			break;
 		case GGML_TYPE_Q3_K: // 11
 			tensor[i].size = (tensor[i].size * 110) / 256;
 			break;
@@ -3014,11 +2683,6 @@ static int cats_gguf_load(char *name, cats_llm_model *m)
 	for (int i=0; i<(int)header.n_tensors; i++) {
 		lseek(fd, off +m->tensor[i].offset, SEEK_SET);
 
-		if ((size_t)m->tensor[i].type >= sizeof(gguf_matmul)/sizeof(gguf_matmul[0])) {
-			printf("Unsupported tensor type %d (%s)\n", m->tensor[i].type, m->tensor[i].name);
-			close(fd);
-			return 1;
-		}
 		m->tensor[i].quantize = gguf_quantize[m->tensor[i].type];
 		m->tensor[i].matmul = gguf_matmul[m->tensor[i].type];
 		m->tensor[i].data = malloc(m->tensor[i].size);
@@ -3052,13 +2716,9 @@ static int cats_gguf_load(char *name, cats_llm_model *m)
 				printf("skip tensor: %s\n", m->tensor[i].name);
 				continue;
 			}
-			char *end;
-			int l = (int)strtol(s, &end, 10);	// blk.<layer>.<name>
-			if (end == s || *end != '.' || l < 0 || l >= CATS_LLAMA_LAYER) {
-				printf("skip tensor: %s\n", m->tensor[i].name);
-				continue;
-			}
-			s = end +1;
+			int l = atoi(s);
+			s += 2;
+			if (l>9) s++;
 
 			if (!strcmp(s, "attn_q.weight")) {
 				m->wq[l] = &m->tensor[i];
@@ -3093,7 +2753,7 @@ static int cats_gguf_load(char *name, cats_llm_model *m)
 		quantize = quantize_null;
 		matmul = m->wcls ? m->wcls->matmul : matmul_f16;
 	} else {
-		quantize = quantize_q8;
+		quantize = cats_q8_0_quantize;
 		matmul = matmul_q4_0_q8;
 	}
 

@@ -1,0 +1,12 @@
+models/
+tts
+test/test_g2p
+test/test_klatt
+pcheck
+test/test_pcheck
+test/test_piper
+test/test_kokoro
+*.pt
+*.bin
+*.gguf
+*.onnx

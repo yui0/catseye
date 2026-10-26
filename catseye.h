@@ -3257,6 +3257,54 @@ static inline void cats_q8_0_quantize(int8_t *out, const float *x, int n)
 	cats_q8_0_quantize_scalar(out, x, n);
 }
 
+// ---- Q8_0 weights (GGUF block: 2-byte f16 scale + 32 int8 = 34 bytes per 32 values) x Q8_0 activations ----
+#define CATS_Q8_0W_BYTES	34
+static inline size_t cats_q8_0w_row_bytes(size_t n) { return n / CATS_Q4_0_BLOCK * CATS_Q8_0W_BYTES; }
+static inline void cats_q8_0w_dequantize_row(const uint8_t *in, size_t n, float *out)
+{
+	for (size_t b = 0; b < n / CATS_Q4_0_BLOCK; b++, in += CATS_Q8_0W_BYTES, out += CATS_Q4_0_BLOCK) {
+		float d = cats_half_to_float(cats_load_u16(in));
+		for (int j = 0; j < 32; j++) out[j] = (int8_t)in[2 + j] * d;
+	}
+}
+#if CATS_SIMD_X86
+CATS_AVX_FN static float cats_dot_q8_0w_q8_0_avx(const uint8_t *x, const int8_t *y, int n)
+{
+	int nb = n >> 5;
+	__m256 acc = _mm256_setzero_ps();
+	do {
+		float delta = cats_half_to_float(cats_load_u16(x));
+		const __m128i i32_0 = cats_mul_sum_i8_pairs(_mm_loadu_si128((const __m128i*)(x + 2)), _mm_loadu_si128((const __m128i*)y));
+		const __m128i i32_1 = cats_mul_sum_i8_pairs(_mm_loadu_si128((const __m128i*)(x + 18)), _mm_loadu_si128((const __m128i*)(y + 16)));
+		const __m256 p = _mm256_cvtepi32_ps(_mm256_set_m128i(i32_0, i32_1));
+		float ds;
+		memcpy(&ds, y + 32, 4);
+		x += CATS_Q8_0W_BYTES; y += CATS_Q8_0_BYTES;
+		acc = _mm256_add_ps(acc, _mm256_mul_ps(_mm256_set1_ps(delta * ds), p));
+	} while (--nb > 0);
+	return cats_hsum_ps(acc);
+}
+#endif
+static float cats_dot_q8_0w_q8_0_scalar(const uint8_t *a, const int8_t *b, int n)
+{
+	float val = 0.0f;
+	for (int i = 0; i < n / CATS_Q4_0_BLOCK; i++, a += CATS_Q8_0W_BYTES, b += CATS_Q8_0_BYTES) {
+		float delta = cats_half_to_float(cats_load_u16(a)), ds;
+		int32_t ival = 0;
+		for (int j = 0; j < 32; j++) ival += (int32_t)(int8_t)a[2 + j] * b[j];
+		memcpy(&ds, b + 32, 4);
+		val += ival * (delta * ds);
+	}
+	return val;
+}
+static inline float cats_dot_q8_0w_q8_0(const uint8_t *w, const int8_t *a, int n)
+{
+#if CATS_SIMD_X86
+	if (cats_cpu_simd_level() >= 1) return cats_dot_q8_0w_q8_0_avx(w, a, n);
+#endif
+	return cats_dot_q8_0w_q8_0_scalar(w, a, n);
+}
+
 // C[n][out] = X[n][in] . W^T (+ bias) with W stored as Q4_0 rows.
 //   1..3 tokens: activations are quantized to Q8_0 and every output is an integer dot product, so the weights
 //     stay 4-bit in memory (a vector-matrix product is bound by reading the weights);

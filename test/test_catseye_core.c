@@ -151,6 +151,26 @@ static void test_half_and_q4(void)
 	cats_q8_0_quantize(a, y, 64);
 	for (int i=0; i<64; i++) ref += q[i]*y[i];
 	CHECK(fabsf(cats_dot_q4_0_q8_0(blk, a, 64)-ref) < 0.1f);
+	// Q8_0 weights (GGUF 34-byte blocks) x Q8_0 activations: dispatch and scalar agree with the float product
+	enum { N8 = 96 };
+	uint8_t w8[3*CATS_Q8_0W_BYTES];
+	float xw[N8], dq[N8], y8[N8], ref8 = 0;
+	for (int i=0; i<N8; i++) { xw[i] = sinf(i*0.37f)*(1+i%5); y8[i] = cosf(i*0.21f)*2; }
+	for (int b=0; b<3; b++) {
+		uint8_t *p = w8 + b*CATS_Q8_0W_BYTES;
+		float amax = 0;
+		for (int j=0; j<32; j++) amax = fmaxf(amax, fabsf(xw[b*32+j]));
+		uint16_t dh = cats_float_to_half(amax/127);
+		float d = cats_half_to_float(dh), id = d ? 1/d : 0;
+		p[0] = dh&0xff; p[1] = dh>>8;
+		for (int j=0; j<32; j++) p[2+j] = (uint8_t)(int8_t)lroundf(xw[b*32+j]*id);
+	}
+	cats_q8_0w_dequantize_row(w8, N8, dq);
+	int8_t a8[3*CATS_Q8_0_BYTES];
+	cats_q8_0_quantize(a8, y8, N8);
+	for (int i=0; i<N8; i++) { ref8 += dq[i]*y8[i]; CHECK(fabsf(dq[i]-xw[i]) < 0.03f); }
+	CHECK(fabsf(cats_dot_q8_0w_q8_0(w8, a8, N8)-ref8) < 0.2f);
+	CHECK(fabsf(cats_dot_q8_0w_q8_0_scalar(w8, a8, N8)-cats_dot_q8_0w_q8_0(w8, a8, N8)) < 1e-3f);
 }
 
 static void test_gemm_softmax(void)
