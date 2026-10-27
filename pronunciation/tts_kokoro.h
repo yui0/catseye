@@ -250,7 +250,7 @@ static inline float kk_sigmoid(float x) { return 1.0f / (1.0f + expf(-x)); }
 static void kk_lin_run(const kk_lin *L, const float *x, float *y)
 {
 	if (L->q) {
-		int8_t xq[(2048 / 32) * CATS_Q8_0_BYTES];
+		int8_t xq[(8192 / 32) * CATS_Q8_0_BYTES];
 		cats_q8_0_quantize(xq, x, L->in);
 		size_t rb = cats_q8_0w_row_bytes(L->in);
 		for (int o = 0; o < L->out; o++) y[o] = cats_dot_q8_0w_q8_0(L->q + (size_t)o * rb, xq, L->in) + (L->b ? L->b[o] : 0.f);

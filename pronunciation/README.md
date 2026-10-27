@@ -9,11 +9,12 @@ Header-only C, built on the same conventions as the rest of catseye.
 | `lang_en.h` `lang_pt.h` `lang_ja.h` | one header per language (rules + lexicon) | done |
 | `klatt.h` | Klatt-style formant synthesizer (no model files) | done |
 | `tts_piper.h` | Piper (VITS) voices on `../transcript/cats_onnx.h` | done (en_US lessac, pt_BR faber) |
-| `tts.c` | CLI | `-e klatt` / `piper` / `kokoro` |
+| `tts.c` | CLI | `-e klatt` / `piper` / `kokoro` / `qwen` |
 | `align.h`, `pcheck.h`, `pcheck.c` | pronunciation check: CTC forced alignment, per-phoneme score (GOP), heard-vs-expected comparison | done; needs a recognizer's posteriors |
 | `tools/phoneme_logits.py` | WAV -> CTC phoneme posteriors (wav2vec2-xlsr-53-espeak-cv-ft, needs `transformers`, ~1.2 GB download) | done |
 | `gguf.h`, `tts_kokoro.h` | GGUF reader and Kokoro-82M (Q8_0) engine: PL-BERT, prosody predictor, decoder, iSTFTNet | done (en / pt / ja voices) |
-| Qwen3-TTS engine, LatPhon | see `/root/.claude/plans/fluttering-wondering-moon.md` | pending |
+| `tts_qwen.h` | Qwen3-TTS 12 Hz 0.6B (Q8_0): byte-level BPE, 28-layer talker, 5-layer code predictor, codec decoder | done (en / pt / ja) |
+| LatPhon | see `/root/.claude/plans/fluttering-wondering-moon.md` | pending |
 
 ```bash
 make && make test
@@ -87,3 +88,19 @@ Observed: stages agree within 0.1-5% rms (the GGUF is quantized, the reference f
 0.07-0.08 decades. A 1.5 s utterance takes about 2.5 s on 24 threads.
 Japanese: Kokoro's own Japanese front end (misaki + pyopenjtalk, pitch-accent marks) is not reproduced; the mora IPA from
 `lang_ja.h` is fed instead, which pronounces correctly but without Kokoro's accent symbols.
+
+## Qwen3-TTS 0.6B (Q8_0)
+
+```bash
+cd models
+for f in qwen-talker-0.6b-base-Q8_0 qwen-tokenizer-12hz-Q8_0; do curl -LO https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/$f.gguf; done
+cd .. && ./tts -e qwen -L ja -t "こんにちは、ありがとうございます。" -o ja.wav      # --seed N, --greedy
+```
+
+The model reads raw text (no G2P step) and picks the language from `-L` (`en` / `pt` / `ja`, or any model language name).
+The base checkpoint has no named speakers; the voice is whatever the sampler lands on, so use `--seed` to repeat a voice.
+Checked against qwentts.cpp (`--dump`): the 14 prompt token ids and all 16 prompt embeddings match exactly, prefill logits
+differ by 1% rms, and the first generated frame (16 codes) is identical. Later greedy frames drift (Q8 activation rounding,
+f32 instead of f16 KV cache). The codec decoder alone matches the reference waveform to 0.7% rms (`test/test_qwen_codec`).
+Speed (Xeon E5-2697 v2, AVX only, 12 cores, with other jobs running on the machine): 1.84 s of audio in 2.9 s, about 1.6x slower than real time (was 3x; qwentts.cpp: 1.4x). The codec convolutions use a packed, register-tiled kernel (`qw_pc_run`), Q8 matrices are streamed once against all quantized rows, and the thread count defaults to one per physical core (`OMP_NUM_THREADS` overrides): OpenMP spin-waiting on hyperthreads was 30x slower when the machine was shared. `QW_PROF=1` prints the codec stage times. The talker is now close to memory bandwidth (about 1.7 GB of weights are read per 12.5 Hz frame).
+Voice cloning (speaker encoder, `--ref-wav`) is not implemented.

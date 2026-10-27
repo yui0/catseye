@@ -1,4 +1,4 @@
-/* tts - English / Portuguese text-to-speech. Engines: klatt (built in), piper (VITS ONNX). */
+/* tts - English / Portuguese text-to-speech. Engines: klatt (built in), piper (VITS ONNX), kokoro and qwen (GGUF). */
 #include <stdio.h>
 #include <string.h>
 #include "latphon.h"
@@ -6,18 +6,19 @@
 #include "klatt.h"
 #include "tts_piper.h"
 #include "tts_kokoro.h"
+#include "tts_qwen.h"
 
 static void usage(void)
 {
 	fprintf(stderr,
-		"usage: tts [-e klatt|piper|kokoro] -L en|pt|ja (-t TEXT | -f FILE) [-o out.wav] [-s SPEED] [-p PITCH_HZ] [--ipa]\n"
-		"  -m DIR  model directory (piper: en.onnx / pt.onnx; kokoro: kokoro-q8.gguf + VOICE.bin)\n  -v NAME kokoro voice (default per language: af_heart / pf_dora / jf_alpha)\n  --f32   kokoro: dequantize weights to float32 (slower, closer to the original)\n  --ipa   print the phoneme string only\n");
+		"usage: tts [-e klatt|piper|kokoro|qwen] -L en|pt|ja (-t TEXT | -f FILE) [-o out.wav] [-s SPEED] [-p PITCH_HZ] [--ipa]\n"
+		"  -m DIR  model directory (piper: en.onnx / pt.onnx; kokoro: kokoro-q8.gguf + VOICE.bin)\n  -v NAME kokoro voice (default per language: af_heart / pf_dora / jf_alpha)\n  --f32   kokoro: dequantize weights to float32 (slower, closer to the original)\n  --ipa   print the phoneme string only\n  qwen: raw text in, no G2P; needs qwen-talker-0.6b-base-Q8_0.gguf + qwen-tokenizer-12hz-Q8_0.gguf in -m DIR; --seed N, --greedy\n");
 }
 
 int main(int argc, char **argv)
 {
 	const char *mdir = "models", *engine = "klatt", *lang = "en", *text = NULL, *file = NULL, *outp = "out.wav";
-	const char *voice = NULL; int ipa_only = 0, q8 = 1; ck_opt opt = ck_default();
+	const char *voice = NULL; int ipa_only = 0, q8 = 1, greedy = 0; unsigned long long seed = 0; ck_opt opt = ck_default();
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "-e") && i + 1 < argc) engine = argv[++i];
 		else if (!strcmp(argv[i], "-L") && i + 1 < argc) lang = argv[++i];
@@ -29,6 +30,8 @@ int main(int argc, char **argv)
 		else if (!strcmp(argv[i], "-p") && i + 1 < argc) opt.f0 = (float)atof(argv[++i]);
 		else if (!strcmp(argv[i], "-v") && i + 1 < argc) voice = argv[++i];
 		else if (!strcmp(argv[i], "--f32")) q8 = 0;
+		else if (!strcmp(argv[i], "--seed") && i + 1 < argc) seed = strtoull(argv[++i], NULL, 10);
+		else if (!strcmp(argv[i], "--greedy")) greedy = 1;
 		else if (!strcmp(argv[i], "--ipa")) ipa_only = 1;
 		else { usage(); return 2; }
 	}
@@ -42,10 +45,29 @@ int main(int argc, char **argv)
 		buf[n] = 0; fclose(f); text = buf;
 	}
 	if (!text) { usage(); return 2; }
-	if (strcmp(engine, "klatt") && strcmp(engine, "piper") && strcmp(engine, "kokoro")) { fprintf(stderr, "engine '%s' is not available (klatt, piper, kokoro)\n", engine); return 2; }
+	if (strcmp(engine, "klatt") && strcmp(engine, "piper") && strcmp(engine, "kokoro") && strcmp(engine, "qwen")) { fprintf(stderr, "engine '%s' is not available (klatt, piper, kokoro, qwen)\n", engine); return 2; }
 	int l = cp_lang(lang);
 	if (l < 0) { fprintf(stderr, "unknown language '%s'\n", lang); return 2; }
 	cp_ja_reader_enable(argv[0]);
+	if (!strcmp(engine, "qwen")) {
+		static const char *names[] = { "english", "portuguese", "japanese" };
+		const char *qlang = !strcmp(lang, "en") ? names[0] : !strcmp(lang, "pt") ? names[1] : !strcmp(lang, "ja") ? names[2] : lang;
+		char tk[512], cd[512];
+		snprintf(tk, sizeof tk, "%s/qwen-talker-0.6b-base-Q8_0.gguf", mdir); snprintf(cd, sizeof cd, "%s/qwen-tokenizer-12hz-Q8_0.gguf", mdir);
+		qw_tts *qt = (qw_tts *)calloc(1, sizeof *qt);
+		if (qw_open(qt, tk, cd, q8)) { fprintf(stderr, "cannot open Qwen3-TTS models %s / %s\n", tk, cd); return 1; }
+		if (seed) qt->rng = seed * 0x9E3779B97F4A7C15ull | 1;
+		qw_params P = qw_default_params();
+		if (greedy) P.temp = P.sub_temp = 0;
+		qw_gen g = { 0 };
+		int nf = qw_generate(qt, text, qlang, &P, &g);
+		if (nf == -2) { fprintf(stderr, "language '%s' is not known to the model\n", qlang); return 2; }
+		if (nf <= 0) { fprintf(stderr, "qwen generated no audio\n"); return 1; }
+		float *wav; int ns = qw_codec_decode(&qt->codec, g.codes, nf, &wav);
+		if (ck_write_wav(outp, wav, ns, QW_RATE)) { perror(outp); return 1; }
+		fprintf(stderr, "%d frames -> %s (%.2fs)\n", nf, outp, (double)ns / QW_RATE);
+		return 0;
+	}
 	size_t cap = strlen(text) * 24 + 256;
 	char *ipa = (char *)malloc(cap);
 	cp_g2p(l, text, ipa, cap);

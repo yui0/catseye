@@ -10,3 +10,5 @@ test/test_kokoro
 *.bin
 *.gguf
 *.onnx
+test/test_qwen_codec
+test/test_qwen_tts
