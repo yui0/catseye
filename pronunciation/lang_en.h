@@ -181,10 +181,129 @@ static void cp_stress(const char *ipa, char *out, size_t cap)
 	snprintf(out, cap, "%.*s\xcb\x88%s", at, ipa, ipa + at);
 }
 
+
+/* ------------------------------------------------------------ pronunciation lexicon */
+
+/* models/lexicon_en.txt: "word<TAB>IPA" per line, sorted (tools/make_lexicon_en.py). Loaded on request; the NRL rules below
+ * and the small exception table are the fallback when it is absent or a word is not in it. */
+typedef struct { const char *w, *ipa; } cp_en_ent;
+static cp_en_ent *cp_en_tab; static size_t cp_en_ntab;
+
+static int cp_en_lexicon_load(const char *path)
+{
+	FILE *f = fopen(path, "rb");
+	if (!f) return -1;
+	fseek(f, 0, SEEK_END); long n = ftell(f); fseek(f, 0, SEEK_SET);
+	char *buf = (char *)malloc(n + 1);
+	if (!buf || fread(buf, 1, n, f) != (size_t)n) { fclose(f); free(buf); return -1; }
+	fclose(f); buf[n] = 0;
+	size_t lines = 1; for (long i = 0; i < n; i++) lines += buf[i] == '\n';
+	cp_en_tab = (cp_en_ent *)malloc(sizeof(cp_en_ent) * lines); cp_en_ntab = 0;
+	for (char *p = buf; *p;) {
+		char *e = strchr(p, '\n'); if (e) *e = 0;
+		char *t = strchr(p, '\t');
+		if (t) { *t = 0; cp_en_tab[cp_en_ntab].w = p; cp_en_tab[cp_en_ntab++].ipa = t + 1; }
+		if (!e) break;
+		p = e + 1;
+	}
+	return (int)cp_en_ntab;
+}
+
+/* try <dir>/lexicon_en.txt, then ./models/ */
+static int cp_en_lexicon_autoload(const char *dir)
+{
+	char p[600];
+	if (cp_en_ntab) return 0;
+	if (dir) { snprintf(p, sizeof p, "%s/lexicon_en.txt", dir); if (cp_en_lexicon_load(p) > 0) return 0; }
+	return cp_en_lexicon_load("models/lexicon_en.txt") > 0 ? 0 : -1;
+}
+
+static const char *cp_en_find(const char *w)
+{
+	size_t lo = 0, hi = cp_en_ntab;
+	while (lo < hi) {
+		size_t mid = (lo + hi) / 2; int c = strcmp(cp_en_tab[mid].w, w);
+		if (!c) return cp_en_tab[mid].ipa;
+		if (c < 0) lo = mid + 1; else hi = mid;
+	}
+	return NULL;
+}
+
+static int cp_en_ends(const char *s, const char *suf) { size_t a = strlen(s), b = strlen(suf); return a >= b && !strcmp(s + a - b, suf); }
+
+/* inflected forms missing from the lexicon: plural / possessive / 3sg, -ed, -ing, -ly built on a known base */
+static int cp_en_inflect(const char *word, char *out, size_t cap)
+{
+	size_t L = strlen(word);
+	char base[130]; const char *ip;
+	if (L < 4 || L > 120) return 0;
+	static const char *sib[] = {"s", "z", "ʃ", "ʒ", "tʃ", "dʒ"}, *vl[] = {"p", "t", "k", "f", "θ"};
+	#define TRY(strip, add) do { size_t bl = L - (strip); memcpy(base, word, bl); base[bl] = 0; strcat(base, add); ip = cp_en_find(base); } while (0)
+	if (cp_en_ends(word, "'s") || (word[L - 1] == 's' && L > 3)) {
+		int poss = cp_en_ends(word, "'s"), es = cp_en_ends(word, "es") && !poss;
+		ip = NULL;
+		if (poss) TRY(2, "");
+		else { TRY(1, ""); if (!ip && es) TRY(2, ""); if (!ip && cp_en_ends(word, "ies")) TRY(3, "y"); }
+		if (ip) {
+			const char *suf = "z";
+			for (int k = 0; k < 6; k++) if (cp_en_ends(ip, sib[k])) suf = "ɪz";
+			if (!strcmp(suf, "z")) for (int k = 0; k < 5; k++) if (cp_en_ends(ip, vl[k])) suf = "s";
+			snprintf(out, cap, "%s%s", ip, suf); return 1;
+		}
+	}
+	if (cp_en_ends(word, "ed")) {
+		ip = NULL; TRY(2, ""); if (!ip) TRY(1, ""); if (!ip && L > 5 && word[L - 3] == word[L - 4]) TRY(3, "");
+		if (ip) {
+			const char *suf = "d";
+			if (cp_en_ends(ip, "t") || cp_en_ends(ip, "d")) suf = "ɪd";
+			else for (int k = 0; k < 5; k++) if (cp_en_ends(ip, vl[k])) suf = "t";
+			if (cp_en_ends(ip, "s") || cp_en_ends(ip, "ʃ") || cp_en_ends(ip, "tʃ")) suf = "t";
+			snprintf(out, cap, "%s%s", ip, suf); return 1;
+		}
+	}
+	if (cp_en_ends(word, "ing")) {
+		ip = NULL; TRY(3, ""); if (!ip) TRY(3, "e"); if (!ip && L > 6 && word[L - 4] == word[L - 5]) TRY(4, "");
+		if (ip) { snprintf(out, cap, "%sɪŋ", ip); return 1; }
+	}
+	if (cp_en_ends(word, "ly")) { ip = NULL; TRY(2, ""); if (ip) { snprintf(out, cap, "%sli", ip); return 1; } }
+	#undef TRY
+	return 0;
+}
+
+/* connected-speech tweaks espeak makes: "the" / "to" before a vowel are ðɪ / tʊ */
+static void cp_en_post(char *s)
+{
+	char *o = (char *)malloc(strlen(s) * 2 + 8); size_t k = 0;
+	for (char *p = s; *p;) {
+		char *e = p; while (*e && *e != ' ') e++;
+		size_t wl = (size_t)(e - p);
+		const char *rep = NULL;
+		if (*e == ' ' && (wl == 3 || wl == 4)) {		/* "ðə" (4 bytes) / "tə" (3 bytes) */
+			int the = wl == 4 && !strncmp(p, "ðə", 4), to = wl == 3 && !strncmp(p, "tə", 3);
+			if (the || to) {
+				const unsigned char *q = (const unsigned char *)e + 1;
+				if (!strncmp((const char *)q, "\xcb\x88", 2) || !strncmp((const char *)q, "\xcb\x8c", 2)) q += 2;
+				uint32_t c = 0; if (*q) cp_utf8_decode(q, &c);
+				if (c && cp_is_ipa_vowel(c)) rep = the ? "ðɪ" : "tʊ";
+			}
+		}
+		if (rep) { size_t rl = strlen(rep); memcpy(o + k, rep, rl); k += rl; }
+		else { memcpy(o + k, p, wl); k += wl; }
+		if (*e == ' ') o[k++] = ' ';
+		p = *e ? e + 1 : e;
+	}
+	o[k] = 0; strcpy(s, o); free(o);
+}
+
 static void cp_en_word(const char *word, char *out, size_t cap)
 {
+	if (cp_en_ntab) {
+		const char *ip = cp_en_find(word);
+		if (ip) { snprintf(out, cap, "%s", ip); return; }
+	}
 	for (size_t i = 0; i < sizeof cp_en_lex / sizeof cp_en_lex[0]; i++)
 		if (!strcmp(word, cp_en_lex[i][0])) { snprintf(out, cap, "%s", cp_en_lex[i][1]); return; }
+	if (cp_en_ntab) { char inf[256]; if (cp_en_inflect(word, inf, sizeof inf)) { snprintf(out, cap, "%s", inf); return; } }
 	char w[130]; int n = 0;
 	w[n++] = ' ';
 	for (const char *p = word; *p && n < 126; p++) w[n++] = isalpha((unsigned char)*p) ? (char)toupper((unsigned char)*p) : *p == '\'' ? '\'' : 0;

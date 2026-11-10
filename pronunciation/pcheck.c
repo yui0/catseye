@@ -46,6 +46,7 @@ int main(int argc, char **argv)
 	int lg = cp_lang(lang);
 	if (lg < 0) { fprintf(stderr, "unknown language '%s'\n", lang); return 2; }
 	cp_ja_reader_enable(argv[0]);
+	cp_en_lexicon_autoload(NULL);
 	cpa_vocab v;
 	if (cpa_vocab_load(&v, vocab)) { perror(vocab); return 1; }
 	FILE *f = fopen(post, "rb");

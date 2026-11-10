@@ -11,7 +11,8 @@ static float *rd(const char *dir, const char *name, int *n0, int *n1)
 	int nd = h[0], a = h[1], hdr = nd > 1 ? 12 : 8;	/* {ndim, dims...}; values are float32 */
 	fseek(f, 0, SEEK_END); long sz = ftell(f) - hdr; fseek(f, hdr, SEEK_SET);
 	float *d = (float *)malloc(sz); fread(d, 1, sz, f); fclose(f);
-	if (n0) *n0 = a; if (n1) *n1 = (int)(sz / 4 / (a ? a : 1));
+	if (n0) *n0 = a;
+	if (n1) *n1 = (int)(sz / 4 / (a ? a : 1));
 	return d;
 }
 
@@ -40,7 +41,7 @@ int main(int argc, char **argv)
 	printf("input embeds T=%d  rel-rmse=%.4f %s\n", T, e, e < 0.03 ? "ok" : "FAIL"); bad += !(e < 0.03);
 	/* 3. greedy generation, compare frames with codes-full */
 	qw_params P = qw_default_params(); P.temp = 0; P.sub_temp = 0;
-	qw_gen g = { 0 }; clock_t c0 = clock(); struct timespec w0, w1; clock_gettime(CLOCK_MONOTONIC, &w0);
+	qw_gen g = { 0 }; struct timespec w0, w1; clock_gettime(CLOCK_MONOTONIC, &w0);
 	int nf = qw_generate(t, text, "English", &P, &g);
 	clock_gettime(CLOCK_MONOTONIC, &w1);
 	float *rl = rd(argv[3], "talker-logits-prefill", &n0, NULL);

@@ -12,13 +12,13 @@ static void usage(void)
 {
 	fprintf(stderr,
 		"usage: tts [-e klatt|piper|kokoro|qwen] -L en|pt|ja (-t TEXT | -f FILE) [-o out.wav] [-s SPEED] [-p PITCH_HZ] [--ipa]\n"
-		"  -m DIR  model directory (piper: en.onnx / pt.onnx; kokoro: kokoro-q8.gguf + VOICE.bin)\n  -v NAME kokoro voice (default per language: af_heart / pf_dora / jf_alpha)\n  --f32   kokoro: dequantize weights to float32 (slower, closer to the original)\n  --ipa   print the phoneme string only\n  qwen: raw text in, no G2P; needs qwen-talker-0.6b-base-Q8_0.gguf + qwen-tokenizer-12hz-Q8_0.gguf in -m DIR; --seed N, --greedy\n");
+		"  -m DIR  model directory (piper: en.onnx / pt.onnx; kokoro: kokoro-q8.gguf + VOICE.bin)\n  -v NAME piper: voice file stem in -m DIR (e.g. en_high); kokoro: voice (default per language: af_heart / pf_dora / jf_alpha)\n  --f32   kokoro: dequantize weights to float32 (slower, closer to the original)\n  --ipa   print the phoneme string only\n  --noise X --noise-w Y  piper sampling noise (defaults 0.667 / 0.8 from the voice json; lower = steadier, less lively)\n  --from-ipa  the text is already IPA (skip G2P; e.g. espeak output from tools/espeak_ipa.py)\n  qwen: raw text in, no G2P; needs qwen-talker-0.6b-base-Q8_0.gguf + qwen-tokenizer-12hz-Q8_0.gguf in -m DIR; --seed N, --greedy\n");
 }
 
 int main(int argc, char **argv)
 {
 	const char *mdir = "models", *engine = "klatt", *lang = "en", *text = NULL, *file = NULL, *outp = "out.wav";
-	const char *voice = NULL; int ipa_only = 0, q8 = 1, greedy = 0; unsigned long long seed = 0; ck_opt opt = ck_default();
+	const char *voice = NULL; float noise = -1, noise_w = -1; int ipa_only = 0, from_ipa = 0, q8 = 1, greedy = 0; unsigned long long seed = 0; ck_opt opt = ck_default();
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "-e") && i + 1 < argc) engine = argv[++i];
 		else if (!strcmp(argv[i], "-L") && i + 1 < argc) lang = argv[++i];
@@ -32,7 +32,10 @@ int main(int argc, char **argv)
 		else if (!strcmp(argv[i], "--f32")) q8 = 0;
 		else if (!strcmp(argv[i], "--seed") && i + 1 < argc) seed = strtoull(argv[++i], NULL, 10);
 		else if (!strcmp(argv[i], "--greedy")) greedy = 1;
+		else if (!strcmp(argv[i], "--noise") && i + 1 < argc) noise = (float)atof(argv[++i]);
+		else if (!strcmp(argv[i], "--noise-w") && i + 1 < argc) noise_w = (float)atof(argv[++i]);
 		else if (!strcmp(argv[i], "--ipa")) ipa_only = 1;
+		else if (!strcmp(argv[i], "--from-ipa")) from_ipa = 1;
 		else { usage(); return 2; }
 	}
 	char *buf = NULL;
@@ -49,6 +52,7 @@ int main(int argc, char **argv)
 	int l = cp_lang(lang);
 	if (l < 0) { fprintf(stderr, "unknown language '%s'\n", lang); return 2; }
 	cp_ja_reader_enable(argv[0]);
+	if (strcmp(engine, "qwen")) cp_en_lexicon_autoload(mdir);	/* optional, see tools/make_lexicon_en.py */
 	if (!strcmp(engine, "qwen")) {
 		static const char *names[] = { "english", "portuguese", "japanese" };
 		const char *qlang = !strcmp(lang, "en") ? names[0] : !strcmp(lang, "pt") ? names[1] : !strcmp(lang, "ja") ? names[2] : lang;
@@ -70,17 +74,19 @@ int main(int argc, char **argv)
 	}
 	size_t cap = strlen(text) * 24 + 256;
 	char *ipa = (char *)malloc(cap);
-	cp_g2p(l, text, ipa, cap);
+	if (from_ipa) { snprintf(ipa, cap, "%s", text); } else cp_g2p(l, text, ipa, cap);
 	if (ipa_only) { puts(ipa); return 0; }
 	float *pcm; size_t n; int rate = CK_RATE;
 	if (!strcmp(engine, "piper")) {
 		char onnx[512], json[520];
 		if (!cp_langs[l].piper) { fprintf(stderr, "no Piper voice for %s\n", cp_langs[l].name); return 2; }
-		snprintf(onnx, sizeof onnx, "%s/%s.onnx", mdir, cp_langs[l].piper); snprintf(json, sizeof json, "%s.json", onnx);
-		cpp_voice voice;
-		if (cpp_open(&voice, onnx, json)) { fprintf(stderr, "cannot open Piper voice %s\n", onnx); return 1; }
-		if (cpp_synth(&voice, ipa, opt.speed, &pcm, &n)) { fprintf(stderr, "piper synthesis failed\n"); return 1; }
-		rate = voice.rate; cpp_close(&voice);
+		snprintf(onnx, sizeof onnx, "%s/%s.onnx", mdir, voice ? voice : cp_langs[l].piper); snprintf(json, sizeof json, "%s.json", onnx);
+		cpp_voice pv;
+		if (cpp_open(&pv, onnx, json)) { fprintf(stderr, "cannot open Piper voice %s\n", onnx); return 1; }
+		if (noise >= 0) pv.noise = noise;
+		if (noise_w >= 0) pv.noise_w = noise_w;
+		if (cpp_synth(&pv, ipa, opt.speed, &pcm, &n)) { fprintf(stderr, "piper synthesis failed\n"); return 1; }
+		rate = pv.rate; cpp_close(&pv);
 	} else if (!strcmp(engine, "kokoro")) {
 		char gguf[512], vb[512];
 		const char *stem = voice ? voice : cp_langs[l].kokoro;

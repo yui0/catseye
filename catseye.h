@@ -1,7 +1,7 @@
 //---------------------------------------------------------
 //	Cat's eye
 //
-//		©2016-2023 Yuichiro Nakada
+//		©2016-2026 Yuichiro Nakada
 //---------------------------------------------------------
 
 #ifndef CATSEYE_H
@@ -277,8 +277,9 @@ typedef struct __CatsEye_layer {
 //	int size;		// concat
 	int order;		// concat
 
-//	int hiddens;		// RNN
-//	int truncatedTime;	// RNN
+	int timesteps;		// RNN: number of input time steps
+	int features;		// RNN: input features per time step
+	int hiddens;		// RNN: recurrent hidden units
 
 	union {
 		real momentum;	// SGD with momentum
@@ -1089,8 +1090,8 @@ static void CatsEye_dact_##type(CatsEye_layer *l)\
 		y++;\
 	}\
 }
-//	for (int b=0; b<l->p->batch; b++) for (int n=0; n<10; n++) CATS_LOG("%f[%f] ", l->dIn[b*l->inputs +l->inputs-1-n], l->z[b*l->inputs +l->inputs-1-n]);\
-//	CATS_LOG("%d\n", l->wsize);\
+//	for (int b=0; b<l->p->batch; b++) for (int n=0; n<10; n++) CATS_LOG("%f[%f] ", l->dIn[b*l->inputs +l->inputs-1-n], l->z[b*l->inputs +l->inputs-1-n]);
+//	CATS_LOG("%d\n", l->wsize);
 
 #define sigmoid_gain			1//0.1
 #define CATS_ACT_sigmoid(x, l)		(1.0 / (1.0 + exp(-(x) * sigmoid_gain)))
@@ -1353,6 +1354,108 @@ static void CatsEye_loss_delivative_cross_entropy_multiclass(CatsEye_layer *l)
 static void CatsEye_none(CatsEye_layer *l)
 {
 }
+
+/*
+ * Vanilla recurrent layer with tanh state and full back-propagation through
+ * time (BPTT). The input tensor is flattened as [batch][timesteps][features].
+ * The layer output is the final hidden state [batch][hiddens].
+ *
+ * Weight layout: Wxh[hiddens][features], Whh[hiddens][hiddens], bias[hiddens].
+ * workspace per sample: states[timesteps+1][hiddens] followed by
+ *                       deltas[timesteps][hiddens].
+ */
+static void CatsEye_recurrent_forward(CatsEye_layer *l)
+{
+	const int T=l->timesteps, F=l->features, H=l->hiddens;
+	const size_t state_size=((size_t)T+1)*(size_t)H;
+	const size_t workspace_size=2*state_size;
+	real *wxh=l->w;
+	real *whh=wxh+(size_t)H*F;
+	real *bias=whh+(size_t)H*H;
+
+	for (int b=0; b<l->p->batch; ++b) {
+		real *state=l->workspace+(size_t)b*workspace_size;
+		real *input=l->x+(size_t)b*l->inputs;
+		memset(state,0,(size_t)H*sizeof(real));
+		for (int t=0; t<T; ++t) {
+			real *prev=state+(size_t)t*H;
+			real *cur=state+(size_t)(t+1)*H;
+			const real *xt=input+(size_t)t*F;
+			for (int j=0; j<H; ++j) {
+				real z=bias[j];
+				for (int c=0; c<F; ++c) z+=wxh[(size_t)j*F+c]*xt[c];
+				for (int k=0; k<H; ++k) z+=whh[(size_t)j*H+k]*prev[k];
+				cur[j]=tanh(z);
+			}
+		}
+		memcpy(l->z+(size_t)b*H,state+(size_t)T*H,(size_t)H*sizeof(real));
+	}
+}
+
+static void CatsEye_recurrent_backward(CatsEye_layer *l)
+{
+	const int T=l->timesteps, F=l->features, H=l->hiddens;
+	const size_t state_size=((size_t)T+1)*(size_t)H;
+	const size_t workspace_size=2*state_size;
+	real *whh=l->w+(size_t)H*F;
+	real *wxh=l->w;
+
+	for (int b=0; b<l->p->batch; ++b) {
+		real *state=l->workspace+(size_t)b*workspace_size;
+		real *delta=state+state_size;
+		for (int j=0; j<H; ++j) {
+			real h=state[(size_t)T*H+j];
+			delta[(size_t)(T-1)*H+j]=l->dOut[(size_t)b*H+j]*(1.0-h*h);
+		}
+		for (int t=T-2; t>=0; --t) {
+			for (int k=0; k<H; ++k) {
+				real sum=0;
+				for (int j=0; j<H; ++j) sum+=whh[(size_t)j*H+k]*delta[(size_t)(t+1)*H+j];
+				real h=state[(size_t)(t+1)*H+k];
+				delta[(size_t)t*H+k]=sum*(1.0-h*h);
+			}
+		}
+		/* The first recurrent layer has no preceding layer, so dIn is NULL. */
+		if (l->dIn) {
+			real *din=l->dIn+(size_t)b*l->inputs;
+			for (int t=0; t<T; ++t) {
+				for (int c=0; c<F; ++c) {
+					real sum=0;
+					for (int j=0; j<H; ++j) sum+=wxh[(size_t)j*F+c]*delta[(size_t)t*H+j];
+					din[(size_t)t*F+c]=sum;
+				}
+			}
+		}
+	}
+}
+
+static void CatsEye_recurrent_update(CatsEye_layer *l)
+{
+	const int T=l->timesteps, F=l->features, H=l->hiddens;
+	const size_t state_size=((size_t)T+1)*(size_t)H;
+	const size_t workspace_size=2*state_size;
+	const size_t whh_offset=(size_t)H*F;
+	const size_t bias_offset=whh_offset+(size_t)H*H;
+	const real inv_batch=1.0/(real)l->p->batch;
+
+	for (int b=0; b<l->p->batch; ++b) {
+		real *state=l->workspace+(size_t)b*workspace_size;
+		real *delta=state+state_size;
+		real *input=l->x+(size_t)b*l->inputs;
+		for (int t=0; t<T; ++t) {
+			const real *xt=input+(size_t)t*F;
+			const real *hp=state+(size_t)t*H;
+			const real *dt=delta+(size_t)t*H;
+			for (int j=0; j<H; ++j) {
+				real g=dt[j]*inv_batch;
+				for (int c=0; c<F; ++c) l->dw[(size_t)j*F+c]+=g*xt[c];
+				for (int k=0; k<H; ++k) l->dw[whh_offset+(size_t)j*H+k]+=g*hp[k];
+				l->dw[bias_offset+j]+=g;
+			}
+		}
+	}
+}
+
 static void (*_CatsEye_layer_forward[])(CatsEye_layer *l) = {
 	CatsEye_linear_forward,
 	CatsEye_convolutional_forward,
@@ -1362,7 +1465,7 @@ static void (*_CatsEye_layer_forward[])(CatsEye_layer *l) = {
 	CatsEye_avgpooling_forward,
 	CatsEye_global_avgpooling_forward,
 	CatsEye_PixelShuffler_forward,
-//	CatsEye_rnn_forward,
+	CatsEye_recurrent_forward,
 
 	CatsEye_padding_forward,
 	CatsEye_BatchNormalization_forward,
@@ -1399,7 +1502,7 @@ static void (*_CatsEye_layer_backward[])(CatsEye_layer *l) = {
 	CatsEye_avgpooling_backward,
 	CatsEye_global_avgpooling_backward,
 	CatsEye_PixelShuffler_backward,
-//	CatsEye_rnn_backward,
+	CatsEye_recurrent_backward,
 
 	CatsEye_padding_backward,
 	CatsEye_BatchNormalization_backward,
@@ -1436,7 +1539,7 @@ static void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
 	CatsEye_none,	// avgpool
 	CatsEye_none,	// global avgpool
 	CatsEye_none,	// Pixel Shuffler
-//	CatsEye_rnn_update,
+	CatsEye_recurrent_update,
 
 	CatsEye_none,	// padding
 	CatsEye_none,	// Batch Normalization
@@ -1466,7 +1569,7 @@ static void (*_CatsEye_layer_update[])(CatsEye_layer *l) = {
 };
 typedef enum {
 	CATS_LINEAR, CATS_CONV, CATS_CONV1D, CATS_DECONV, CATS_MAXPOOL, CATS_AVGPOOL, CATS_GAP,
-	CATS_PIXELSHUFFLER, /*CATS_RECURRENT,*/
+	CATS_PIXELSHUFFLER, CATS_RECURRENT,
 	CATS_PADDING, CATS_BATCHNORMAL,
 
 	CATS_CONCAT,
@@ -1487,7 +1590,7 @@ typedef enum {
 } CATS_WEIGHT;
 char CatsEye_string[][16] = {
 	"dense", "conv", "conv1d", "deconv", "max", "avg", "gap",
-	"subpixel", /*"rnn",*/
+	"subpixel", "rnn",
 	"pad", "bn",
 
 	"concat", "shortcut",
@@ -1553,7 +1656,10 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 
 		l->forward = _CatsEye_layer_forward[l->type];
 		l->backward = _CatsEye_layer_backward[l->type];
-		if (!i /*&& l->type!=CATS_RECURRENT*/) l->backward = CatsEye_none; // first layer
+		if (!i) {
+			l->dIn = NULL;
+			if (l->type!=CATS_RECURRENT) l->backward = CatsEye_none; // first layer
+		}
 		l->update = _CatsEye_layer_update[l->type];
 
 		if (i>=this->layers-1) { // last layer
@@ -1673,6 +1779,33 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 			m[i] = l->hiddens;
 			CATS_LOG("%3d %-12s %4d %dx%d/%d %4d x%4d x%4d -> %4d x%4d x%4d", i+1, CatsEye_string[l->type], l->ch, l->ksize, l->ksize, l->stride, l->sx, l->sy, l->ich, l->ox, l->oy, l->ch);
 			break;*/
+
+		case CATS_RECURRENT:
+			if (l->timesteps < 1 || l->features < 1) {
+				fprintf(stderr,"CatsEye: RNN requires positive timesteps and features\n"); exit(1);
+			}
+			if (!l->hiddens) l->hiddens=l->outputs;
+			if (l->hiddens < 1 || (size_t)l->timesteps > SIZE_MAX/(size_t)l->features ||
+			    (size_t)l->inputs != (size_t)l->timesteps*(size_t)l->features) {
+				fprintf(stderr,"CatsEye: RNN input size must equal timesteps * features, and hiddens must be positive\n"); exit(1);
+			}
+			l->outputs=l->hiddens;
+			l->ch=l->hiddens; l->ox=l->hiddens; l->oy=1;
+			n[i]=l->features+l->hiddens;
+			m[i]=l->hiddens;
+			b[i]=1;
+			l->wsize=(n[i]+b[i])*m[i];
+			if (this->batch < 1 || (size_t)l->timesteps+1 > SIZE_MAX/(2*(size_t)l->hiddens)) {
+				fprintf(stderr,"CatsEye: RNN workspace size overflow\n"); exit(1);
+			}
+			size_t rnn_workspace_per_sample=2*((size_t)l->timesteps+1)*(size_t)l->hiddens;
+			if ((size_t)this->batch > SIZE_MAX/rnn_workspace_per_sample) {
+				fprintf(stderr,"CatsEye: RNN batch workspace size overflow\n"); exit(1);
+			}
+			l->workspace=calloc(rnn_workspace_per_sample*(size_t)this->batch,sizeof(real));
+			if (!l->workspace) { fprintf(stderr,"CatsEye: cannot allocate RNN workspace\n"); exit(1); }
+			CATS_LOG("%3d %-12s steps:%d features:%d hidden:%d -> %d\n",i+1,CatsEye_string[l->type],l->timesteps,l->features,l->hiddens,l->outputs);
+			break;
 
 		case CATS_PADDING:
 			l->ch = l->ich;
@@ -1871,6 +2004,7 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 //		memcpy(&this->wdata[this->wsize], this->wdata, this->wsize*sizeof(real)); // for debug
 		l->wrange = range;
 		if (l->type==CATS_LINEAR) memset(l->w +l->inputs*l->outputs, 0, sizeof(real)*l->outputs);	// bias starts at 0
+		if (l->type==CATS_RECURRENT) memset(l->bias, 0, sizeof(real)*l->hiddens);
 	}
 	this->clasify = (int16_t*)this->layer[this->layers-1].z;
 	this->label = this->layer[this->layers-1].z;
@@ -1894,7 +2028,8 @@ void _CatsEye__construct(CatsEye *this, CatsEye_layer *layer, int layers)
 	uint64_t wmem = sizeof(real) * ((uint64_t)this->osize*this->batch+(uint64_t)this->dsize*this->batch+(uint64_t)this->wsize*3);
 	CATS_LOG("Memory: %.1f MiB [%lu B], Working Memory: %.1f MiB [%lu B]\n\n", sizeof(real)*this->wsize/1024/1024., sizeof(real)*this->wsize, wmem/1024/1024., wmem);
 
-	this->start = this->stop = 0;
+	this->start = 0;
+	this->stop = (this->layer[0].type==CATS_RECURRENT ? -1 : 0);
 	this->end = this->layers-1;
 	this->slide = this->layer[0].inputs;
 	this->shuffle_buffer = 0;

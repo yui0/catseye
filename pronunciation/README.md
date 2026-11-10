@@ -7,9 +7,9 @@ Header-only C, built on the same conventions as the rest of catseye.
 | `phon.h` | UTF-8 / IPA helpers, text normalizer (digits -> words) | done |
 | `latphon.h` | language registry `cp_langs[]` + G2P `cp_g2p(lang, text, out, cap)` -> IPA; `cp_g2p_hook` for the neural LatPhon model | done, LatPhon pending |
 | `lang_en.h` `lang_pt.h` `lang_ja.h` | one header per language (rules + lexicon) | done |
-| `klatt.h` | Klatt-style formant synthesizer (no model files) | done |
+| `klatt.h` | Klatt-style formant synthesizer (no model files); **reference only**, the voice is robotic and hard to listen to | done |
 | `tts_piper.h` | Piper (VITS) voices on `../transcript/cats_onnx.h` | done (en_US lessac, pt_BR faber) |
-| `tts.c` | CLI | `-e klatt` / `piper` / `kokoro` / `qwen` |
+| `tts.c` | CLI | `-e klatt` (default, reference only) / `piper` / `kokoro` / `qwen` |
 | `align.h`, `pcheck.h`, `pcheck.c` | pronunciation check: CTC forced alignment, per-phoneme score (GOP), heard-vs-expected comparison | done; needs a recognizer's posteriors |
 | `tools/phoneme_logits.py` | WAV -> CTC phoneme posteriors (wav2vec2-xlsr-53-espeak-cv-ft, needs `transformers`, ~1.2 GB download) | done |
 | `gguf.h`, `tts_kokoro.h` | GGUF reader and Kokoro-82M (Q8_0) engine: PL-BERT, prosody predictor, decoder, iSTFTNet | done (en / pt / ja voices) |
@@ -18,9 +18,13 @@ Header-only C, built on the same conventions as the rest of catseye.
 
 ```bash
 make && make test
-./tts -L en -t "Hello world, this is a test." -o en.wav
-./tts -L pt -t "Olá mundo, bom dia." -o pt.wav
-./tts -e piper -L en -t "Hello world" -o en.wav   # needs models/en.onnx(.json) / pt.onnx(.json)
+# neural engines (use these for listening); models are described in the sections below
+./tts -e piper  -L en -t "Hello world, this is a test." -o en.wav   # needs models/en.onnx(.json) / pt.onnx(.json)
+./tts -e kokoro -L pt -t "Olá mundo, bom dia." -o pt.wav
+./tts -e qwen   -L ja -t "こんにちは、ありがとうございます。" -o ja.wav
+# the default engine is the Klatt formant synthesizer: REFERENCE ONLY (robotic, not meant for listening).
+# It needs no model files, so it is the engine for tests and for the pronunciation-check pipeline.
+./tts -L en -t "Hello world, this is a test." -o en_klatt.wav
 ./tts -L pt -t "cidade" --ipa      # sidˈadʒi
 ```
 
@@ -68,6 +72,37 @@ Synthesis of a short sentence takes about 1.5x its duration on a multi-core CPU 
 because pykakasi does not segment pure hiragana). Piper has no Japanese voice, so only the Klatt engine speaks Japanese for now;
 Kokoro and Qwen3-TTS will add natural Japanese. Klatt Japanese is intelligible-sounding speech from rules but a multilingual
 recognizer scores it low (the same holds for Klatt Portuguese), so use it for the pipeline, not as a reference voice.
+
+> **Klatt output (`./tts` without `-e`) is for reference only.** It is rule-based formant synthesis: intelligible at best in English,
+> unpleasant to listen to in every language. Use `-e piper`, `-e kokoro` or `-e qwen` when the sound matters.
+
+## English pronunciation lexicon (recommended for piper / kokoro)
+
+The built-in English rules (NRL letter-to-sound) are a fallback and often put the stress in the wrong place (`hɛˈloʊ`).
+The Piper and Kokoro voices were trained on espeak-ng phonemes, so feed them espeak-like phonemes from a dictionary:
+
+```bash
+python3 tools/make_lexicon_en.py            # downloads CMUdict, writes models/lexicon_en.txt (125k words, 2.8 MB)
+./tts -e piper -L en -t "Hello world, this is a test." --ipa     # həlˈoʊ wˈɜːld, ðɪs ɪz ɐ tˈɛst.
+```
+
+`tts` and `pcheck` load `lexicon_en.txt` from `-m DIR` (or `models/`) when it exists, otherwise they fall back to the rules.
+CMUdict ([BSD-style license](https://github.com/cmusphinx/cmudict/blob/master/LICENSE), (c) Carnegie Mellon University) supplies the
+phones and the stress; the ARPAbet -> IPA step is a small decision tree per phone fitted to espeak-ng output over the whole dictionary
+(`tools/en_g2p_tree.json`, held-out token accuracy 92%), and the weak forms of function words come from espeak-ng in context
+(`tools/en_function_words.json`). espeak-ng is not needed to build or use the lexicon. Unknown inflected words (`walked`, `dogs`,
+`quickly`) are built from their base word; `the` / `to` become `ðɪ` / `tʊ` before a vowel; punctuation is attached to the previous word
+(`wˈɜːld,`) the way espeak writes it. `tools/espeak_ipa.py` (needs `pip install espeakng-loader`) prints the espeak-ng phonemes
+for comparison, and `tts --from-ipa` synthesizes an IPA string directly.
+
+Effect on `pcheck` scores (piper medium, same expected phonemes; piper's sampling noise makes single runs vary by a few points):
+"Hello world" 63 -> 77, "I want to eat the apple, then walk to school." 78 -> 86, other test sentences unchanged within noise.
+
+Another English voice, `en_US-lessac-high` from
+[rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices/tree/main/en/en_US/lessac/high), runs with `-v en_high` after saving
+it as `models/en_high.onnx` + `en_high.onnx.json`. By the `pcheck` score it is not clearly better than the medium voice (91 vs 85 and
+83 vs 86 on two sentences) and it is about 6x slower in the current ONNX runtime, so medium stays the default.
+`--noise X --noise-w Y` change Piper's sampling noise (0.667 / 0.8 by default).
 
 ## Kokoro-82M (Q8_0)
 

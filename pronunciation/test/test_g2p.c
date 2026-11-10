@@ -17,7 +17,7 @@ int main(void)
 	chk(CP_EN, "make that cake", "mˈeɪk ðˈæt kˈeɪk");
 	chk(CP_EN, "knight", "nˈaɪt");
 	chk(CP_EN, "42", "fˈɔɹti tˈu");
-	chk(CP_EN, "Yes, please.", "jˈɛs , plˈiz .");
+	chk(CP_EN, "Yes, please.", "jˈɛs, plˈiz.");
 	chk(CP_PT, "olá mundo", "olˈa mˈũdu");
 	chk(CP_PT, "obrigado", "obɾigˈadu");
 	chk(CP_PT, "não", "nˈãu");
@@ -29,9 +29,15 @@ int main(void)
 	chk(CP_JA, "ありがとうございます", "aɾigatoːgozaimasɯ");
 	chk(CP_JA, "しんぶん", "ɕimbɯɴ");
 	chk(CP_JA, "コーヒー", "koːçiː");
-	chk(CP_JA, "ちょっと、まって。", "tɕotto , matte .");
+	chk(CP_JA, "ちょっと、まって。", "tɕotto, matte.");
 	chk(CP_JA, "2024", "ɲiseɲɲidʑɯːjoɴ");
 	if (cp_lang("ja") != CP_JA || cp_lang("pt-BR") != CP_PT || cp_lang("xx") != -1) { puts("FAIL cp_lang"); fails++; }
+	/* with the CMUdict lexicon (tools/make_lexicon_en.py): espeak-style phonemes, punctuation attached, the/to before vowels, inflections */
+	if (cp_en_lexicon_load("models/lexicon_en.txt") > 0) {
+		chk(CP_EN, "Hello world, this is a test.", "həlˈoʊ wˈɜːld, ðɪs ɪz ɐ tˈɛst.");
+		chk(CP_EN, "I want to eat the apple", "aɪ wˈɔnt tʊ ˈiːt ðɪ ˈæpəl");
+		chk(CP_EN, "dogs walked quickly", "dˈɑːɡz wˈɔːkt kwˈɪkli");
+	} else puts("english lexicon skipped (run tools/make_lexicon_en.py)");
 	if (fails) { printf("%d failure(s)\n", fails); return 1; }
 	puts("g2p ok");
 	return 0;

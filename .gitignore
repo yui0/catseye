@@ -5,3 +5,4 @@
 /transcript/models_fp16/
 __pycache__/
 *.pyc
+/trllis/models/

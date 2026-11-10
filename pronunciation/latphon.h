@@ -75,10 +75,13 @@ static inline int cp_g2p(int lang, const char *text, char *out, size_t cap)
 		else if (cp_g2p_hook && cp_g2p_hook(lang, word, ipa, sizeof ipa)) { }
 		else cp_langs[lang].word(word, ipa, sizeof ipa);
 		size_t l = strlen(ipa);
-		if (l && o + l + 2 < cap) { if (o) out[o++] = ' '; memcpy(out + o, ipa, l); o += l; out[o] = 0; }
+		int punct = !strcmp(word, ",") || !strcmp(word, ".") || !strcmp(word, "?") || !strcmp(word, "!");
+		/* espeak (and so the Piper voices) attach punctuation to the preceding word: "wˈɜːld, ..." */
+		if (l && o + l + 2 < cap) { if (o && !(punct && out[o - 1] != ' ')) out[o++] = ' '; memcpy(out + o, ipa, l); o += l; out[o] = 0; }
 		p = e;
 	}
 	free(norm);
+	if (lang == CP_EN && cp_en_ntab) cp_en_post(out);
 	return (int)o;
 }
 

@@ -214,9 +214,10 @@ static inline int ck_synth(const char *ipa, ck_opt opt, float **pcm, size_t *cou
 	}
 	/* smooth formants and nasalization across frames */
 	{
-		ck_frame *s = (ck_frame *)malloc(sizeof(ck_frame) * b.n);
+		size_t nfr = b.n > 0 ? (size_t)b.n : 0;
+		ck_frame *s = (ck_frame *)malloc(sizeof(ck_frame) * (nfr ? nfr : 1));
 		if (!s) { free(b.f); return -1; }
-		memcpy(s, b.f, sizeof(ck_frame) * b.n);
+		memcpy(s, b.f, sizeof(ck_frame) * nfr);
 		for (int i = 0; i < b.n; i++) {
 			float a1 = 0, a2 = 0, a3 = 0, an = 0; int c = 0;
 			for (int k = -3; k <= 3; k++) { int j = i + k; if (j < 0 || j >= b.n) continue; a1 += s[j].f1; a2 += s[j].f2; a3 += s[j].f3; an += s[j].nas; c++; }

@@ -30,7 +30,7 @@ int main(void)
 	if (!(iH / iL > 3 * uH / uL)) { printf("FAIL: /i/ vs /u/ F2 (%g vs %g)\n", iH / iL, uH / uL); fails++; }
 	if (!(aM > aH * 5)) { puts("FAIL: /a/ spectral tilt"); fails++; }
 	/* duration scales with speed */
-	float *s1, *s2; size_t n1, n2;
+	float *s1 = NULL, *s2 = NULL; size_t n1 = 0, n2 = 0;
 	ck_synth("hɛˈloʊ", o, &s1, &n1); o.speed = 2.0f; ck_synth("hɛˈloʊ", o, &s2, &n2);
 	if (!(n2 < n1 * 0.65)) { printf("FAIL: speed (%zu vs %zu)\n", n1, n2); fails++; }
 	/* fricative /s/ is high frequency noise */

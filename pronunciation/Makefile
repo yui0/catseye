@@ -6,7 +6,7 @@ all: tts pcheck
 
 tts: tts.c tts_qwen.h lang_en.h lang_pt.h lang_ja.h ja_reader.h latphon.h phon.h klatt.h tts_piper.h tts_kokoro.h gguf.h ../transcript/cats_onnx.h
 	$(CC) $(CFLAGS) -o $@ tts.c $(LDLIBS)
-
+test: test/test_g2p test/test_klatt test/test_pcheck test/test_piper test/test_kokoro test/test_qwen_codec test/test_qwen_tts
 test: test/test_g2p test/test_klatt test/test_pcheck test/test_piper test/test_kokoro test/test_piper
 	./test/test_g2p
 	./test/test_klatt

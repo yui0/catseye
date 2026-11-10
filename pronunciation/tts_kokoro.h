@@ -101,14 +101,14 @@ static int kk_load_lin(kk_model *m, kk_lin *L, const char *wname, const char *bn
 
 static int kk_load_linp(kk_model *m, kk_lin *L, const char *prefix)
 {
-	char w[260], b[260];
+	char w[300], b[300];
 	snprintf(w, sizeof w, "%s.weight", prefix); snprintf(b, sizeof b, "%s.bias", prefix);
 	return kk_load_lin(m, L, w, cg_find(&m->g, b) ? b : NULL);
 }
 
 static int kk_load_conv(kk_model *m, kk_conv *c, const char *prefix, int stride, int pad, int dil)
 {
-	char w[260], b[260];
+	char w[300], b[300];
 	snprintf(w, sizeof w, "%s.weight", prefix); snprintf(b, sizeof b, "%s.bias", prefix);
 	const cg_tensor *t = kk_need(m, w);
 	if (!t) return -1;
@@ -708,7 +708,8 @@ static int kk_run(kk_model *m, const int *ids, int T, const float *style, float 
 			float fr[20];
 			for (int i = 0; i < 20; i++) {
 				int p = t * 5 + i - 10;
-				if (p < 0) p = -p; if (p >= L) p = 2 * (L - 1) - p;
+				if (p < 0) p = -p;
+				if (p >= L) p = 2 * (L - 1) - p;
 				fr[i] = src[p] * win[i];
 			}
 			for (int k = 0; k < 11; k++) {

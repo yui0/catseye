@@ -132,7 +132,7 @@ typedef struct {
 
 static void qw_load_snake(kk_model *m, qw_snake *s, const char *prefix)
 {
-	char n[260]; size_t c;
+	char n[300]; size_t c = 0;
 	snprintf(n, sizeof n, "%s.alpha", prefix); float *a = kk_f32(m, n, &c);
 	snprintf(n, sizeof n, "%s.beta", prefix); float *b = kk_f32(m, n, NULL);
 	s->c = (int)c; s->a = a; s->ib = b;
@@ -427,11 +427,11 @@ static int qw_bpe_open(qw_bpe *b, const cg_file *g)
 	if (b->ntok <= 0 || b->nmrg <= 0) return -1;
 	b->tsorted = qw_sorted_index(b->tok, b->ntok);
 	b->msorted = qw_sorted_index(b->mrg, b->nmrg);
-	int n = 0, used[256] = { 0 };
+	int n = 0;
 	for (int c = 0; c < 256; c++) {
 		int vis = (c >= '!' && c <= '~') || (c >= 0xA1 && c <= 0xAC) || (c >= 0xAE && c <= 0xFF);
 		char t[4]; qw_put_utf8(t, vis ? c : 256 + n++);
-		b->b2s[c] = strdup(t); used[c] = vis;
+		b->b2s[c] = strdup(t);
 	}
 	return 0;
 }
@@ -519,12 +519,12 @@ static int qw_bpe_chunk(const qw_bpe *b, const unsigned char *s, int len, int *o
 	for (;;) {
 		int best = -1, bi = -1;
 		for (int i = 0; i + 1 < ns; i++) {
-			char key[140]; snprintf(key, sizeof key, "%s %s", sym[i], sym[i + 1]);
+			char key[140]; snprintf(key, sizeof key, "%.63s %.63s", sym[i], sym[i + 1]);
 			int r = qw_lookup(b->mrg, b->msorted, b->nmrg, key);
 			if (r >= 0 && (best < 0 || r < best)) { best = r; bi = i; }
 		}
 		if (bi < 0) break;
-		strcat(sym[bi], sym[bi + 1]);
+		{ size_t l0 = strlen(sym[bi]), l1 = strlen(sym[bi + 1]); if (l0 + l1 >= 64) break; memcpy(sym[bi] + l0, sym[bi + 1], l1 + 1); }
 		for (int i = bi + 1; i + 1 < ns; i++) strcpy(sym[i], sym[i + 1]);
 		ns--;
 	}
