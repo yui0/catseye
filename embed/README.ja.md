@@ -113,3 +113,30 @@ Python（transformers, float32）の出力との照合：
 - テキスト中の特殊トークン文字列（`<bos>` など）は特殊トークンとして扱いません。
 - テキストのトークナイザーと画像の参照照合は、日本語・英語・絵文字などの短い文で確認しています。非常に長い文章（数千トークン）は未検証です。
 - 精度は元のモデルの品質に依存します。写真検索としての良し悪しは実際の写真での評価が必要です。
+
+## ブラウザ（WebAssembly）で使う
+
+`web/index.html` が、画像と文章の類似検索をブラウザだけで行います（画像は外に出ません）。モデルは画面で切り替えられます（`web/models.json`）。
+
+```bash
+source /root/image/emsdk/emsdk_env.sh
+make web                                   # eg2e_web.js（単スレッド）と eg2e_web_mt.js（pthread）、どちらも WASM SIMD
+# 語彙を日英に絞った軽量版を作る（元の bf16 モデルが eg2_hf にある場合）
+python3 tools/eg2_prune.py eg2_hf eg2_pruned          # model.safetensors と tokenizer.eg2t（語彙 26万 → 約3.8万）
+./eg2e -m eg2_pruned quantize web/models/q4_pruned/model.safetensors
+cp eg2_pruned/tokenizer.eg2t web/models/q4_pruned/
+python3 web/serve.py 8000                  # http://localhost:8000/web/ を開く（COOP/COEP ヘッダー付き）
+```
+
+| モデル | サイズ | 内容 |
+|---|---|---|
+| `q4_full` | 約 270 MB | 元の全語彙を Q4 にした版（トークナイザー 32 MB 別） |
+| `q4_pruned` | 約 170 MB | 語彙を日英約 3.8 万語に絞り、位置テーブルを 512 行に切り詰めた版（トークナイザー 1 MB）。日英は `q4_full` と同じ出力、他の言語は劣化します |
+
+- 50 MB には届きません。実験では、層を減らすと再学習なしでは壊れました（テキスト 24→16 層でコサイン 0.68）。2 bit も崩壊し（0.35）、3 bit は 0.94〜0.96 でした。
+- 速度（Chrome、12 スレッド、1024px の画像、細かさ 140）：画像 1 枚 約 6.9 秒、文章 約 0.3 秒、モデル読み込み 約 1 秒（キャッシュ後）。
+  単スレッド版では画像 1 枚 約 37 秒です（GEMM を WASM SIMD にして 305 秒から短縮）。
+- 複数スレッドには SharedArrayBuffer が必要なので、`COOP: same-origin` と `COEP: require-corp` を付けて配信してください（`web/serve.py`）。
+  付いていないページでは、ワーカーが自動で単スレッド版に切り替わります。
+- 並列化は `catseye.h` の `cats_pfor`（ネイティブは OpenMP、WASM は pthread のスレッドプール）で、GEMM・注意・Q4 の展開に使っています。
+- モデルはメモリ上の safetensors として読みます（`eg2e_load_mem`）。語彙を絞ったモデルでは、画像用マーカー ID をテンソル `eg2.special` から読みます。

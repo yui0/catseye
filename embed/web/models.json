@@ -1,0 +1,6 @@
+[
+  {"id": "q4-pruned", "name": "日英・軽量 Q4（約175MB）", "model": "models/q4_pruned/model.safetensors", "tokenizer": "models/q4_pruned/tokenizer.eg2t",
+   "note": "語彙を日英約3.8万語に絞った版。日本語・英語は元の Q4 と同じ出力。他の言語は精度が落ちます。"},
+  {"id": "q4-full", "name": "全言語・標準 Q4（約270MB）", "model": "models/q4_full/model.safetensors", "tokenizer": "models/q4_full/tokenizer.eg2t",
+   "note": "元モデルの全語彙（26万語）を Q4 にした版。"}
+]

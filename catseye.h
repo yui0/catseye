@@ -2858,6 +2858,89 @@ static inline float cats_dot_f32(const float*x,const float*w,size_t n)
 #ifndef CATS_GEMM_KC
 #define CATS_GEMM_KC 512
 #endif
+// ---- cats_pfor: run fn(ctx, lo, hi) over [0, n) in chunks. OpenMP natively; a pthread pool under Emscripten
+// (-pthread; the pool is started by cats_set_threads). Nested calls and tiny jobs run serially in the caller.
+typedef void (*cats_pf_fn)(void *ctx, long lo, long hi);
+#if defined(__EMSCRIPTEN_PTHREADS__)
+#include <pthread.h>
+#define CATS_POOL_MAX 32
+static struct {
+	pthread_t th[CATS_POOL_MAX];
+	pthread_mutex_t mu; pthread_cond_t wake, done;
+	int nworkers, gen, pending, started;
+	atomic_long next;
+	long n, chunk; cats_pf_fn fn; void *ctx;
+} cats_pool = { .mu = PTHREAD_MUTEX_INITIALIZER, .wake = PTHREAD_COND_INITIALIZER, .done = PTHREAD_COND_INITIALIZER };
+static _Thread_local int cats_in_pfor;
+static void cats_pool_run(void)
+{
+	cats_in_pfor = 1;
+	for (;;) {
+		long lo = atomic_fetch_add(&cats_pool.next, cats_pool.chunk);
+		if (lo >= cats_pool.n) break;
+		long hi = lo + cats_pool.chunk;
+		cats_pool.fn(cats_pool.ctx, lo, hi < cats_pool.n ? hi : cats_pool.n);
+	}
+	cats_in_pfor = 0;
+}
+static void *cats_pool_worker(void *arg)
+{
+	(void)arg;
+	int seen = 0;
+	for (;;) {
+		pthread_mutex_lock(&cats_pool.mu);
+		while (cats_pool.gen == seen) pthread_cond_wait(&cats_pool.wake, &cats_pool.mu);
+		seen = cats_pool.gen;
+		pthread_mutex_unlock(&cats_pool.mu);
+		cats_pool_run();
+		pthread_mutex_lock(&cats_pool.mu);
+		if (--cats_pool.pending == 0) pthread_cond_signal(&cats_pool.done);
+		pthread_mutex_unlock(&cats_pool.mu);
+	}
+	return NULL;
+}
+// Total threads (caller included). Workers are only ever added (they sleep when idle); `limit` caps how many take part.
+static int cats_pool_limit = 1;
+static inline int cats_pool_start(int total)
+{
+	if (total < 1) total = 1;
+	if (total > CATS_POOL_MAX) total = CATS_POOL_MAX;
+	while (cats_pool.started < total - 1) {
+		if (pthread_create(&cats_pool.th[cats_pool.started], NULL, cats_pool_worker, NULL)) break;
+		cats_pool.started++;
+	}
+	cats_pool_limit = total;
+	return cats_pool.started + 1;
+}
+static inline void cats_pfor(long n, long chunk, cats_pf_fn fn, void *ctx)
+{
+	if (chunk < 1) chunk = 1;
+	if (cats_pool.started == 0 || cats_in_pfor || n <= chunk) { fn(ctx, 0, n); return; }
+	// every started worker joins in (the limit only matters when the pool shrinks, which it never does): keep it simple
+	pthread_mutex_lock(&cats_pool.mu);
+	cats_pool.n = n; cats_pool.chunk = chunk; cats_pool.fn = fn; cats_pool.ctx = ctx;
+	atomic_store(&cats_pool.next, 0);
+	cats_pool.pending = cats_pool.started;
+	cats_pool.gen++;
+	pthread_cond_broadcast(&cats_pool.wake);
+	pthread_mutex_unlock(&cats_pool.mu);
+	cats_pool_run();
+	pthread_mutex_lock(&cats_pool.mu);
+	while (cats_pool.pending) pthread_cond_wait(&cats_pool.done, &cats_pool.mu);
+	pthread_mutex_unlock(&cats_pool.mu);
+}
+#else
+static inline void cats_pfor(long n, long chunk, cats_pf_fn fn, void *ctx)
+{
+	if (chunk < 1) chunk = 1;
+	const long nc = (n + chunk - 1) / chunk;
+	#pragma omp parallel for schedule(dynamic,1) if(nc > 1)
+	for (long c = 0; c < nc; c++) {
+		long lo = c * chunk, hi = lo + chunk;
+		fn(ctx, lo, hi < n ? hi : n);
+	}
+}
+#endif
 typedef void (*cats_tile_fn)(float*,size_t,const float*,size_t,const float*,
                                size_t,size_t,size_t,size_t,int,const float*);
 static void cats_tile_generic(float*c,size_t ldc,const float*x,size_t ldx,
@@ -2916,6 +2999,43 @@ ATTR static void NAME(float*c,size_t ldc,const float*x,size_t ldx,const float*w,
 CATS_DEF_TILE(cats_tile_avx,CATS_AVX_FN,CATS_MAC_AVX)
 CATS_DEF_TILE(cats_tile_avx2,CATS_AVX2_FN,CATS_MAC_FMA)
 #endif
+#ifdef __wasm_simd128__
+#include <wasm_simd128.h>
+// WebAssembly SIMD: the same 4 x 2 tile with f32x4 accumulators.
+static inline float cats_hsum4w(v128_t v)
+{
+	return wasm_f32x4_extract_lane(v,0)+wasm_f32x4_extract_lane(v,1)+wasm_f32x4_extract_lane(v,2)+wasm_f32x4_extract_lane(v,3);
+}
+static void cats_tile_wasm(float*c,size_t ldc,const float*x,size_t ldx,const float*w,
+                           size_t ldw,size_t klen,size_t nt,size_t no,int acc,const float*bias)
+{
+	if (nt!=4||no!=2) {
+		cats_tile_generic(c,ldc,x,ldx,w,ldw,klen,nt,no,acc,bias);
+		return;
+	}
+	const float*x0=x,*x1=x+ldx,*x2=x+2*ldx,*x3=x+3*ldx,*w0=w,*w1=w+ldw;
+	v128_t z=wasm_f32x4_splat(0.0f),a00=z,a01=z,a10=z,a11=z,a20=z,a21=z,a30=z,a31=z;
+	size_t k=0;
+	for (; k+4<=klen; k+=4) {
+		v128_t b0=wasm_v128_load(w0+k),b1=wasm_v128_load(w1+k),v;
+		v=wasm_v128_load(x0+k);a00=wasm_f32x4_add(a00,wasm_f32x4_mul(v,b0));a01=wasm_f32x4_add(a01,wasm_f32x4_mul(v,b1));
+		v=wasm_v128_load(x1+k);a10=wasm_f32x4_add(a10,wasm_f32x4_mul(v,b0));a11=wasm_f32x4_add(a11,wasm_f32x4_mul(v,b1));
+		v=wasm_v128_load(x2+k);a20=wasm_f32x4_add(a20,wasm_f32x4_mul(v,b0));a21=wasm_f32x4_add(a21,wasm_f32x4_mul(v,b1));
+		v=wasm_v128_load(x3+k);a30=wasm_f32x4_add(a30,wasm_f32x4_mul(v,b0));a31=wasm_f32x4_add(a31,wasm_f32x4_mul(v,b1));
+	}
+	float r[4][2]={{cats_hsum4w(a00),cats_hsum4w(a01)},{cats_hsum4w(a10),cats_hsum4w(a11)},
+	               {cats_hsum4w(a20),cats_hsum4w(a21)},{cats_hsum4w(a30),cats_hsum4w(a31)}};
+	for (; k<klen; k++) {
+		r[0][0]+=x0[k]*w0[k];r[0][1]+=x0[k]*w1[k];r[1][0]+=x1[k]*w0[k];r[1][1]+=x1[k]*w1[k];
+		r[2][0]+=x2[k]*w0[k];r[2][1]+=x2[k]*w1[k];r[3][0]+=x3[k]*w0[k];r[3][1]+=x3[k]*w1[k];
+	}
+	for (int t=0; t<4; t++)for (int o=0; o<2; o++) {
+			float v=r[t][o];
+			if (acc) v+=c[(size_t)t*ldc+o]; else if (bias) v+=bias[o];
+			c[(size_t)t*ldc+o]=v;
+		}
+}
+#endif
 static inline void cats_gemm_nt_cpu(float*c,const float*x,const float*w,size_t n,
                                       size_t in,size_t out,const float*bias);
 static inline void cats_gemm_nt(float*c,const float*x,const float*w,size_t n,
@@ -2948,6 +3068,31 @@ static inline void cats_gemm_nt(float*c,const float*x,const float*w,size_t n,
 #endif
 	cats_gemm_nt_cpu(c,x,w,n,in,out,bias);
 }
+typedef struct { float *c; const float *x, *w, *bias; size_t n, in, out; long nob; cats_tile_fn tile; } cats_gemm_ctx;
+static void cats_gemm_body(void *vp, long lo, long hi)
+{
+	const cats_gemm_ctx *g = (const cats_gemm_ctx*)vp;
+	const size_t n=g->n,in=g->in,out=g->out;
+	for (long idx=lo; idx<hi; idx++) {
+		long tb=idx/g->nob,ob=idx%g->nob;
+		size_t t0=(size_t)tb*CATS_GEMM_TB,t1=t0+CATS_GEMM_TB;
+		if (t1>n) t1=n;
+		size_t o0=(size_t)ob*CATS_GEMM_OB,o1=o0+CATS_GEMM_OB;
+		if (o1>out) o1=out;
+		for (size_t k0=0; k0<in; k0+=CATS_GEMM_KC) {
+			size_t klen=in-k0<CATS_GEMM_KC?in-k0:CATS_GEMM_KC;
+			int acc=k0!=0;
+			for (size_t t=t0; t<t1; t+=4) {
+				size_t nt=t1-t<4?t1-t:4;
+				for (size_t o=o0; o<o1; o+=2) {
+					size_t no=o1-o<2?o1-o:2;
+					g->tile(g->c+t*out+o,out,g->x+t*in+k0,in,g->w+o*in+k0,in,klen,nt,no,acc,
+					        g->bias?g->bias+o:NULL);
+				}
+			}
+		}
+	}
+}
 static inline void cats_gemm_nt_cpu(float*c,const float*x,const float*w,size_t n,
                                       size_t in,size_t out,const float*bias)
 {
@@ -2955,6 +3100,9 @@ static inline void cats_gemm_nt_cpu(float*c,const float*x,const float*w,size_t n
 		return;
 	}
 	cats_tile_fn tile=cats_tile_generic;
+#ifdef __wasm_simd128__
+	tile=cats_tile_wasm;
+#endif
 #if CATS_SIMD_X86
 	{
 		int level=cats_cpu_simd_level();
@@ -2965,33 +3113,11 @@ static inline void cats_gemm_nt_cpu(float*c,const float*x,const float*w,size_t n
 		}
 	}
 #endif
+	cats_gemm_ctx g = { c, x, w, bias, n, in, out, 0, tile };
 	const long ntb=(long)((n+CATS_GEMM_TB-1)/CATS_GEMM_TB);
-	const long nob=(long)((out+CATS_GEMM_OB-1)/CATS_GEMM_OB);
+	g.nob=(long)((out+CATS_GEMM_OB-1)/CATS_GEMM_OB);
 	const int big=(double)n*(double)in*(double)out>1.0e6;
-	(void)big;
-	#pragma omp parallel for collapse(2) schedule(dynamic,1) if(big)
-	for (long tb=0; tb<ntb; tb++)for (long ob=0; ob<nob; ob++) {
-			size_t t0=(size_t)tb*CATS_GEMM_TB,t1=t0+CATS_GEMM_TB;
-			if (t1>n) {
-				t1=n;
-			}
-			size_t o0=(size_t)ob*CATS_GEMM_OB,o1=o0+CATS_GEMM_OB;
-			if (o1>out) {
-				o1=out;
-			}
-			for (size_t k0=0; k0<in; k0+=CATS_GEMM_KC) {
-				size_t klen=in-k0<CATS_GEMM_KC?in-k0:CATS_GEMM_KC;
-				int acc=k0!=0;
-				for (size_t t=t0; t<t1; t+=4) {
-					size_t nt=t1-t<4?t1-t:4;
-					for (size_t o=o0; o<o1; o+=2) {
-						size_t no=o1-o<2?o1-o:2;
-						tile(c+t*out+o,out,x+t*in+k0,in,w+o*in+k0,in,klen,nt,no,acc,
-						     bias?bias+o:NULL);
-					}
-				}
-			}
-		}
+	if (big) cats_pfor(ntb*g.nob,1,cats_gemm_body,&g); else cats_gemm_body(&g,0,ntb*g.nob);
 }
 static inline float cats_half_to_float(unsigned h)
 {
@@ -3182,7 +3308,9 @@ static inline int cats_physical_threads(void)
 // Applies `requested` threads (> 0), else one per physical core unless OMP_NUM_THREADS is set.
 static inline void cats_set_threads(int requested)
 {
-#ifdef _OPENMP
+#if defined(__EMSCRIPTEN_PTHREADS__)
+	cats_pool_start(requested > 0 ? requested : 4);
+#elif defined(_OPENMP)
 	if (requested > 0) omp_set_num_threads(requested);
 	else if (!getenv("OMP_NUM_THREADS") && cats_physical_threads() > 0) omp_set_num_threads(cats_physical_threads());
 #else
@@ -3553,12 +3681,13 @@ typedef struct {
 	const uint8_t *data;		// start of the data section
 	cats_st_tensor *tensor;
 	int count;
+	int external;			// map belongs to the caller (cats_st_open_mem): never unmapped
 } cats_st;
 
 static inline void cats_st_close(cats_st *s)
 {
 #if !defined(_WIN32)
-	if (s->map) munmap(s->map, s->size);
+	if (s->map && !s->external) munmap(s->map, s->size);
 #endif
 	(free)(s->tensor);
 	memset(s, 0, sizeof(*s));
@@ -3629,6 +3758,27 @@ static inline int cats_st_parse(cats_st *s, const char *j, size_t n)
 	}
 	return 0;
 }
+static inline int cats_st_init_map(cats_st *s)
+{
+	uint64_t hl;
+	memcpy(&hl, s->map, 8);
+	if (hl > s->size - 8) { cats_st_close(s); return -1; }
+	s->data = s->map + 8 + hl;
+	if (cats_st_parse(s, (const char*)s->map + 8, (size_t)hl)) { cats_st_close(s); return -1; }
+	const uint64_t avail = s->size - 8 - hl;	// every tensor must lie inside the data section
+	for (int i = 0; i < s->count; i++) {
+		if (s->tensor[i].begin > s->tensor[i].end || s->tensor[i].end > avail) { cats_st_close(s); return -1; }
+	}
+	return 0;
+}
+// A safetensors file already in memory (WebAssembly, embedded data); the caller keeps the buffer alive.
+static inline int cats_st_open_mem(cats_st *s, const void *buf, size_t size)
+{
+	memset(s, 0, sizeof(*s));
+	if (size < 8) return -1;
+	s->map = (uint8_t*)buf; s->size = size; s->external = 1;
+	return cats_st_init_map(s);
+}
 static inline int cats_st_open(cats_st *s, const char *path)
 {
 	memset(s, 0, sizeof(*s));
@@ -3644,16 +3794,7 @@ static inline int cats_st_open(cats_st *s, const char *path)
 	s->map = (uint8_t*)mmap(NULL, s->size, PROT_READ, MAP_PRIVATE, fd, 0);
 	close(fd);
 	if (s->map == MAP_FAILED) { s->map = NULL; return -1; }
-	uint64_t hl;
-	memcpy(&hl, s->map, 8);
-	if (hl > s->size - 8) { cats_st_close(s); return -1; }
-	s->data = s->map + 8 + hl;
-	if (cats_st_parse(s, (const char*)s->map + 8, (size_t)hl)) { cats_st_close(s); return -1; }
-	const uint64_t avail = s->size - 8 - hl;	// every tensor must lie inside the data section
-	for (int i = 0; i < s->count; i++) {
-		if (s->tensor[i].begin > s->tensor[i].end || s->tensor[i].end > avail) { cats_st_close(s); return -1; }
-	}
-	return 0;
+	return cats_st_init_map(s);
 #endif
 }
 static inline const cats_st_tensor* cats_st_find(const cats_st *s, const char *name)
@@ -3675,6 +3816,15 @@ static inline uint64_t cats_st_bytes(int dtype, int64_t n)
 }
 // Pointer to the tensor's bytes inside the mapping (valid until cats_st_close)
 static inline const uint8_t* cats_st_raw(const cats_st *s, const cats_st_tensor *t) { return s->data + t->begin; }
+typedef struct { const uint8_t *p; size_t rb, w; float *dst; int q8; } cats_dq_ctx;
+static void cats_st_dequant_rows(void *vp, long lo, long hi)
+{
+	const cats_dq_ctx *d = (const cats_dq_ctx*)vp;
+	for (long r = lo; r < hi; r++) {
+		if (d->q8) cats_q8_0w_dequantize_row(d->p + (size_t)r * d->rb, d->w, d->dst + (size_t)r * d->w);
+		else cats_q4_0_dequantize_row(d->p + (size_t)r * d->rb, d->w, d->dst + (size_t)r * d->w);
+	}
+}
 // Widens (or copies) the whole tensor to float32. dst needs cats_st_numel() floats.
 static inline int cats_st_read_f32(const cats_st *s, const cats_st_tensor *t, float *dst)
 {
@@ -3685,10 +3835,8 @@ static inline int cats_st_read_f32(const cats_st *s, const cats_st_tensor *t, fl
 		if (t->ndim != 2 || t->shape[1] % CATS_Q4_0_BLOCK) return -1;
 		const int q8 = t->dtype == CATS_ST_Q8_0;
 		const size_t rb = q8 ? cats_q8_0w_row_bytes((size_t)t->shape[1]) : cats_q4_0_row_bytes((size_t)t->shape[1]);
-		for (int64_t r = 0; r < t->shape[0]; r++) {
-			if (q8) cats_q8_0w_dequantize_row(p + (size_t)r * rb, (size_t)t->shape[1], dst + r * t->shape[1]);
-			else cats_q4_0_dequantize_row(p + (size_t)r * rb, (size_t)t->shape[1], dst + r * t->shape[1]);
-		}
+		cats_dq_ctx dc = { p, rb, (size_t)t->shape[1], dst, q8 };
+		cats_pfor(t->shape[0], 16, cats_st_dequant_rows, &dc);
 		return 0;
 	}
 	if (t->dtype == CATS_ST_F32) memcpy(dst, p, (size_t)n * 4);
@@ -3840,6 +3988,32 @@ static inline void cats_rope_block(float *x, const float *cs, const float *sn, u
 #ifndef CATS_ATT_ROWS
 #define CATS_ATT_ROWS	64
 #endif
+typedef struct { float *out; const float *qp, *kp, *vt; size_t t; unsigned nq, hd; size_t nb; unsigned group; float scale; size_t window, qs; int fail; } cats_att_ctx;
+static void cats_att_tasks(void *vp, long lo, long hi)
+{
+	cats_att_ctx *a = (cats_att_ctx*)vp;
+	const size_t t = a->t, hd = a->hd, qs = a->qs, nb = a->nb, window = a->window;
+	float *sc = (float*)(malloc)(CATS_ATT_ROWS * t * sizeof(float)), *ob = (float*)(malloc)(CATS_ATT_ROWS * hd * sizeof(float));
+	if (!sc || !ob) { a->fail = 1; (free)(sc); (free)(ob); return; }
+	for (long task = lo; task < hi; task++) {
+		const unsigned h = (unsigned)(task / nb), g = h / a->group;
+		const size_t i0 = (size_t)(task % nb) * CATS_ATT_ROWS, rows = t - i0 < CATS_ATT_ROWS ? t - i0 : CATS_ATT_ROWS;
+		cats_gemm_nt_cpu(sc, a->qp + ((size_t)h * t + i0) * hd, a->kp + (size_t)g * t * hd, rows, hd, t, NULL);	// q_i . k_j
+		for (size_t r = 0; r < rows; r++) {
+			float *row = sc + r * t;
+			const size_t i = i0 + r;
+			size_t l0 = 0, h0 = t;
+			if (window) {
+				l0 = i + 1 > window ? i + 1 - window : 0;
+				h0 = i + window < t ? i + window : t;
+			}
+			cats_softmax_scaled(row, t, l0, h0, a->scale);
+		}
+		cats_gemm_nt_cpu(ob, sc, a->vt + (size_t)g * hd * t, rows, t, hd, NULL);				// P . V
+		for (size_t r = 0; r < rows; r++) memcpy(a->out + (i0 + r) * qs + (size_t)h * hd, ob + r * hd, hd * sizeof(float));
+	}
+	(free)(sc); (free)(ob);
+}
 static inline int cats_attention_bidir(float *out, const float *q, const float *k, const float *v,
 				       size_t t, unsigned nq, unsigned nkv, unsigned hd, float scale, size_t window)
 {
@@ -3858,36 +4032,9 @@ static inline int cats_attention_bidir(float *out, const float *q, const float *
 		float *dst = vt + ((size_t)g * hd + d) * t;
 		for (size_t i = 0; i < t; i++) dst[i] = v[i * ks + (size_t)g * hd + d];
 	}
-	const unsigned group = nq / nkv;
-	int fail = 0;
-	#pragma omp parallel
-	{
-		float *sc = (float*)(malloc)(CATS_ATT_ROWS * t * sizeof(float)), *ob = (float*)(malloc)(CATS_ATT_ROWS * hd * sizeof(float));
-		if (!sc || !ob) {
-			#pragma omp atomic write
-			fail = 1;
-		}
-		#pragma omp for schedule(dynamic, 1)
-		for (long task = 0; task < (long)(nq * nb); task++) {
-			if (fail) continue;
-			const unsigned h = (unsigned)(task / nb), g = h / group;
-			const size_t i0 = (size_t)(task % nb) * CATS_ATT_ROWS, rows = t - i0 < CATS_ATT_ROWS ? t - i0 : CATS_ATT_ROWS;
-			cats_gemm_nt_cpu(sc, qp + ((size_t)h * t + i0) * hd, kp + (size_t)g * t * hd, rows, hd, t, NULL);	// q_i . k_j
-			for (size_t r = 0; r < rows; r++) {
-				float *row = sc + r * t;
-				const size_t i = i0 + r;
-				size_t lo = 0, hi = t;
-				if (window) {
-					lo = i + 1 > window ? i + 1 - window : 0;
-					hi = i + window < t ? i + window : t;
-				}
-				cats_softmax_scaled(row, t, lo, hi, scale);
-			}
-			cats_gemm_nt_cpu(ob, sc, vt + (size_t)g * hd * t, rows, t, hd, NULL);				// P . V
-			for (size_t r = 0; r < rows; r++) memcpy(out + (i0 + r) * qs + (size_t)h * hd, ob + r * hd, hd * sizeof(float));
-		}
-		(free)(sc); (free)(ob);
-	}
+	cats_att_ctx ac = { out, qp, kp, vt, t, nq, hd, nb, nq / nkv, scale, window, qs, 0 };
+	cats_pfor((long)(nq * nb), 1, cats_att_tasks, &ac);
+	int fail = ac.fail;
 	(free)(qp); (free)(kp); (free)(vt);
 	return fail ? -1 : 0;
 }

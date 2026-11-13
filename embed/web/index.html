@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cat's eye - 画像・文章の類似検索</title>
+<style>
+  :root { --bg:#fff; --fg:#1b1b1f; --mut:#6b6b76; --line:#d9d9e0; --acc:#2f6fed; --card:#f6f6f9; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#16161a; --fg:#ececf1; --mut:#9a9aa6; --line:#34343c; --acc:#7aa2ff; --card:#1f1f25; } }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.6 system-ui, "Hiragino Sans", "Noto Sans JP", sans-serif; }
+  main { max-width:880px; margin:0 auto; padding:20px 16px 60px; }
+  h1 { font-size:20px; margin:0 0 4px; } .mut { color:var(--mut); font-size:13px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; margin:14px 0; }
+  select, input[type=text], button { font:inherit; color:inherit; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:7px 10px; }
+  button { cursor:pointer; background:var(--acc); color:#fff; border-color:var(--acc); } button:disabled { opacity:.45; cursor:default; }
+  input[type=text] { width:min(100%, 420px); }
+  progress { width:100%; height:8px; } .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:6px 0; }
+  #grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:10px; margin-top:10px; }
+  .it { border:1px solid var(--line); border-radius:8px; overflow:hidden; background:var(--bg); font-size:12px; }
+  .it img { width:100%; aspect-ratio:1; object-fit:cover; display:block; } .it div { padding:4px 6px; }
+  .score { font-weight:600; color:var(--acc); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Cat's eye 類似検索</h1>
+  <div class="mut">EmbeddingGemma 2 を WebAssembly で動かし、画像と文章を同じ空間で比べます。画像はブラウザの外に出ません。</div>
+
+  <section>
+    <b>1. モデル</b>
+    <div class="row">
+      <select id="model"></select>
+      <button id="load">読み込む</button>
+      <span id="mstat" class="mut">未読み込み</span>
+    </div>
+    <progress id="prog" value="0" max="1" hidden></progress>
+    <div id="note" class="mut"></div>
+  </section>
+
+  <section>
+    <b>2. 画像を追加</b>
+    <div class="row">
+      <input id="files" type="file" accept="image/*" multiple>
+      <label>細かさ <select id="soft"><option selected>70</option><option>140</option><option>280</option></select></label>
+    </div>
+    <div id="istat" class="mut"></div>
+    <div id="grid"></div>
+  </section>
+
+  <section>
+    <b>3. 検索</b>
+    <div class="row">
+      <input id="q" type="text" placeholder="例：夕焼けの海 / a dog on the beach">
+      <button id="go" disabled>文章で検索</button>
+    </div>
+    <div class="mut">画像をクリックすると、その画像に似た順に並べ替えます。</div>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const worker = new Worker('eg2e_worker.js');
+let seq = 0; const waiting = new Map();
+worker.onmessage = (e) => {
+  const d = e.data;
+  if (d.progress !== undefined && d.id === undefined) { $('prog').hidden = false; $('prog').value = d.progress; $('mstat').textContent = d.label + ' ' + Math.round(d.progress * 100) + '%'; return; }
+  const w = waiting.get(d.id); if (!w) return; waiting.delete(d.id);
+  d.ok ? w.res(d) : w.rej(new Error(d.error));
+};
+const call = (msg) => new Promise((res, rej) => { const id = ++seq; waiting.set(id, { res, rej }); worker.postMessage({ id, ...msg }); });
+
+let models = [], items = [], ready = false;
+const dot = (a, b) => { let s = 0; for (let i = 0; i < a.length; i++) s += a[i] * b[i]; return s; };
+
+fetch('models.json').then((r) => r.json()).then((m) => {
+  models = m;
+  $('model').innerHTML = m.map((x, i) => `<option value="${i}">${x.name}</option>`).join('');
+  const sel = () => { $('note').textContent = models[$('model').value].note || ''; };
+  $('model').onchange = sel; sel();
+});
+
+$('load').onclick = async () => {
+  const m = models[$('model').value];
+  $('load').disabled = true; $('go').disabled = true; ready = false;
+  $('mstat').textContent = '読み込み中…';
+  try {
+    await call({ op: 'load', model: m.model, tokenizer: m.tokenizer, key: m.id });
+    ready = true; $('go').disabled = false;
+    const r = await call({ op: 'info' }).catch(() => null);
+    $('mstat').textContent = '準備完了: ' + m.name + (r ? '（' + (r.mt ? r.threads + ' スレッド' : '単スレッド：serve.py で開くと高速化') + '）' : '');
+    // vectors from another model live in a different space: recompute for the new model
+    for (const it of items) it.vec = null;
+    await embedAll();
+  } catch (e) { $('mstat').textContent = 'エラー: ' + e.message; }
+  $('prog').hidden = true; $('load').disabled = false;
+};
+
+$('files').onchange = async (e) => {
+  for (const f of e.target.files) {
+    const url = URL.createObjectURL(f), card = document.createElement('div');
+    card.className = 'it'; card.innerHTML = `<img src="${url}"><div class="n"></div>`;
+    $('grid').appendChild(card);
+    const it = { file: f, card, vec: null };
+    card.querySelector('.n').textContent = f.name;
+    card.onclick = () => rank(it.vec, 'この画像に似た順');
+    items.push(it);
+  }
+  e.target.value = '';
+  if (ready) await embedAll();
+};
+
+let busy = false;
+async function embedAll() {
+  if (busy) return; busy = true;
+  const todo = items.filter((i) => !i.vec); let n = 0;
+  for (const it of todo) {
+    $('istat').textContent = `画像を解析中… ${++n}/${todo.length}`;
+    try { it.vec = (await call({ op: 'image', blob: it.file, soft: +$('soft').value })).vec; }
+    catch (e) { it.card.querySelector('.n').textContent = it.file.name + '（失敗）'; it.vec = new Float32Array(768); }
+  }
+  $('istat').textContent = todo.length ? `${items.length} 枚を解析しました` : $('istat').textContent;
+  busy = false;
+}
+$('soft').onchange = () => { for (const it of items) it.vec = null; if (ready) embedAll(); };
+
+function rank(q, label) {
+  if (!q) return;
+  const scored = items.filter((i) => i.vec).map((i) => ({ i, s: dot(q, i.vec) })).sort((a, b) => b.s - a.s);
+  for (const { i, s } of scored) {
+    i.card.querySelector('.n').innerHTML = `<span class="score">${s.toFixed(3)}</span> ${i.file.name}`;
+    $('grid').appendChild(i.card);
+  }
+  $('istat').textContent = label + '（' + scored.length + ' 枚）';
+}
+$('go').onclick = async () => {
+  const t = $('q').value.trim(); if (!t || !ready) return;
+  await embedAll();
+  try { rank((await call({ op: 'text', text: t, kind: 1 })).vec, '「' + t + '」に近い順'); }
+  catch (e) { $('istat').textContent = 'エラー: ' + e.message; }
+};
+$('q').onkeydown = (e) => { if (e.key === 'Enter') $('go').click(); };
+</script>
+</body>
+</html>

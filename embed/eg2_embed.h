@@ -59,7 +59,9 @@ typedef struct {
 	float *ple_norm;				// ... and its norm
 	eg2e_layer vis[EG2E_VIS_LAYERS];
 	eg2e_mat patch_w, embed_vision;			// patch Linear, Linear 768 -> 512
-	float *pos_table;				// [2][10240][768]
+	float *pos_table;				// [2][pos_rows][768] (10240 rows in the original, fewer in a pruned model)
+	int pos_rows;
+	int tok_boi, tok_eoi, tok_image;		// ids of the image marker tokens (pruned models renumber them: tensor eg2.special)
 	const cats_st_tensor *embed_tokens;		// bf16 table, widened row by row
 } eg2e_model;
 
@@ -210,12 +212,8 @@ static void eg2e_free(eg2e_model *m)
 }
 
 // dir holds model.safetensors from google/embeddinggemma-2. The vision tower is optional.
-static int eg2e_load(eg2e_model *m, const char *dir, int with_vision)
+static int eg2e_load_tensors(eg2e_model *m, const char *what, int with_vision)
 {
-	memset(m, 0, sizeof(*m));
-	char path[1024];
-	snprintf(path, sizeof(path), "%s/model.safetensors", dir);
-	if (cats_st_open(&m->st, path)) { fprintf(stderr, "eg2e: cannot open %s\n", path); return -1; }
 	int rc = -1;
 	for (int i = 0; i < EG2E_TEXT_LAYERS; i++) if (eg2e_load_text_layer(m, i)) goto fail;
 	if (!(m->text_norm = eg2e_get(m, "language_model.norm.weight", 0, 512))) goto fail;
@@ -223,20 +221,44 @@ static int eg2e_load(eg2e_model *m, const char *dir, int with_vision)
 	if (eg2e_getmat(m, "language_model.ple.per_layer_model_projection.weight", 0,
 			(int64_t)EG2E_TEXT_LAYERS * EG2E_PLE_DIM * 512, &m->ple_proj)) goto fail;
 	if (!(m->ple_norm = eg2e_get(m, "language_model.ple.per_layer_projection_norm.weight", 0, EG2E_PLE_DIM))) goto fail;
+	m->tok_boi = EG2E_TOK_BOI; m->tok_eoi = EG2E_TOK_EOI; m->tok_image = EG2E_TOK_IMAGE;
+	const cats_st_tensor *sp = cats_st_find(&m->st, "eg2.special");	// pruned vocabulary: new ids of <|image>, <image|>, <|image|>
+	if (sp) {
+		float v[3];
+		if (cats_st_numel(sp) != 3 || cats_st_read_f32(&m->st, sp, v)) goto fail;
+		m->tok_boi = (int)v[0]; m->tok_eoi = (int)v[1]; m->tok_image = (int)v[2];
+	}
 	m->embed_tokens = cats_st_find(&m->st, "language_model.embed_tokens.weight");
 	if (!m->embed_tokens || m->embed_tokens->ndim != 2 || m->embed_tokens->shape[1] != 512) goto fail;
 	if (with_vision) {
 		for (int i = 0; i < EG2E_VIS_LAYERS; i++) if (eg2e_load_vision_layer(m, i)) goto fail;
 		if (eg2e_getmat(m, "vision_tower.patch_embedder.input_proj.weight", 0, 768 * 768, &m->patch_w)) goto fail;
-		if (!(m->pos_table = eg2e_get(m, "vision_tower.patch_embedder.position_embedding_table", 0,
-					      2LL * EG2E_POS_TABLE * 768))) goto fail;
+		const cats_st_tensor *pt = cats_st_find(&m->st, "vision_tower.patch_embedder.position_embedding_table");
+		if (!pt || pt->ndim != 3 || pt->shape[0] != 2 || pt->shape[2] != 768 || pt->shape[1] < 1) goto fail;
+		m->pos_rows = (int)pt->shape[1];
+		if (!(m->pos_table = eg2e_get(m, "vision_tower.patch_embedder.position_embedding_table", 0, 2LL * m->pos_rows * 768))) goto fail;
 		if (eg2e_getmat(m, "embed_vision.embedding_projection.weight", 0, 512 * 768, &m->embed_vision)) goto fail;
 		m->has_vision = 1;
 	}
 	rc = 0;
 fail:
-	if (rc) { fprintf(stderr, "eg2e: incomplete model in %s\n", dir); eg2e_free(m); }
+	if (rc) { fprintf(stderr, "eg2e: incomplete model in %s\n", what); eg2e_free(m); }
 	return rc;
+}
+static int eg2e_load(eg2e_model *m, const char *dir, int with_vision)
+{
+	memset(m, 0, sizeof(*m));
+	char path[1024];
+	snprintf(path, sizeof(path), "%s/model.safetensors", dir);
+	if (cats_st_open(&m->st, path)) { fprintf(stderr, "eg2e: cannot open %s\n", path); return -1; }
+	return eg2e_load_tensors(m, dir, with_vision);
+}
+// The same from a safetensors image already in memory (the caller keeps buf alive until eg2e_free).
+static int eg2e_load_mem(eg2e_model *m, const void *buf, size_t size, int with_vision)
+{
+	memset(m, 0, sizeof(*m));
+	if (cats_st_open_mem(&m->st, buf, size)) { fprintf(stderr, "eg2e: bad model image\n"); return -1; }
+	return eg2e_load_tensors(m, "memory", with_vision);
 }
 
 // ---- shared pieces -------------------------------------------------------------------------
@@ -365,7 +387,7 @@ static int eg2e_embed_ids(const eg2e_model *m, const int *ids, size_t t, const f
 	size_t s = 0;
 	for (size_t i = 0; i < t; i++) {
 		float *dst = out + i * EG2E_TEXT_DIM;
-		if (soft && ids[i] == EG2E_TOK_IMAGE) {	// soft tokens are inserted as they are (no scaling)
+		if (soft && ids[i] == m->tok_image) {	// soft tokens are inserted as they are (no scaling)
 			memcpy(dst, soft + s++ * EG2E_TEXT_DIM, EG2E_TEXT_DIM * sizeof(float));
 			continue;
 		}
@@ -401,8 +423,9 @@ static int eg2e_vision(const eg2e_model *m, const float *pix, int gw, int gh, fl
 	for (size_t i = 0; i < P * D; i++) in[i] = 2.0f * (pix[i] - 0.5f);
 	eg2e_mm(x, in, &m->patch_w, P, D, D);
 	for (size_t p = 0; p < P; p++) {			// + x-embedding + y-embedding
-		const float *ex = m->pos_table + (size_t)(p % gw) * D;
-		const float *ey = m->pos_table + ((size_t)EG2E_POS_TABLE + p / gw) * D;
+		size_t cx = p % gw, cy = p / gw, last = (size_t)m->pos_rows - 1;	// coordinates past a pruned table reuse its last row
+		const float *ex = m->pos_table + (cx < last ? cx : last) * D;
+		const float *ey = m->pos_table + ((size_t)m->pos_rows + (cy < last ? cy : last)) * D;
 		for (unsigned j = 0; j < D; j++) x[p * D + j] += ex[j] + ey[j];
 	}
 	// axial 2-D RoPE: head dim 64 = [x block (32) | y block (32)], inverse frequencies 100^(-2j/32)
@@ -521,9 +544,9 @@ static int eg2e_embed_image(const eg2e_model *m, const unsigned char *rgb, int w
 			int *ids = (int*)malloc(t * sizeof(int));
 			float *emb = (float*)malloc(t * EG2E_TEXT_DIM * sizeof(float));
 			if (ids && emb) {
-				ids[0] = EG2E_TOK_BOS; ids[1] = EG2E_TOK_BOI;
-				for (int i = 0; i < n; i++) ids[2 + i] = EG2E_TOK_IMAGE;
-				ids[n + 2] = EG2E_TOK_EOI; ids[n + 3] = EG2E_TOK_EOS;
+				ids[0] = EG2E_TOK_BOS; ids[1] = m->tok_boi;
+				for (int i = 0; i < n; i++) ids[2 + i] = m->tok_image;
+				ids[n + 2] = m->tok_eoi; ids[n + 3] = EG2E_TOK_EOS;
 				if (!eg2e_embed_ids(m, ids, t, soft, emb)) rc = eg2e_backbone(m, emb, t, out768, NULL);
 			}
 			free(ids); free(emb);
