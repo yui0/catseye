@@ -9,6 +9,7 @@ Neural network library and applications in C.
 | `catseye.h` | Shared neural-network library |
 | `catseye_llm.h` | Shared GGUF/LLM inference runtime |
 | [`transcript/`](transcript/README.md) | Speech transcription CLI, speech/ONNX headers, model tools, Colab notebooks, fixtures and tests |
+| [`plamo/`](plamo/README.md) | PLaMo 3 Translate translation CLI (0.8B, Q4/Q8 quantization) |
 | [`llm/`](llm/README.md) | Original LLM examples and GPU implementation |
 | `example/`, `super_resolution/`, `word2vec/` | Neural-network examples |
 | `tools/` | General library tools |

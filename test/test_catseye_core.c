@@ -238,6 +238,116 @@ static void test_safetensors(void)
 	remove(path);
 }
 
+static void test_q8_0_weights(void)
+{
+	// Q8_0 rows round-trip closely, the dispatching GEMM agrees with the float one, and safetensors carries the dtype
+	enum { IN = 64, OUT = 5 };
+	float w[OUT*IN], x[2*IN], ref[2*OUT], got[2*OUT];
+	for (int i = 0; i < OUT*IN; i++) w[i] = sinf(i * 0.37f) * (1 + (i % 7));
+	for (int i = 0; i < 2*IN; i++) x[i] = cosf(i * 0.21f);
+	uint8_t q[OUT * 2 * 34];
+	for (int r = 0; r < OUT; r++) cats_q8_0w_quantize_row(w + r*IN, IN, q + r * cats_q8_0w_row_bytes(IN));
+	float back[IN];
+	cats_q8_0w_dequantize_row(q + 2 * cats_q8_0w_row_bytes(IN), IN, back);
+	for (int i = 0; i < IN; i++) CHECK(fabsf(back[i] - w[2*IN + i]) < 0.04f);
+	cats_gemm_nt_cpu(ref, x, w, 2, IN, OUT, NULL);
+	cats_gemm_nt_q8_0(got, x, q, 2, IN, OUT, NULL);
+	for (int i = 0; i < 2*OUT; i++) CHECK(fabsf(ref[i] - got[i]) < 0.03f * fabsf(ref[i]) + 0.3f);	// activations are int8 too
+
+	const char *path = "/tmp/catseye_test_q8.safetensors";
+	cats_st_entry e = { "w", "Q8_0", 2, {OUT, IN}, q, sizeof(q) };
+	CHECK(cats_st_write(path, &e, 1, "pt") == 0);
+	cats_st s;
+	CHECK(cats_st_open(&s, path) == 0);
+	const cats_st_tensor *t = cats_st_find(&s, "w");
+	CHECK(t && t->dtype == CATS_ST_Q8_0);
+	float all[OUT*IN];
+	CHECK(t && cats_st_read_f32(&s, t, all) == 0 && fabsf(all[OUT*IN - 1] - w[OUT*IN - 1]) < 0.05f);
+	float got2[2*OUT];
+	CHECK(cats_st_gemm_nt(got2, x, &s, t, 2, NULL) == 0);
+	for (int i = 0; i < 2*OUT; i++) CHECK(fabsf(got2[i] - got[i]) < 1e-4f);
+	cats_st_close(&s);
+	remove(path);
+}
+
+static void test_decoder_primitives(void)
+{
+	// offset RMSNorm with offset 0 equals the plain one
+	float x[8] = {1, -2, 3, -4, 5, -6, 7, -8}, w[8], a[8], b[8];
+	for (int i = 0; i < 8; i++) w[i] = 0.5f + i * 0.1f;
+	cats_rmsnorm_offset(a, x, w, 0.0f, 8, 1e-6f);
+	cats_rmsnorm(b, x, w, 8);
+	for (int i = 0; i < 8; i++) CHECK(fabsf(a[i] - b[i]) < 1e-5f);
+	cats_rmsnorm_offset(a, x, w, 1.0f, 8, 1e-6f);
+	for (int i = 0; i < 8; i++) CHECK(fabsf(a[i] - b[i] - x[i] / sqrtf(25.5f)) < 1e-5f);
+
+	// YaRN: factor 1 is plain RoPE; with a factor the fastest rotation keeps its frequency and the slowest is divided
+	float inv1[64], inv2[64], plain[64];
+	CHECK(cats_rope_inv_freq_yarn(inv1, 128, 1e6f, 1.0f, 4096, 32, 1) == 1.0f);
+	for (int j = 0; j < 64; j++) plain[j] = powf(1e6f, -2.0f * j / 128);
+	for (int j = 0; j < 64; j++) CHECK(fabsf(inv1[j] / plain[j] - 1) < 1e-5f);
+	float conc = cats_rope_inv_freq_yarn(inv2, 128, 1e6f, 256.0f, 4096, 32, 1);
+	CHECK(fabsf(conc - (0.1f * logf(256.0f) + 1)) < 1e-5f);
+	CHECK(fabsf(inv2[0] - 1.0f) < 1e-6f);
+	CHECK(fabsf(inv2[63] / (plain[63] / 256.0f) - 1) < 1e-4f);
+
+	// cached causal attention equals the full bidirectional kernel on the last token when the window covers
+	// everything, and drops old positions when it does not
+	enum { T = 9, NQ = 4, NKV = 2, HD = 8 };
+	float q[T*NQ*HD], k[T*NKV*HD], v[T*NKV*HD], out[NQ*HD], sc[NQ*T];
+	for (int i = 0; i < T*NQ*HD; i++) q[i] = sinf(i * 0.3f);
+	for (int i = 0; i < T*NKV*HD; i++) { k[i] = cosf(i * 0.17f); v[i] = sinf(i * 0.11f + 1); }
+	cats_attention_cached(out, q + (T-1)*NQ*HD, k, v, T-1, NQ, NKV, HD, 0.35f, 0, sc);
+	float qm[T*NQ*HD] = {0}, ref[T*NQ*HD];
+	memcpy(qm + (T-1)*NQ*HD, q + (T-1)*NQ*HD, sizeof(float)*NQ*HD);
+	// the bidirectional kernel sees all T keys, so for the last query it is the same softmax over positions 0..T-1
+	CHECK(cats_attention_bidir(ref, qm, k, v, T, NQ, NKV, HD, 0.35f, 0) == 0);
+	for (int i = 0; i < NQ*HD; i++) CHECK(fabsf(out[i] - ref[(T-1)*NQ*HD + i]) < 1e-4f);
+	float outw[NQ*HD];
+	cats_attention_cached(outw, q + (T-1)*NQ*HD, k, v, T-1, NQ, NKV, HD, 0.35f, 1, sc);	// window 1: only itself
+	for (int h = 0; h < NQ; h++) for (int d = 0; d < HD; d++) CHECK(fabsf(outw[h*HD + d] - v[(T-1)*NKV*HD + (h/2)*HD + d]) < 1e-5f);
+}
+
+static void test_unigram(void)
+{
+	const char *path = "/tmp/catseye_test_unigram.jsonl";
+	FILE *f = fopen(path, "w");
+	fputs("[\"<unk>\", 0.0, \"UNKNOWN\"]\n[\"<|s|>\", 0.0, \"CONTROL\"]\n", f);
+	for (int b = 0; b < 256; b++) fprintf(f, "[\"<0x%02X>\", 0.0, \"BYTE\"]\n", b);
+	fputs("[\"a\", -3.0, \"NORMAL\"]\n[\"b\", -3.0, \"NORMAL\"]\n[\"ab\", -5.0, \"NORMAL\"]\n[\"abb\", -9.5, \"NORMAL\"]\n"
+	      "[\" \", -2.0, \"NORMAL\"]\n[\"\\u3042\", -4.0, \"NORMAL\"]\n[\"\\ud83d\\ude00\", -4.0, \"NORMAL\"]\n[\"aa\", -6.0, \"NORMAL\"]\n", f);
+	fclose(f);
+	cats_unigram u;
+	CHECK(cats_unigram_load(&u, path) == 0 && u.n == 2 + 256 + 8);
+	int ids[64];
+	int ab = cats_unigram_lookup(&u, "ab", 2), a = cats_unigram_lookup(&u, "a", 1), b = cats_unigram_lookup(&u, "b", 1);
+	int abb = cats_unigram_lookup(&u, "abb", 3);
+	CHECK(ab > 0 && a > 0 && b > 0 && abb > 0);
+	// "ab" (-5) beats "a"+"b" (-6); "abb": "ab"+"b" (-8) beats "abb" (-9.5) and "a"+"b"+"b" (-9)
+	CHECK(cats_unigram_encode(&u, "ab", 0, ids, 64) == 1 && ids[0] == ab);
+	CHECK(cats_unigram_encode(&u, "abb", 0, ids, 64) == 2 && ids[0] == ab && ids[1] == b);
+	// control tokens are only recognised on request; unknown characters fall back to UTF-8 bytes
+	CHECK(cats_unigram_encode(&u, "a<|s|>b", 1, ids, 64) == 3 && ids[0] == a && u.type[ids[1]] == 1 && ids[2] == b);
+	int n = cats_unigram_encode(&u, "a\xe3\x81\x82\xe3\x81\x84", 0, ids, 64);	// a, U+3042, U+3044 (no piece: 3 bytes)
+	CHECK(n == 5 && ids[1] == cats_unigram_lookup(&u, "\xe3\x81\x82", 3) && ids[2] == u.byte_id[0xe3] && ids[4] == u.byte_id[0x84]);
+	CHECK(cats_unigram_encode(&u, "\xf0\x9f\x98\x80", 0, ids, 64) == 1);	// surrogate pair in the vocabulary file
+	// a run of 2+ spaces is cut out of the segmentation: "a  b" -> a, " "," ", b (not merged with neighbours)
+	u.break_spaces = 2;
+	n = cats_unigram_encode(&u, "ab  ab", 0, ids, 64);
+	CHECK(n == 4 && ids[0] == ab && ids[1] == cats_unigram_lookup(&u, " ", 1) && ids[3] == ab);
+	u.break_spaces = 0;
+	u.break_repeat = 3;
+	n = cats_unigram_encode(&u, "aaaaa", 0, ids, 64);	// a run of 5 is its own segment: aa aa a
+	CHECK(n == 3 && ids[0] == cats_unigram_lookup(&u, "aa", 2) && ids[2] == a);
+	// decoding
+	char piece[16];
+	CHECK(cats_unigram_piece(&u, ab, piece, sizeof(piece)) == 2 && !strcmp(piece, "ab"));
+	CHECK(cats_unigram_piece(&u, u.byte_id[0xe3], piece, sizeof(piece)) == 1 && (uint8_t)piece[0] == 0xe3);
+	CHECK(cats_unigram_piece(&u, 1, piece, sizeof(piece)) == 0);
+	cats_unigram_free(&u);
+	remove(path);
+}
+
 int main(void)
 {
 	xoroshiro128plus_init(1);
@@ -249,6 +359,9 @@ int main(void)
 	test_half_and_q4();
 	test_gemm_softmax();
 	test_safetensors();
+	test_q8_0_weights();
+	test_decoder_primitives();
+	test_unigram();
 	printf(g_fail ? "FAILED: %d\n" : "all core tests passed\n", g_fail);
 	return g_fail != 0;
 }

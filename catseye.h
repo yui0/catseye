@@ -3481,6 +3481,54 @@ static inline void cats_gemm_nt_q4_0(float *c, const float *x, const uint8_t *w,
 	(free)(xq);
 }
 
+// Quantizes n floats (n % 32 == 0) to Q8_0 weight blocks (fp16 scale + 32 int8, 34 bytes per block).
+static inline void cats_q8_0w_quantize_row(const float *x, size_t n, uint8_t *out)
+{
+	for (size_t b = 0; b < n / CATS_Q4_0_BLOCK; b++, x += CATS_Q4_0_BLOCK, out += CATS_Q8_0W_BYTES) {
+		float amax = 0;
+		for (int j = 0; j < CATS_Q4_0_BLOCK; j++) if (fabsf(x[j]) > amax) amax = fabsf(x[j]);
+		uint16_t dh = cats_float_to_half(amax / 127.0f);
+		float dq = cats_half_to_float(dh), id = dq ? 1.0f / dq : 0.0f;
+		out[0] = (uint8_t)(dh & 0xff); out[1] = (uint8_t)(dh >> 8);
+		for (int j = 0; j < CATS_Q4_0_BLOCK; j++) {
+			int q = (int)lrintf(x[j] * id);
+			out[2 + j] = (uint8_t)(int8_t)(q < -127 ? -127 : q > 127 ? 127 : q);
+		}
+	}
+}
+// C[n][out] = X[n][in] . W^T (+ bias) with W stored as Q8_0 rows (same strategy as cats_gemm_nt_q4_0).
+static inline void cats_gemm_nt_q8_0(float *c, const float *x, const uint8_t *w, size_t n, size_t in, size_t out,
+				     const float *bias)
+{
+	if (!n || !in || !out || in % CATS_Q4_0_BLOCK) return;
+	const size_t arow = cats_q8_0_row_bytes(in), wrow = cats_q8_0w_row_bytes(in);
+	if (n >= CATS_Q4_0_DEQUANT_MIN) {
+		static float *scratch;
+		static size_t cap;
+		if (cap < in * out) {
+			(free)(scratch);
+			scratch = (float*)(malloc)(in * out * sizeof(float));
+			cap = scratch ? in * out : 0;
+			if (!scratch) return;
+		}
+		#pragma omp parallel for schedule(static)
+		for (long r = 0; r < (long)out; r++) cats_q8_0w_dequantize_row(w + (size_t)r * wrow, in, scratch + (size_t)r * in);
+		cats_gemm_nt(c, x, scratch, n, in, out, bias);
+		return;
+	}
+	int8_t *xq = (int8_t*)(malloc)(n * arow);
+	if (!xq) return;
+	#pragma omp parallel for schedule(static)
+	for (long t = 0; t < (long)n; t++) cats_q8_0_quantize(xq + (size_t)t * arow, x + (size_t)t * in, (int)in);
+	#pragma omp parallel for schedule(static)
+	for (long r = 0; r < (long)out; r++) {
+		const uint8_t *wr = w + (size_t)r * wrow;
+		const float b = bias ? bias[r] : 0.0f;
+		for (size_t t = 0; t < n; t++) c[t * out + r] = cats_dot_q8_0w_q8_0(wr, xq + t * arow, (int)in) + b;
+	}
+	(free)(xq);
+}
+
 #if !defined(_WIN32)
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -3491,6 +3539,7 @@ static inline void cats_gemm_nt_q4_0(float *c, const float *x, const uint8_t *w,
 #define CATS_ST_F16	1
 #define CATS_ST_BF16	2
 #define CATS_ST_Q4_0	3		// shape = logical [rows, cols]; rows are cats_q4_0 encoded
+#define CATS_ST_Q8_0	4		// shape = logical [rows, cols]; rows are cats_q8_0w encoded (GGUF Q8_0 blocks)
 typedef struct {
 	char name[192];
 	int dtype;			// CATS_ST_*, -1 = unsupported
@@ -3557,7 +3606,8 @@ static inline int cats_st_parse(cats_st *s, const char *j, size_t n)
 				if (!d) return -1;
 				d++;
 				t->dtype = !strncmp(d, "F32", 3) ? CATS_ST_F32 : !strncmp(d, "BF16", 4) ? CATS_ST_BF16 :
-					   !strncmp(d, "F16", 3) ? CATS_ST_F16 : !strncmp(d, "Q4_0", 4) ? CATS_ST_Q4_0 : -1;
+					   !strncmp(d, "F16", 3) ? CATS_ST_F16 : !strncmp(d, "Q4_0", 4) ? CATS_ST_Q4_0 :
+					   !strncmp(d, "Q8_0", 4) ? CATS_ST_Q8_0 : -1;
 			} else if (!strncmp(j + p, "\"shape\"", 7)) {
 				const char *d = (const char*)memchr(j + p + 7, '[', i - (p + 7));
 				if (!d) return -1;
@@ -3620,7 +3670,8 @@ static inline int64_t cats_st_numel(const cats_st_tensor *t)
 // Bytes a tensor of this dtype and element count occupies
 static inline uint64_t cats_st_bytes(int dtype, int64_t n)
 {
-	return dtype == CATS_ST_F32 ? (uint64_t)n * 4 : dtype == CATS_ST_Q4_0 ? cats_q4_0_row_bytes((size_t)n) : (uint64_t)n * 2;
+	return dtype == CATS_ST_F32 ? (uint64_t)n * 4 : dtype == CATS_ST_Q4_0 ? cats_q4_0_row_bytes((size_t)n) :
+	       dtype == CATS_ST_Q8_0 ? cats_q8_0w_row_bytes((size_t)n) : (uint64_t)n * 2;
 }
 // Pointer to the tensor's bytes inside the mapping (valid until cats_st_close)
 static inline const uint8_t* cats_st_raw(const cats_st *s, const cats_st_tensor *t) { return s->data + t->begin; }
@@ -3630,10 +3681,14 @@ static inline int cats_st_read_f32(const cats_st *s, const cats_st_tensor *t, fl
 	int64_t n = cats_st_numel(t);
 	const uint8_t *p = s->data + t->begin;
 	if (t->dtype < 0 || cats_st_bytes(t->dtype, n) != t->end - t->begin) return -1;
-	if (t->dtype == CATS_ST_Q4_0) {
+	if (t->dtype == CATS_ST_Q4_0 || t->dtype == CATS_ST_Q8_0) {
 		if (t->ndim != 2 || t->shape[1] % CATS_Q4_0_BLOCK) return -1;
-		for (int64_t r = 0; r < t->shape[0]; r++)
-			cats_q4_0_dequantize_row(p + (size_t)r * cats_q4_0_row_bytes((size_t)t->shape[1]), (size_t)t->shape[1], dst + r * t->shape[1]);
+		const int q8 = t->dtype == CATS_ST_Q8_0;
+		const size_t rb = q8 ? cats_q8_0w_row_bytes((size_t)t->shape[1]) : cats_q4_0_row_bytes((size_t)t->shape[1]);
+		for (int64_t r = 0; r < t->shape[0]; r++) {
+			if (q8) cats_q8_0w_dequantize_row(p + (size_t)r * rb, (size_t)t->shape[1], dst + r * t->shape[1]);
+			else cats_q4_0_dequantize_row(p + (size_t)r * rb, (size_t)t->shape[1], dst + r * t->shape[1]);
+		}
 		return 0;
 	}
 	if (t->dtype == CATS_ST_F32) memcpy(dst, p, (size_t)n * 4);
@@ -3652,9 +3707,10 @@ static inline int cats_st_read_row_f32(const cats_st *s, const cats_st_tensor *t
 {
 	if (t->ndim != 2 || row < 0 || row >= t->shape[0] || t->dtype < 0) return -1;
 	int64_t w = t->shape[1];
-	if (t->dtype == CATS_ST_Q4_0) {
+	if (t->dtype == CATS_ST_Q4_0 || t->dtype == CATS_ST_Q8_0) {
 		if (w % CATS_Q4_0_BLOCK) return -1;
-		cats_q4_0_dequantize_row(s->data + t->begin + (size_t)row * cats_q4_0_row_bytes((size_t)w), (size_t)w, dst);
+		if (t->dtype == CATS_ST_Q8_0) cats_q8_0w_dequantize_row(s->data + t->begin + (size_t)row * cats_q8_0w_row_bytes((size_t)w), (size_t)w, dst);
+		else cats_q4_0_dequantize_row(s->data + t->begin + (size_t)row * cats_q4_0_row_bytes((size_t)w), (size_t)w, dst);
 		return 0;
 	}
 	const uint8_t *p = s->data + t->begin + (size_t)row * w * (t->dtype == CATS_ST_F32 ? 4 : 2);
@@ -3666,10 +3722,47 @@ static inline int cats_st_read_row_f32(const cats_st *s, const cats_st_tensor *t
 	return 0;
 }
 
+// C[n][out] = X[n][in] . W^T (+ bias) for a 2-D tensor of any supported dtype (F32, F16, BF16, Q4_0, Q8_0),
+// used straight from the mapping. Quantized types keep 4 / 8-bit weights in memory for 1..3 tokens (see
+// cats_gemm_nt_q4_0); 16 / 32-bit types are widened row by row (n < 4) or once into a scratch matrix (not
+// thread-safe). Returns 0, or -1 for an unsupported tensor.
+static inline int cats_st_gemm_nt(float *c, const float *x, const cats_st *s, const cats_st_tensor *t, size_t n, const float *bias)
+{
+	if (!t || t->ndim != 2 || t->dtype < 0) return -1;
+	const size_t out = (size_t)t->shape[0], in = (size_t)t->shape[1];
+	const uint8_t *w = cats_st_raw(s, t);
+	if (t->dtype == CATS_ST_Q4_0) { if (in % CATS_Q4_0_BLOCK) return -1; cats_gemm_nt_q4_0(c, x, w, n, in, out, bias); return 0; }
+	if (t->dtype == CATS_ST_Q8_0) { if (in % CATS_Q4_0_BLOCK) return -1; cats_gemm_nt_q8_0(c, x, w, n, in, out, bias); return 0; }
+	if (n >= CATS_Q4_0_DEQUANT_MIN) {
+		static float *scratch;
+		static size_t cap;
+		if (cap < in * out) {
+			(free)(scratch);
+			scratch = (float*)(malloc)(in * out * sizeof(float));
+			cap = scratch ? in * out : 0;
+			if (!scratch) return -1;
+		}
+		if (cats_st_read_f32(s, t, scratch)) return -1;
+		cats_gemm_nt(c, x, scratch, n, in, out, bias);
+		return 0;
+	}
+	#pragma omp parallel
+	{
+		float *row = (float*)(malloc)(in * sizeof(float));
+		#pragma omp for schedule(static)
+		for (long r = 0; r < (long)out; r++) {
+			if (!row || cats_st_read_row_f32(s, t, r, row)) continue;
+			for (size_t i = 0; i < n; i++) c[i * out + r] = cats_dot_f32(x + i * in, row, in) + (bias ? bias[r] : 0.0f);
+		}
+		(free)(row);
+	}
+	return 0;
+}
+
 // Writes a safetensors file. Each entry points at its bytes (data), which are copied in order.
 typedef struct {
 	const char *name;
-	const char *dtype;		// "F32", "F16", "BF16" or "Q4_0"
+	const char *dtype;		// "F32", "F16", "BF16", "Q4_0" or "Q8_0"
 	int ndim;
 	int64_t shape[4];
 	const void *data;
@@ -3797,6 +3890,337 @@ static inline int cats_attention_bidir(float *out, const float *q, const float *
 	}
 	(free)(qp); (free)(kp); (free)(vt);
 	return fail ? -1 : 0;
+}
+
+// ---------------------------------------------------------------------------
+// Decoder-LM primitives shared by the single-token (KV cache) inference programs
+// ---------------------------------------------------------------------------
+// RMSNorm whose learned scale is stored as a delta: dst = src / rms(src) * (offset + weight)
+// (PLaMo 2/3, Gemma use offset 1.0 or a smaller constant; offset 0 equals cats_rmsnorm with the given eps).
+static inline void cats_rmsnorm_offset(float *dst, const float *src, const float *weight, float offset, unsigned d, float eps)
+{
+	double sum = 0;
+	for (unsigned i = 0; i < d; i++) sum += (double)src[i] * src[i];
+	float scale = 1.0f / sqrtf((float)(sum / d) + eps);
+	for (unsigned i = 0; i < d; i++) dst[i] = src[i] * scale * (offset + weight[i]);
+}
+// Inverse frequencies of RoPE with YaRN scaling (inv[dim/2]); returns the attention concentration that
+// multiplies both cos and sin (0.1 ln(factor) + 1). factor <= 1 gives plain RoPE and a return value of 1.
+//   orig_len: pretraining context length, beta_fast / beta_slow: rotation counts bounding the blend ramp.
+static inline float cats_rope_inv_freq_yarn(float *inv, unsigned dim, float theta, float factor,
+					    float orig_len, float beta_fast, float beta_slow)
+{
+	const unsigned h = dim / 2;
+	const double two_pi = 6.283185307179586;
+	double low = 0, high = 1;
+	if (factor > 1.0f) {
+		low  = h * log((double)orig_len / ((double)beta_fast * two_pi)) / log((double)theta);
+		high = h * log((double)orig_len / ((double)beta_slow * two_pi)) / log((double)theta);
+	}
+	for (unsigned j = 0; j < h; j++) {
+		double freq = pow((double)theta, 2.0 * j / dim), ex = 1.0 / freq;
+		if (factor <= 1.0f) { inv[j] = (float)ex; continue; }
+		double ramp = (j - low) / (high - low), m = 1.0 - (ramp < 0 ? 0 : ramp > 1 ? 1 : ramp);
+		inv[j] = (float)((1.0 / (factor * freq)) * (1.0 - m) + ex * m);
+	}
+	return factor > 1.0f ? 0.1f * logf(factor) + 1.0f : 1.0f;
+}
+// cos / sin [dim] (rotate_half layout, usable with cats_rope_block) of one position from inverse frequencies
+static inline void cats_rope_pos_table(float *cs, float *sn, size_t pos, const float *inv, float concentration, unsigned dim)
+{
+	const unsigned h = dim / 2;
+	for (unsigned j = 0; j < h; j++) {
+		double a = (double)pos * inv[j];
+		cs[j] = cs[j + h] = (float)(cos(a) * concentration);
+		sn[j] = sn[j + h] = (float)(sin(a) * concentration);
+	}
+}
+// Causal attention of ONE query token (position pos) over cached keys / values of positions 0..pos with
+// grouped K/V heads. q [nq*hd]; kc, vc [positions][nkv*hd]; out [nq*hd]; scratch needs nq*(pos+1) floats.
+// window > 0 keeps only the last `window` positions (sliding window, the query included); 0 = full.
+static inline void cats_attention_cached(float *out, const float *q, const float *kc, const float *vc, size_t pos,
+					 unsigned nq, unsigned nkv, unsigned hd, float scale, size_t window, float *scratch)
+{
+	const size_t lo = window && pos + 1 > window ? pos + 1 - window : 0, ks = (size_t)nkv * hd, n = pos + 1;
+	const unsigned group = nq / nkv;
+	#pragma omp parallel for schedule(static) if(nq > 1 && n > 256)
+	for (long h = 0; h < (long)nq; h++) {
+		const float *qh = q + (size_t)h * hd, *kg = kc + (size_t)(h / group) * hd, *vg = vc + (size_t)(h / group) * hd;
+		float *sc = scratch + (size_t)h * n, *o = out + (size_t)h * hd;
+		for (size_t t = lo; t < n; t++) sc[t] = cats_dot_f32(qh, kg + t * ks, hd);
+		cats_softmax_scaled(sc, n, lo, n, scale);
+		for (unsigned d = 0; d < hd; d++) o[d] = 0;
+		for (size_t t = lo; t < n; t++) {
+			const float p = sc[t];
+			const float *v = vg + t * ks;
+			for (unsigned d = 0; d < hd; d++) o[d] += p * v[d];
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Unigram-LM tokenizer (SentencePiece-style Viterbi search over a scored vocabulary, byte fallback).
+// Vocabulary file: one JSON array per line, ["piece", score, "NORMAL|BYTE|CONTROL|UNKNOWN|..."]; a BYTE piece is
+// "<0xXX>". The best segmentation maximises the summed scores (scores are rounded to 1e-4, ties go to the longest
+// piece); characters without a piece become their UTF-8 bytes. CONTROL pieces that appear verbatim in the text
+// (e.g. <|plamo:tag|>) are emitted as single tokens and split the text there (parse_special).
+// ---------------------------------------------------------------------------
+typedef struct {
+	int n;			// vocabulary size
+	char **piece;		// UTF-8 bytes of each piece (NUL terminated, may hold embedded NULs: see plen)
+	int *plen;
+	int64_t *score;		// score * 1e4, rounded
+	uint8_t *type;		// 0 NORMAL, 1 CONTROL, 2 BYTE, 3 UNKNOWN / other
+	int byte_id[256];	// id of "<0xXX>" or -1
+	int *table;		// open-addressing hash: piece bytes -> id + 1
+	size_t tcap;
+	int maxcp;		// longest piece in code points
+	int *ctrl;		// ids of CONTROL pieces (special-token scan)
+	int nctrl;
+	int break_spaces;	// >0: a run of at least this many spaces is segmented on its own (0 = off)
+	int break_repeat;	// >0: a run of at least this many equal characters (not "\n") is segmented on its own
+} cats_unigram;
+
+static inline uint32_t cats_unigram_hash(const char *s, int n)
+{
+	uint32_t h = 2166136261u;
+	for (int i = 0; i < n; i++) h = (h ^ (uint8_t)s[i]) * 16777619u;
+	return h;
+}
+static inline int cats_unigram_lookup(const cats_unigram *u, const char *s, int n)
+{
+	size_t i = cats_unigram_hash(s, n) & (u->tcap - 1);
+	while (u->table[i]) {
+		int id = u->table[i] - 1;
+		if (u->plen[id] == n && !memcmp(u->piece[id], s, (size_t)n)) return id;
+		i = (i + 1) & (u->tcap - 1);
+	}
+	return -1;
+}
+static inline int cats_utf8_len(unsigned char c)
+{
+	return c < 0x80 ? 1 : (c >> 5) == 6 ? 2 : (c >> 4) == 14 ? 3 : (c >> 3) == 30 ? 4 : 1;
+}
+static inline int cats_utf8_put(char *o, unsigned c)
+{
+	if (c < 0x80) { o[0] = (char)c; return 1; }
+	if (c < 0x800) { o[0] = (char)(0xC0 | (c >> 6)); o[1] = (char)(0x80 | (c & 63)); return 2; }
+	if (c < 0x10000) { o[0] = (char)(0xE0 | (c >> 12)); o[1] = (char)(0x80 | ((c >> 6) & 63)); o[2] = (char)(0x80 | (c & 63)); return 3; }
+	o[0] = (char)(0xF0 | (c >> 18)); o[1] = (char)(0x80 | ((c >> 12) & 63)); o[2] = (char)(0x80 | ((c >> 6) & 63)); o[3] = (char)(0x80 | (c & 63));
+	return 4;
+}
+static inline void cats_unigram_free(cats_unigram *u)
+{
+	for (int i = 0; i < u->n; i++) (free)(u->piece[i]);
+	(free)(u->piece); (free)(u->plen); (free)(u->score); (free)(u->type); (free)(u->table); (free)(u->ctrl);
+	memset(u, 0, sizeof(*u));
+}
+// Parses one line ["piece", score, "TYPE"]; returns 0 on success.
+static inline int cats_unigram_parse_line(const char *l, char *piece, int *plen, double *score, char *type, size_t tcap)
+{
+	const char *p = strchr(l, '"');
+	if (!p) return -1;
+	p++;
+	int n = 0;
+	while (*p && *p != '"') {
+		if (*p != '\\') { piece[n++] = *p++; continue; }
+		p++;
+		switch (*p) {
+		case 'n': piece[n++] = '\n'; p++; break;
+		case 't': piece[n++] = '\t'; p++; break;
+		case 'r': piece[n++] = '\r'; p++; break;
+		case 'b': piece[n++] = '\b'; p++; break;
+		case 'f': piece[n++] = '\f'; p++; break;
+		case 'u': {
+			unsigned c = (unsigned)strtoul((char[5]){p[1], p[2], p[3], p[4], 0}, NULL, 16);
+			p += 5;
+			if (c >= 0xD800 && c < 0xDC00 && p[0] == '\\' && p[1] == 'u') {	// surrogate pair
+				unsigned lo = (unsigned)strtoul((char[5]){p[2], p[3], p[4], p[5], 0}, NULL, 16);
+				c = 0x10000 + ((c - 0xD800) << 10) + (lo - 0xDC00);
+				p += 6;
+			}
+			n += cats_utf8_put(piece + n, c);
+			break;
+		}
+		default: piece[n++] = *p++;	// \" \\ \/
+		}
+	}
+	if (*p != '"') return -1;
+	piece[n] = 0;
+	*plen = n;
+	p++;
+	while (*p == ',' || *p == ' ') p++;
+	*score = strtod(p, (char**)&p);
+	type[0] = 0;
+	const char *q = strchr(p, '"');
+	if (q) {
+		q++;
+		size_t k = 0;
+		while (q[k] && q[k] != '"' && k + 1 < tcap) { type[k] = q[k]; k++; }
+		type[k] = 0;
+	}
+	return 0;
+}
+static inline int cats_unigram_load(cats_unigram *u, const char *path)
+{
+	memset(u, 0, sizeof(*u));
+	FILE *f = fopen(path, "rb");
+	if (!f) return -1;
+	size_t cap = 1024, lcap = 1 << 16;
+	char *line = (char*)(malloc)(lcap), *piece = (char*)(malloc)(lcap);
+	u->piece = (char**)(malloc)(cap * sizeof(char*));
+	u->plen = (int*)(malloc)(cap * sizeof(int));
+	u->score = (int64_t*)(malloc)(cap * sizeof(int64_t));
+	u->type = (uint8_t*)(malloc)(cap);
+	if (!line || !piece || !u->piece || !u->plen || !u->score || !u->type) { fclose(f); return -1; }
+	for (int i = 0; i < 256; i++) u->byte_id[i] = -1;
+	while (fgets(line, (int)lcap, f)) {
+		int pl; double sc; char ty[32];
+		if (cats_unigram_parse_line(line, piece, &pl, &sc, ty, sizeof(ty))) continue;
+		if ((size_t)u->n == cap) {
+			cap *= 2;
+			u->piece = (char**)(realloc)(u->piece, cap * sizeof(char*));
+			u->plen = (int*)(realloc)(u->plen, cap * sizeof(int));
+			u->score = (int64_t*)(realloc)(u->score, cap * sizeof(int64_t));
+			u->type = (uint8_t*)(realloc)(u->type, cap);
+			if (!u->piece || !u->plen || !u->score || !u->type) { fclose(f); return -1; }
+		}
+		int id = u->n++;
+		u->piece[id] = (char*)(malloc)((size_t)pl + 1);
+		memcpy(u->piece[id], piece, (size_t)pl + 1);
+		u->plen[id] = pl;
+		u->score[id] = (int64_t)llround(sc * 1e4);
+		u->type[id] = !strcmp(ty, "NORMAL") ? 0 : !strcmp(ty, "CONTROL") ? 1 : !strcmp(ty, "BYTE") ? 2 : 3;
+		if (u->type[id] == 2 && pl == 6 && !strncmp(piece, "<0x", 3)) u->byte_id[strtoul(piece + 3, NULL, 16) & 255] = id;
+	}
+	fclose(f);
+	(free)(line); (free)(piece);
+	u->tcap = 16;
+	while (u->tcap < (size_t)u->n * 2) u->tcap <<= 1;
+	u->table = (int*)(calloc)(u->tcap, sizeof(int));
+	u->ctrl = (int*)(malloc)((size_t)u->n * sizeof(int));
+	if (!u->table || !u->ctrl) return -1;
+	for (int id = 0; id < u->n; id++) {
+		if (u->type[id] == 2) continue;	// bytes are only a fallback
+		size_t i = cats_unigram_hash(u->piece[id], u->plen[id]) & (u->tcap - 1);
+		while (u->table[i] && !(u->plen[u->table[i] - 1] == u->plen[id] && !memcmp(u->piece[u->table[i] - 1], u->piece[id], (size_t)u->plen[id])))
+			i = (i + 1) & (u->tcap - 1);
+		u->table[i] = id + 1;			// a later duplicate replaces the earlier one
+		int cp = 0;
+		for (int k = 0; k < u->plen[id]; k += cats_utf8_len((unsigned char)u->piece[id][k])) cp++;
+		if (cp > u->maxcp) u->maxcp = cp;
+		if (u->type[id] == 1 && u->plen[id] > 2) u->ctrl[u->nctrl++] = id;
+	}
+	return u->n ? 0 : -1;
+}
+// Viterbi segmentation of text[0..len) as ONE segment. Returns the number of ids (may exceed cap) or -1.
+static inline int cats_unigram_encode_seg(const cats_unigram *u, const char *text, size_t len, int *ids, int cap)
+{
+	if (!len) return 0;
+	size_t *off = (size_t*)(malloc)((len + 2) * sizeof(size_t));
+	int64_t *best = (int64_t*)(malloc)((len + 2) * sizeof(int64_t));
+	int *clen = (int*)(malloc)((len + 2) * sizeof(int)), *cid = (int*)(malloc)((len + 2) * sizeof(int));
+	if (!off || !best || !clen || !cid) { (free)(off); (free)(best); (free)(clen); (free)(cid); return -1; }
+	size_t m = 0;
+	for (size_t i = 0; i < len; m++) {
+		off[m] = i;
+		size_t l = (size_t)cats_utf8_len((unsigned char)text[i]);
+		i += i + l <= len ? l : 1;
+	}
+	off[m] = len;
+	const int64_t UNKNOWN_COST = 10000000;
+	best[m] = 0;
+	for (long i = (long)m - 1; i >= 0; i--) {
+		best[i] = INT64_MAX;
+		long lmax = (long)m - i < u->maxcp ? (long)m - i : u->maxcp;
+		for (long l = lmax; l >= 1; l--) {
+			int id = cats_unigram_lookup(u, text + off[i], (int)(off[i + l] - off[i]));
+			if (id < 0) continue;
+			int64_t c = best[i + l] - u->score[id];
+			if (c < best[i]) { best[i] = c; clen[i] = (int)l; cid[i] = id; }
+		}
+		if (best[i + 1] + UNKNOWN_COST < best[i]) { best[i] = best[i + 1] + UNKNOWN_COST; clen[i] = 1; cid[i] = -1; }
+	}
+	int n = 0;
+	for (size_t i = 0; i < m; i += (size_t)clen[i]) {
+		if (cid[i] >= 0) { if (n < cap) ids[n] = cid[i]; n++; continue; }
+		for (size_t b = off[i]; b < off[i + 1]; b++) {	// byte fallback
+			int id = u->byte_id[(uint8_t)text[b]];
+			if (n < cap) ids[n] = id < 0 ? 0 : id;
+			n++;
+		}
+	}
+	(free)(off); (free)(best); (free)(clen); (free)(cid);
+	return n;
+}
+// Segmentation of text[0..len): runs selected by break_spaces / break_repeat are cut out and encoded alone, so the
+// token boundaries do not shift with distant context (same rule as the PLaMo tokenizer).
+static inline int cats_unigram_encode_plain(const cats_unigram *u, const char *text, size_t len, int *ids, int cap)
+{
+	int n = 0;
+	size_t start = 0, i = 0;
+	while (i <= len) {
+		size_t run = 0, l = 0;
+		if (i < len && (u->break_spaces || u->break_repeat)) {
+			l = (size_t)cats_utf8_len((unsigned char)text[i]);
+			if (i + l > len) l = 1;
+			size_t j = i + l;
+			run = 1;
+			while (j + l <= len && !memcmp(text + j, text + i, l)) { j += l; run++; }
+			int hit = (u->break_repeat && run >= (size_t)u->break_repeat && text[i] != '\n') ||
+				  (u->break_spaces && text[i] == ' ' && run >= (size_t)u->break_spaces);
+			if (!hit) { i += l; continue; }
+			run = j - i;
+		} else if (i < len) { i = len; continue; }
+		int w = cats_unigram_encode_seg(u, text + start, i - start, ids + (n < cap ? n : cap), n < cap ? cap - n : 0);
+		if (w < 0) return -1;
+		n += w;
+		if (i >= len) break;
+		w = cats_unigram_encode_seg(u, text + i, run, ids + (n < cap ? n : cap), n < cap ? cap - n : 0);
+		if (w < 0) return -1;
+		n += w;
+		i += run;
+		start = i;
+	}
+	return n;
+}
+// Full encoding: CONTROL pieces found verbatim become single tokens (parse_special) and cut the text there.
+// Returns the number of ids (may exceed cap, then only cap were stored) or -1 on error.
+static inline int cats_unigram_encode(const cats_unigram *u, const char *text, int parse_special, int *ids, int cap)
+{
+	const size_t len = strlen(text);
+	int n = 0;
+	size_t start = 0;
+	for (size_t i = 0; i <= len; ) {
+		int hit = -1;
+		if (parse_special && i < len && text[i] == '<') {
+			for (int k = 0; k < u->nctrl; k++) {
+				int id = u->ctrl[k];
+				if (i + (size_t)u->plen[id] <= len && !memcmp(text + i, u->piece[id], (size_t)u->plen[id]) && (hit < 0 || u->plen[id] > u->plen[hit])) hit = id;
+			}
+		}
+		if (hit < 0 && i < len) { i++; continue; }
+		int w = cats_unigram_encode_plain(u, text + start, i - start, ids + (n < cap ? n : cap), n < cap ? cap - n : 0);
+		if (w < 0) return -1;
+		n += w;
+		if (hit < 0) break;
+		if (n < cap) ids[n] = hit;
+		n++;
+		i += (size_t)u->plen[hit];
+		start = i;
+	}
+	return n;
+}
+// Appends the bytes of token `id` to out (cap bytes, NUL terminated); control tokens are skipped.
+// Returns the bytes written.
+static inline size_t cats_unigram_piece(const cats_unigram *u, int id, char *out, size_t cap)
+{
+	if (id < 0 || id >= u->n || u->type[id] == 1 || u->type[id] == 3) return 0;
+	size_t n = 0;
+	if (u->type[id] == 2) { if (cap > 1) out[n++] = (char)strtoul(u->piece[id] + 3, NULL, 16); }
+	else { n = (size_t)u->plen[id] < cap - 1 ? (size_t)u->plen[id] : cap - 1; memcpy(out, u->piece[id], n); }
+	out[n] = 0;
+	return n;
 }
 
 #endif /* CATSEYE_H */

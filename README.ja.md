@@ -9,6 +9,7 @@ Cで実装したニューラルネットライブラリと、その応用プロ�
 | `catseye.h` | 共通のニューラルネットライブラリ |
 | `catseye_llm.h` | 共通のGGUF・LLM推論ランタイム |
 | [`transcript/`](transcript/README.ja.md) | 文字起こしCLI、音声・ONNXヘッダー、モデル変換ツール、Colab、テスト |
+| [`plamo/`](plamo/README.ja.md) | PLaMo 3 Translate の翻訳CLI(0.8B、Q4/Q8量子化) |
 | [`llm/`](llm/README.md) | 従来のLLMサンプルとGPU実装 |
 | `example/`、`super_resolution/`、`word2vec/` | ニューラルネットのサンプル |
 | `tools/` | ライブラリ全体のツール |
