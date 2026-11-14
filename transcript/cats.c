@@ -63,6 +63,7 @@ void error_usage(char *cmd)
 	fprintf(stderr, "  -a eg2-native-asr -m models -w speech.wav [-L en|ja|auto|hybrid|adapter] (hybrid: original EN + separate JA reader)\n");
     fprintf(stderr, "      -H FLOAT hybrid JA-over-EN margin threshold (default 0.08; experimental, tune on dev speech)\n");
 	fprintf(stderr, "      -G auto|off|N  GPU GEMM (OpenGL ES 3.1 compute; N = EGL device index; or CATS_GPU=); needs a GPU build\n");
+	fprintf(stderr, "      -O FILE also save the live transcript to FILE (console output is always live), [HH:MM:SS][en|ja] per pause/language switch; progress+ETA on stderr (CATS_LIVE_GAP, CATS_LIVE_WIDTH)\n");
 	fprintf(stderr, "      -j N threads (default: physical cores; or OMP_NUM_THREADS); -m models_fp16 from eg2_bundle.py --to-fp16\n");
 	fprintf(stderr, "  -a eg2-asr -m encoder.onnx -D reader.onnx -z vocab.txt -w input.wav\n");
 	fprintf(stderr, "  -a eg2-asr -m encoder.onnx -R reader.eg2r -Q table.eg2q -z vocab.txt -w WAV\n");
@@ -120,6 +121,7 @@ int main(int argc, char *argv[])
 	int native_context = 0, native_beam = 4, native_vad = 0;
 	const char *asr_wav = NULL, *asr_root = "models", *asr_lang = "ja", *asr_lib = NULL, *fbank_out = NULL;
 	int asr_threads = 4, asr_raw = 0, asr_partial = 0, threads_given = 0;
+	const char *live_out = NULL;	// -O FILE: live transcript (console + file)
 	const char *gpu_spec = NULL;	// -G auto|off|N (needs a -DCATS_GPU build)
 	cats_llm_model *m = &llm_model;
 	m->steps = 512;			// max number of steps to run for, 0: use seq_len
@@ -352,6 +354,13 @@ int main(int argc, char *argv[])
 				break;
 			case 'P':
 				asr_partial = 1;
+				break;
+			case 'O':
+				if (i+1<argc) {
+					live_out = argv[++i];
+				} else {
+					return 1;
+				}
 				break;
 			default:
 				fprintf(stderr,  "Invalid option: %s\n", argv[i]);
@@ -754,6 +763,7 @@ reader_done:
 		if (!transcript) {
 			return 1;
 		}
+		cs_eg2_live_open(live_out);	/* always live; -O adds a file */
 		int rc;
         if (eg2_japanese==4) {
             char ja_adapter[4096],ja_table[4096],ja_vocab[4096];
@@ -797,9 +807,14 @@ reader_done:
             rc=cs_eg2_native_long_wav(encoder_path,reader_path,table_path,
                                       vocab_path,asr_wav,transcript,4u*1024u*1024u,fbank_out,eg2_japanese!=0);
         }
-		if (!rc) {
+		if (cs_eg2_live.on) {
+			fprintf(stderr,cs_eg2_live.tty?"\r\033[K# finished in %.0f s%s%s\n":"# finished in %.0f s%s%s\n",
+			        cs_eg2_now()-cs_eg2_live.t0,live_out?" -> ":"",live_out?live_out:"");
+			cs_eg2_live_close();
+		} else if (!rc) {
 			puts(transcript);
-		} else {
+		}
+		if (rc) {
 			fprintf(stderr,"eg2-native-asr: invalid weights, audio or inference failure (no transcript emitted)\n");
 		}
 		free(transcript);

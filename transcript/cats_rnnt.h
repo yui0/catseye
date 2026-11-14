@@ -3221,6 +3221,164 @@ fail:
     return -1;
 }
 
+/* ------------------------------------------------------------------------
+ * Live output for long transcriptions (-O FILE).  Text is written to stdout
+ * and to FILE as soon as each window has been read, one line per pause /
+ * language switch / width limit, each prefixed "[HH:MM:SS][en|ja]".
+ * Progress and ETA go to stderr ("# ..."), so stdout/FILE stay clean text.
+ * CATS_LIVE_GAP=SEC (default 1.0) pause that starts a new line,
+ * CATS_LIVE_WIDTH=N (default 60) characters per line before a forced break.
+ * Language of a token is judged by script: non-ASCII letters -> ja, else en.
+ * ---------------------------------------------------------------------- */
+#include <time.h>
+#include <stdarg.h>
+typedef struct {
+	int on,tty;
+	FILE*fp;
+	double gap;
+	size_t width;
+	double t0;
+	size_t total_windows,done_windows;
+	/* decoder state */
+	int32_t prev;
+	char line[2048];
+	size_t len,chars;
+	int lang;		/* 0=en 1=ja, current line */
+	double line_t,last_t;
+} cs_eg2_live_t;
+static cs_eg2_live_t cs_eg2_live;
+static inline double cs_eg2_now(void)
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC,&ts);
+	return ts.tv_sec+ts.tv_nsec*1e-9;
+}
+static inline void cs_eg2_live_open(const char*path)
+{
+	cs_eg2_live_t*L=&cs_eg2_live;
+	memset(L,0,sizeof(*L));
+	const char*g=getenv("CATS_LIVE_GAP"),*w=getenv("CATS_LIVE_WIDTH");
+	L->gap=g&&atof(g)>0?atof(g):1.0;
+	L->width=w&&atol(w)>0?(size_t)atol(w):60;
+	L->prev=-1;
+	L->tty=isatty(2);
+	L->t0=cs_eg2_now();
+	if (path&&*path&&strcmp(path,"-")) {
+		L->fp=fopen(path,"w");
+		if (!L->fp) {
+			perror("-O");
+		}
+	}
+	L->on=1;
+}
+static inline void cs_eg2_live_close(void)
+{
+	if (cs_eg2_live.fp) {
+		fclose(cs_eg2_live.fp);
+	}
+	cs_eg2_live.fp=NULL;
+	cs_eg2_live.on=0;
+}
+static inline void cs_eg2_live_status(const char*fmt,...)
+{
+	if (!cs_eg2_live.on) {
+		return;
+	}
+	char buf[256];
+	va_list ap;
+	va_start(ap,fmt);
+	vsnprintf(buf,sizeof buf,fmt,ap);
+	va_end(ap);
+	double el=cs_eg2_now()-cs_eg2_live.t0;
+	double eta=cs_eg2_live.done_windows?el/cs_eg2_live.done_windows*
+	           (cs_eg2_live.total_windows-cs_eg2_live.done_windows):-1;
+	char etas[48]="";
+	if (eta>=0) {
+		snprintf(etas,sizeof etas," ETA %d:%02d:%02d",(int)(eta/3600),(int)fmod(eta/60,60),(int)fmod(eta,60));
+	}
+	fprintf(stderr,cs_eg2_live.tty?"\r\033[K# %s  [%zu/%zu windows, %.0f%%, elapsed %d:%02d:%02d%s]":
+	        "# %s  [%zu/%zu windows, %.0f%%, elapsed %d:%02d:%02d%s]\n",buf,
+	        cs_eg2_live.done_windows,cs_eg2_live.total_windows,
+	        cs_eg2_live.total_windows?100.0*cs_eg2_live.done_windows/cs_eg2_live.total_windows:0.0,
+	        (int)(el/3600),(int)fmod(el/60,60),(int)fmod(el,60),etas);
+	fflush(stderr);
+}
+static inline void cs_eg2_live_flush(void)
+{
+	cs_eg2_live_t*L=&cs_eg2_live;
+	if (!L->len) {
+		return;
+	}
+	int s=(int)L->line_t;
+	char head[48];
+	snprintf(head,sizeof head,"[%02d:%02d:%02d][%s] ",s/3600,s/60%60,s%60,L->lang?"ja":"en");
+	if (L->tty) {
+		fputs("\r\033[K",stderr);
+	}
+	printf("%s%s\n",head,L->line);
+	fflush(stdout);
+	if (L->fp) {
+		fprintf(L->fp,"%s%s\n",head,L->line);
+		fflush(L->fp);
+	}
+	L->len=L->chars=0;
+	L->line[0]=0;
+}
+/* Feed scores [0,n) whose first element is global score index base. One score = 40 ms. */
+static inline void cs_eg2_live_feed(const cs_eg2_score*s,size_t n,size_t base,
+                                    const cs_eg2_vocab*v)
+{
+	cs_eg2_live_t*L=&cs_eg2_live;
+	for (size_t i=0; i<n; i++) {
+		if (s[i].blank>s[i].top1) {
+			L->prev=-1;
+			continue;
+		}
+		int32_t word=s[i].word;
+		if (word<0||(size_t)word>=v->count||word==L->prev) {
+			continue;
+		}
+		L->prev=word;
+		const unsigned char*t=(const unsigned char*)v->word[word];
+		size_t tl=strlen((const char*)t);
+		int sp=0;
+		if (tl>=3&&t[0]==0xe2&&t[1]==0x96&&t[2]==0x81) {
+			sp=1;
+			t+=3;
+			tl-=3;
+		}
+		int alpha=0,wide=0;
+		size_t nch=0;
+		for (size_t k=0; k<tl; k++) {
+			if (t[k]>=0x80) {
+				wide=1;
+				if (t[k]>=0xc0) nch++;
+			} else {
+				nch++;
+				if (isalpha(t[k])) alpha=1;
+			}
+		}
+		int lang=wide?1:alpha?0:L->len?L->lang:0;
+		double now=(base+i)*0.04;
+		if (L->len&&(lang!=L->lang||now-L->last_t>=L->gap||L->chars>=L->width||
+		             L->len+tl+2>=sizeof L->line)) {
+			cs_eg2_live_flush();
+		}
+		if (!L->len) {
+			L->lang=lang;
+			L->line_t=now;
+		}
+		if (L->len&&(L->lang==0||sp)) {
+			L->line[L->len++]=' ';
+		}
+		memcpy(L->line+L->len,t,tl);
+		L->len+=tl;
+		L->chars+=nch;
+		L->line[L->len]=0;
+		L->last_t=now;
+	}
+}
+
 static inline int cs_eg2_native_long_wav_dual(const char*model_dir,const char*reader_file,
                 const char*q8_file,const char*vocab_file,const char*wav_file,
                 char*out,size_t cap,const char*score_file,int japanese,
@@ -3310,6 +3468,16 @@ static inline int cs_eg2_native_long_wav_dual(const char*model_dir,const char*re
 		}
 	}
 
+	if (cs_eg2_live.on) {
+		cs_eg2_window cw;
+		size_t nw=0;
+		while (cs_eg2_window_at(total,nw,&cw)==1) {
+			nw++;
+		}
+		cs_eg2_live.total_windows=nw;
+		fprintf(stderr,"# %.1f min audio, %zu windows (8 per batch)\n",total/16000.0/60.0,nw);
+	}
+	size_t live_fed=0;
 	for (size_t first=0;; first+=CS_EG2_BATCH_WINDOWS) {
 		size_t batch=0;
 		for (; batch<CS_EG2_BATCH_WINDOWS; batch++) {
@@ -3321,6 +3489,7 @@ static inline int cs_eg2_native_long_wav_dual(const char*model_dir,const char*re
 				break;
 			}
 			size_t nframes=0,tokens=0;
+			cs_eg2_live_status("batch %zu: reading window %zu/%d",first/CS_EG2_BATCH_WINDOWS+1,batch+1,CS_EG2_BATCH_WINDOWS);
 			states[batch]=malloc((size_t)CS_EG2_TOKENS*CS_EG2_SH*sizeof(float));
 			if (!states[batch]||cs_wave_stream_read16(&wave,windows[batch].start,
 			                windows[batch].samples,window_pcm)||
@@ -3338,6 +3507,7 @@ static inline int cs_eg2_native_long_wav_dual(const char*model_dir,const char*re
 			if (snprintf(path,sizeof(path),"%s/layer_%02d.eg2l",model_dir,layer_no)>=(int)sizeof(path)) {
 				goto done;
 			}
+			cs_eg2_live_status("batch %zu: encoder layer %d/12",first/CS_EG2_BATCH_WINDOWS+1,layer_no+1);
 			cs_eg2_layer layer= {0};
 			int good=!cs_eg2_layer_load(&layer,path)&&
 			         layer.d==1024&&layer.ff==4096&&layer.heads==8&&layer.kernel==5;
@@ -3362,6 +3532,7 @@ static inline int cs_eg2_native_long_wav_dual(const char*model_dir,const char*re
 		}
 		for (size_t j=0; j<batch; j++) {
 			size_t t=windows[j].tokens;
+			cs_eg2_live_status("batch %zu: reader window %zu/%zu",first/CS_EG2_BATCH_WINDOWS+1,j+1,batch);
 			if (cs_eg2_projection_run(&proj,states[j],t,soft)||
 			                cs_eg2_reader_run(&reader,soft,t,projected,blank)) {
 				goto done;
@@ -3391,8 +3562,17 @@ static inline int cs_eg2_native_long_wav_dual(const char*model_dir,const char*re
 				}
 				used+=count;
 			}
+			if (cs_eg2_live.on) {
+				cs_eg2_live_feed(scores+live_fed,used-live_fed,live_fed,hybrid?&combined_vocab:&vocab);
+				live_fed=used;
+				cs_eg2_live.done_windows++;
+			}
 			free(states[j]);
 			states[j]=NULL;
+		}
+		if (cs_eg2_live.on) {
+			cs_eg2_live_flush();
+			cs_eg2_live_status("batch %zu done",first/CS_EG2_BATCH_WINDOWS+1);
 		}
 		cs_eg2_reader_free(&reader);
 		cs_eg2_q8_free(&table);
