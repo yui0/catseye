@@ -11,10 +11,10 @@ GPU_LIBS  := $(if $(filter 1,$(GPU)),$(shell pkg-config --libs egl glesv2 2>/dev
 
 all: eg2e
 
-eg2e: eg2e.c eg2_embed.h eg2_tokenizer.h ../catseye.h ../cats_gpu.h
+eg2e: eg2e.c eg2_embed.h eg2_tokenizer.h ../catseye.h ../catseye_data.h ../cats_gpu.h
 	$(CC) $(CFLAGS) $(GPU_FLAGS) $(WARN) -o $@ eg2e.c $(LDLIBS) $(GPU_LIBS)
 
-test_ref: test_ref.c eg2_embed.h ../catseye.h
+test_ref: test_ref.c eg2_embed.h ../catseye.h ../catseye_data.h
 	$(CC) $(CFLAGS) $(WARN) -o $@ test_ref.c $(LDLIBS)
 
 # Layer-by-layer comparison with the Python reference:
@@ -32,9 +32,9 @@ WEB_FLAGS = -O3 -msimd128 -Wno-comment -Wno-unused-function eg2e_web.c \
 WEB_THREADS ?= 11
 
 web: eg2e_web.js eg2e_web_mt.js
-eg2e_web.js: eg2e_web.c eg2_embed.h eg2_tokenizer.h ../catseye.h
+eg2e_web.js: eg2e_web.c eg2_embed.h eg2_tokenizer.h ../catseye.h ../catseye_data.h
 	emcc $(WEB_FLAGS) -o $@
-eg2e_web_mt.js: eg2e_web.c eg2_embed.h eg2_tokenizer.h ../catseye.h
+eg2e_web_mt.js: eg2e_web.c eg2_embed.h eg2_tokenizer.h ../catseye.h ../catseye_data.h
 	emcc $(WEB_FLAGS) -pthread -s PTHREAD_POOL_SIZE=$(WEB_THREADS) -o $@
 
 clean:

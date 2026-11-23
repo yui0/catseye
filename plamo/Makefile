@@ -4,7 +4,7 @@ CFLAGS ?= -O3 -std=gnu11 -march=native
 OPENMP ?= 1
 OMP_FLAGS := $(if $(filter 1,$(OPENMP)),-fopenmp,)
 LDLIBS ?= -lm
-HEADERS := ../catseye.h
+HEADERS := ../catseye.h ../catseye_data.h
 
 all: plamo plamo_quantize
 

@@ -3,7 +3,7 @@ CC ?= cc
 UNAME_S := $(shell uname -s)
 UNAME_M := $(shell uname -m)
 OPENMP ?= 1
-LDLIBS ?= -lm
+LDLIBS ?= -lm -pthread
 ifeq ($(UNAME_M),arm64)
 CFLAGS ?= -O3 -std=gnu11 -mcpu=native
 else ifeq ($(UNAME_M),aarch64)
@@ -24,11 +24,11 @@ endif
 else
 OMP_FLAGS := $(if $(filter 1,$(OPENMP)),-fopenmp,)
 endif
-HEADERS := ../catseye.h
+HEADERS := ../catseye.h ../catseye_data.h
 
 all: inkling inkling_quantize
 
-inkling: inkling.c $(HEADERS)
+inkling: inkling.c openai_adapter.h ../catseye_openai.h $(HEADERS)
 	$(CC) $(CFLAGS) $(OMP_FLAGS) -o $@ inkling.c $(LDLIBS)
 
 inkling_quantize: quantize.c $(HEADERS)

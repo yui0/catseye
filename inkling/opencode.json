@@ -1,0 +1,23 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "providers": {
+    "catseye": {
+      "name": "Cat's eye",
+      "package": "@opencode/ai/providers/openai-compatible",
+      "settings": {
+        "baseURL": "http://127.0.0.1:8080/v1"
+      },
+      "models": {
+        "inkling": {
+          "name": "Inkling 2 Mini Q4",
+          "capabilities": {
+            "tools": true,
+            "input": ["text"],
+            "output": ["text"]
+          },
+          "limit": { "context": 16384, "output": 2048 }
+        }
+      }
+    }
+  }
+}

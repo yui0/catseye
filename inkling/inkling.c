@@ -24,6 +24,7 @@
 #include <pthread.h>
 #define CATS_INFER_ONLY
 #include "../catseye.h"
+#include "../catseye_openai.h"
 
 static double tick(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec * 1e3 + t.tv_nsec / 1e6; }
 static FILE *trace_f;	// INKLING_TRACE=file: binary (layer, expert) pairs of every routed expert, for cache studies
@@ -80,6 +81,8 @@ typedef struct {
 	float *blocks, *prev_blocks, *msgs, *stack, *gin, *thr_score, *thr_rel;
 	float *xg, *egu, *eact, *eout, *logits, *logits_all, *ex_w;
 	int *ex_idx, *ex_cnt, *ex_tok, *ex_slot;
+	float *decode_gate, *decode_output;
+	int8_t *decode_x, *decode_activations;
 	// expert cache (--cache MB): LRU of whole experts read with pread() into private memory, so a model larger than RAM
 	// streams in 2-4 MB reads instead of thousands of small page faults
 	uint8_t *cbuf; size_t cslot, c13; int cslots, *cmap, *ckey; uint64_t *cstamp, cclock; long chit, cmiss;
@@ -142,7 +145,7 @@ static void prefetch_experts(const model_t *m, const layer_t *y, const int *want
 #if defined(__linux__)
 	if (m->fd >= 0) {
 		const int I = m->c.I, H = m->c.H;
-		#pragma omp parallel for schedule(dynamic, 1) num_threads(16)
+		#pragma omp parallel for schedule(static) if(n > 1)
 		for (int j = 0; j < 2 * n; j++) {
 			const int e = want[j >> 1];
 			const uint8_t *p = (j & 1) ? y->w2 + (size_t)e * H * y->w2_rb : y->w13 + (size_t)e * 2 * I * y->w13_rb;
@@ -323,6 +326,10 @@ static int load_model(model_t *m, const char *path, int ctx, int passes, int B, 
 	m->ex_cnt = (int*)calloc((size_t)c->E, sizeof(int));
 	m->ex_tok = (int*)calloc((size_t)c->E * Bs, sizeof(int));
 	m->ex_slot = (int*)calloc((size_t)c->E * Bs, sizeof(int));
+	m->decode_gate = malloc((size_t)m->topk * 2 * c->I * sizeof(float));
+	m->decode_output = malloc((size_t)m->topk * H * sizeof(float));
+	m->decode_x = malloc(cats_q8_0_row_bytes(H));
+	m->decode_activations = malloc((size_t)m->topk * cats_q8_0_row_bytes(c->I));
 	return 0;
 }
 
@@ -480,10 +487,11 @@ static void attention(model_t *m, int l, int ci, int nt, float *out, int pos0)
 		float *sb = m->thr_score + (size_t)thr_id() * (m->ctxmax + 1), *rel = m->thr_rel + (size_t)thr_id() * relstride;
 		const float *q = m->q + (size_t)b * qdim + (size_t)h * hd, *r = m->rs + ((size_t)b * nq + h) * c->drel;
 		const float sinkl = m->sinkv[(size_t)b * nq + h];
-		for (int d = 0; d < nd; d++) {
-			float a = 0;
-			for (int k = 0; k < c->drel; k++) a += r[k] * y->relproj[(size_t)k * rext + d];
-			rel[d] = a;
+		memset(rel, 0, (size_t)nd * sizeof(float));
+		for (int k = 0; k < c->drel; k++) {
+			const float *proj = y->relproj + (size_t)k * rext;
+			const float weight = r[k];
+			for (int d = 0; d < nd; d++) rel[d] += weight * proj[d];
 		}
 		float mx = sinkl;
 		for (int j = 0; j < n; j++) {
@@ -638,6 +646,55 @@ static void cache_speculate(model_t *m, int l2, const int *pred, int n)
 	if (pthread_create(&m->pf_th, NULL, pf_main, m) == 0) m->pf_run = 1;
 }
 
+static void moe_decode_q4(model_t *m, const layer_t *y, float *out, const float *x,
+			  const int *experts, int n)
+{
+	const cfg_t *c = &m->c;
+	const int H = c->H, I = c->I;
+	const size_t ar = cats_q8_0_row_bytes(I);
+	const uint8_t *w13[MAX_TOPK], *w2[MAX_TOPK];
+	float weights[MAX_TOPK];
+	for (int j = 0; j < n; j++) {
+		const int e = experts[j];
+		weights[j] = m->ex_w[m->ex_slot[(size_t)e * m->B]];
+		w13[j] = y->w13 + (size_t)e * 2 * I * y->w13_rb;
+		w2[j] = y->w2 + (size_t)e * H * y->w2_rb;
+		if (m->cbuf) {
+			w13[j] = m->cbuf + (size_t)m->eslot_of[e] * m->cslot;
+			w2[j] = w13[j] + m->c13;
+		}
+	}
+	cats_q8_0_quantize(m->decode_x, x, H);
+	#pragma omp parallel
+	{
+		#pragma omp for schedule(static)
+		for (int r = 0; r < n * 2 * I; r++) {
+			const int j = r / (2 * I), row = r % (2 * I);
+			m->decode_gate[r] = cats_dot_q4_0_q8_0(w13[j] + (size_t)row * y->w13_rb, m->decode_x, H);
+		}
+		#pragma omp for schedule(static)
+		for (int j = 0; j < n; j++) {
+			float *gu = m->decode_gate + (size_t)j * 2 * I;
+			for (int i = 0; i < I; i++) {
+				const float g = gu[i], u = gu[I + i];
+				gu[i] = cats_softcap(g, c->gate_cap) * cats_sigmoid(g) * cats_softcap(u, c->up_cap);
+			}
+			cats_q8_0_quantize(m->decode_activations + (size_t)j * ar, gu, I);
+		}
+		#pragma omp for schedule(static)
+		for (int r = 0; r < n * H; r++) {
+			const int j = r / H, row = r % H;
+			m->decode_output[r] = cats_dot_q4_0_q8_0(w2[j] + (size_t)row * y->w2_rb,
+							      m->decode_activations + (size_t)j * ar, I);
+		}
+	}
+	memset(out, 0, (size_t)H * sizeof(float));
+	for (int j = 0; j < n; j++) {
+		const float *value = m->decode_output + (size_t)j * H;
+		for (int i = 0; i < H; i++) out[i] += weights[j] * value[i];
+	}
+}
+
 static void moe_batch(model_t *m, int l, int nt, float *out, const float *x)
 {
 	const cfg_t *c = &m->c;
@@ -701,6 +758,11 @@ static void moe_batch(model_t *m, int l, int nt, float *out, const float *x)
 			for (int j = 0; j < nw; j++) m->eslot_of[want[j]] = m->eslot[j];
 		} else prefetch_experts(m, y, want, nw);
 		t_pre += tick() - tp;
+		if (nt == 1 && y->xtype == CATS_ST_Q4_0 && y->xtype2 == CATS_ST_Q4_0 &&
+		    m->decode_gate && m->decode_output && m->decode_x && m->decode_activations) {
+			moe_decode_q4(m, y, out, x, want, nw);
+			return;
+		}
 	}
 	memset(out, 0, (size_t)nt * H * sizeof(float));
 	for (int e = 0; e < E; e++) {
@@ -841,6 +903,7 @@ static void forward(model_t *m, const int *tok, int nt, int pos0, int want)
 	}
 	float *dst = want == 2 ? m->logits_all : m->logits;
 	gemm_t(dst, m->xn + (size_t)first * H, &m->st, m->unembed, cnt);
+	#pragma omp parallel for schedule(static) if((size_t)cnt * c->V >= 32768)
 	for (size_t i = 0; i < (size_t)cnt * c->V; i++) dst[i] = cats_softcap(dst[i], c->logit_cap);
 }
 
@@ -849,7 +912,12 @@ static void forward(model_t *m, const int *tok, int nt, int pos0, int want)
 static uint64_t rng_s = 88172645463325252ull;
 static float rnd(void) { rng_s ^= rng_s << 13; rng_s ^= rng_s >> 7; rng_s ^= rng_s << 17; return (float)((rng_s >> 11) * (1.0 / 9007199254740992.0)); }
 typedef struct { float p; int i; } pi_t;
-static int cmp_pi(const void *a, const void *b) { const float x = ((const pi_t*)a)->p, y = ((const pi_t*)b)->p; return x < y ? 1 : x > y ? -1 : 0; }
+static int cmp_pi(const void *a, const void *b)
+{
+	const pi_t *x = a, *y = b;
+	if (x->p != y->p) return x->p < y->p ? 1 : -1;
+	return (x->i > y->i) - (x->i < y->i);
+}
 static int sample(const float *logits, int n, float temp, float top_p, int top_k)
 {
 	if (temp <= 0) { int b = 0; for (int i = 1; i < n; i++) if (logits[i] > logits[b]) b = i; return b; }
@@ -858,15 +926,34 @@ static int sample(const float *logits, int n, float temp, float top_p, int top_k
 	for (int i = 0; i < n; i++) if (logits[i] > mx) mx = logits[i];
 	double sum = 0;
 	for (int i = 0; i < n; i++) { a[i].i = i; a[i].p = expf((logits[i] - mx) / temp); sum += a[i].p; }
-	qsort(a, (size_t)n, sizeof(pi_t), cmp_pi);
 	int k = top_k > 0 && top_k < n ? top_k : n;
+	// The shortlist contains every token at or above the cutoff. It is
+	// sufficient only if it covers the full top-k or reaches the nucleus.
+	enum { SHORTLIST = 512 };
+	pi_t likely[SHORTLIST];
+	int count = 0;
+	for (int i = 0; i < n && count < SHORTLIST; i++)
+		if (a[i].p >= 1.0f / 1024) likely[count++] = a[i];
+	if (count < SHORTLIST) {
+		qsort(likely, (size_t)count, sizeof(pi_t), cmp_pi);
+		if (count > 0 && count < k) {
+			double mass = 0;
+			for (int i = 0; i < count; i++) mass += likely[i].p / sum;
+			if (mass >= top_p) k = count;
+		}
+	}
+	const pi_t *ranked = likely;
+	if (count < k || count == SHORTLIST) {
+		qsort(a, (size_t)n, sizeof(pi_t), cmp_pi);
+		ranked = a;
+	}
 	double cum = 0;
-	for (int i = 0; i < k; i++) { cum += a[i].p / sum; if (cum >= top_p) { k = i + 1; break; } }
+	for (int i = 0; i < k; i++) { cum += ranked[i].p / sum; if (cum >= top_p) { k = i + 1; break; } }
 	double s2 = 0;
-	for (int i = 0; i < k; i++) s2 += a[i].p;
+	for (int i = 0; i < k; i++) s2 += ranked[i].p;
 	double r = rnd() * s2, acc = 0;
-	int pick = a[k - 1].i;
-	for (int i = 0; i < k; i++) { acc += a[i].p; if (r < acc) { pick = a[i].i; break; } }
+	int pick = ranked[k - 1].i;
+	for (int i = 0; i < k; i++) { acc += ranked[i].p; if (r < acc) { pick = ranked[i].i; break; } }
 	free(a);
 	return pick;
 }
@@ -884,11 +971,16 @@ static int special_id(const cats_bpe *b, const char *s)
 static void ids_text(const cats_bpe *b, ids_t *t, const char *s)
 {
 	if (!*s) return;
-	const int need = cats_bpe_encode(b, s, 0, NULL, 0);
-	int *tmp = (int*)malloc((size_t)(need + 1) * sizeof(int));
-	cats_bpe_encode(b, s, 0, tmp, need);
-	for (int i = 0; i < need; i++) ids_push(t, tmp[i]);
-	free(tmp);
+	const size_t need = strlen(s) + t->n;
+	if (need > (size_t)t->cap) {
+		size_t cap = t->cap ? (size_t)t->cap : 256;
+		while (cap < need) cap *= 2;
+		int *ids = realloc(t->id, cap * sizeof(int));
+		if (!ids || cap > INT_MAX) { fprintf(stderr, "cannot allocate token buffer\n"); exit(1); }
+		t->id = ids;
+		t->cap = (int)cap;
+	}
+	t->n += cats_bpe_encode(b, s, 0, t->id + t->n, t->cap - t->n);
 }
 static void ids_msg(const cats_bpe *b, ids_t *t, const char *role, const char *text)
 {
@@ -902,11 +994,14 @@ static const char *effort_string(const char *e, char *buf)
 	static const struct { const char *k, *v; } map[] = { { "none", "0" }, { "minimal", "0.1" }, { "low", "0.2" }, { "medium", "0.7" },
 							      { "high", "0.9" }, { "xhigh", "0.99" }, { "max", "0.99" } };
 	for (size_t i = 0; i < sizeof(map) / sizeof(*map); i++) if (!strcmp(e, map[i].k)) return map[i].v;
-	double v = atof(e);
-	if (v < 0 || v > 0.99) return NULL;
+	char *end;
+	double v = strtod(e, &end);
+	if (end == e || *end || !isfinite(v) || v < 0 || v > 0.99) return NULL;
 	snprintf(buf, 32, "%g", v);
 	return buf;
 }
+
+#include "openai_adapter.h"
 
 //---------------------------------------------------------
 static double now_ms(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec * 1e3 + t.tv_nsec / 1e6; }
@@ -919,6 +1014,7 @@ static void usage(const char *a)
 		"  -t TEMP        temperature (0 = greedy, default 0.7)   --top-p P (0.95)   --top-k K (0 = off)   --seed N\n"
 		"  --effort E     thinking effort: none minimal low medium high(default) xhigh max, or a number 0..0.99\n"
 		"  --think        also print the model's thinking     --raw   print every token including control tokens\n"
+		"  --serve PORT   OpenAI-compatible server on 127.0.0.1\n"
 		"  -i             interactive chat (the conversation stays in the KV cache)\n"
 		"  -c N           context length (default 4096)        --passes N   loop passes (default from the model; fewer = faster)\n"
 		"  --topk K       experts per token (default: the model's 8; fewer = faster, lower quality)\n"
@@ -935,6 +1031,7 @@ int main(int argc, char **argv)
 {
 	const char *mp = NULL, *prompt = NULL, *file = NULL, *sys = NULL, *effort = "high", *ids_arg = NULL, *logits_file = NULL, *ppl_file = NULL, *save_file = NULL, *ref_file = NULL;
 	int maxn = 512, ctx = 4096, passes = 0, threads = 0, top_k = 0, interactive = 0, think = 0, raw = 0, verbose = 0, batch = 64, topk = 0;
+	int port = 0;
 	float temp = 0.7f, top_p = 0.95f;
 	uint64_t seed = 0;
 	for (int i = 1; i < argc; i++) {
@@ -963,6 +1060,13 @@ int main(int argc, char **argv)
 		else if (!strcmp(a, "--ppl")) ppl_file = ARG;
 		else if (!strcmp(a, "--save")) save_file = ARG;
 		else if (!strcmp(a, "--ref")) ref_file = ARG;
+		else if (!strcmp(a, "--serve")) {
+			const char *value = ARG;
+			char *end;
+			long parsed = strtol(value, &end, 10);
+			if (*end || parsed < 1 || parsed > 65535) { usage(argv[0]); return 1; }
+			port = (int)parsed;
+		}
 		else if (!strcmp(a, "-i")) interactive = 1;
 		else if (!strcmp(a, "--think")) think = 1;
 		else if (!strcmp(a, "--raw")) raw = 1;
@@ -970,7 +1074,11 @@ int main(int argc, char **argv)
 		else { usage(argv[0]); return 1; }
 #undef ARG
 	}
-	if (!mp) { usage(argv[0]); return 1; }
+	if (!mp || ctx < 2 || batch < 1 ||
+	    (port && (maxn < 1 || prompt || file || sys || interactive || ids_arg || ppl_file || logits_file || raw || think))) {
+		usage(argv[0]);
+		return 1;
+	}
 	cats_set_threads(threads);
 	if (seed) rng_s ^= seed * 0x9E3779B97F4A7C15ull;
 	model_t M;
@@ -1053,6 +1161,35 @@ int main(int argc, char **argv)
 	if (!eff) { fprintf(stderr, "bad --effort\n"); return 1; }
 	const cats_bpe *B = &M.tok;
 	const int id_end = special_id(B, "<|end_message|>"), id_think = special_id(B, "<|content_thinking|>"), id_text = special_id(B, "<|content_text|>"), id_eos = M.c.eos, id_model = special_id(B, "<|message_model|>");
+	if (port) {
+		inkling_oa server = {
+			.m = &M, .defaults_n = maxn, .default_temp = temp, .default_p = top_p, .top_k = top_k,
+			.effort = eff, .verbose = verbose,
+			.system = special_id(B, "<|message_system|>"), .user = special_id(B, "<|message_user|>"),
+			.model = id_model, .tool = special_id(B, "<|message_tool|>"), .text = id_text,
+			.thinking = id_think, .xml = special_id(B, "<|content_xml|>"),
+			.invoke = special_id(B, "<|content_invoke_tool_json|>"), .end = id_end
+		};
+		if (server.system < 0 || server.user < 0 || server.model < 0 || server.tool < 0 ||
+		    server.text < 0 || server.thinking < 0 || server.xml < 0 || server.invoke < 0 || server.end < 0) {
+			fprintf(stderr, "model tokenizer lacks Inkling chat tokens\n");
+			return 1;
+		}
+		server.cached = malloc((size_t)M.ctx * sizeof(int));
+		server.checkpoint = malloc(inkling_history(&server, 0) * sizeof(float) + 1);
+		server.checkpoint_logits = malloc((size_t)M.c.V * sizeof(float));
+		if (!server.cached || !server.checkpoint || !server.checkpoint_logits) {
+			perror("prompt cache");
+			return 1;
+		}
+		const cats_oa_backend api = { "inkling", &server, inkling_prepare, inkling_generate };
+		const int result = cats_oa_serve(&api, port);
+		free(server.cached);
+		free(server.checkpoint);
+		free(server.checkpoint_logits);
+		free(server.input.id);
+		return result;
+	}
 	int first = 1;
 	char line[1 << 16];
 	for (;;) {
@@ -1117,7 +1254,7 @@ int main(int argc, char **argv)
 			while (pf && fgets(ln, sizeof(ln), pf)) if (!strncmp(ln, "read_bytes:", 11)) rb = atof(ln + 11);
 			if (pf) fclose(pf);
 #endif
-			fprintf(stderr, "next-layer prediction: top-K recall %.1f%%, top-2K recall %.1f%% (%ld layer visits)\nexpert cache hits %ld misses %ld\ntime: prefetch %.0f ms, attention %.0f ms, experts %.0f ms (w13 %.0f, w2 %.0f), storage reads %.2f GB\n", pr_tot ? 100.0 * pr_hit / pr_tot : 0, pr_tot ? 100.0 * pr_hit2 / pr_tot : 0, pr_n, M.chit, M.cmiss, M.cpf, t_pre, t_attn, t_moe, t_w13, t_w2, rb / 1e9);
+			fprintf(stderr, "next-layer prediction: top-K recall %.1f%%, top-2K recall %.1f%% (%ld layer visits)\nexpert cache hits %ld misses %ld, speculative loads %ld\ntime: prefetch %.0f ms, attention %.0f ms, experts %.0f ms (w13 %.0f, w2 %.0f), storage reads %.2f GB\n", pr_tot ? 100.0 * pr_hit / pr_tot : 0, pr_tot ? 100.0 * pr_hit2 / pr_tot : 0, pr_n, M.chit, M.cmiss, M.cpf, t_pre, t_attn, t_moe, t_w13, t_w2, rb / 1e9);
 		}
 		if (verbose) fprintf(stderr, "prompt %d tokens %.0f ms (%.1f tok/s), generated %d tokens %.0f ms (%.2f tok/s)\n",
 				     turn.n, tp, turn.n * 1e3 / (tp > 0 ? tp : 1), gen, now_ms() - t0, gen * 1e3 / (now_ms() - t0 > 0 ? now_ms() - t0 : 1));
