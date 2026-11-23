@@ -1,0 +1,20 @@
+A mixture-of-experts layer replaces the single feed-forward network of a transformer block with many smaller networks, called experts, and a router that decides which of them should process each token. Only a few experts run for any given token, so the model can hold far more parameters than it uses at one time. The router produces a score for every expert, the highest scores are selected, and their outputs are combined with weights derived from those scores. Training adds a balancing term so that no expert is starved or overloaded, because an expert that is rarely chosen learns slowly and an expert that is always chosen becomes a bottleneck.
+
+Quantization stores the weights of a trained network with fewer bits. A common scheme splits every row of a matrix into small blocks, keeps one scale per block, and rounds each weight to a handful of integer levels. With four bits the rounding error is usually small enough that the answers hardly change, while three bits begin to cost accuracy, and two bits need extra care such as per-block offsets or importance weighting. The memory saved matters most when the weights are streamed from a disk, because the time to produce a token is then the time needed to read the experts it uses.
+
+東京は日本の首都であり、世界でも有数の大都市です。江戸時代には江戸と呼ばれ、徳川幕府が置かれていました。明治維新ののち、天皇が京都から移り、名前が東京に改められました。現在では政治、経済、文化の中心として、多くの企業や大学、美術館が集まっています。電車やバスなどの公共交通機関が非常によく発達しており、通勤や通学の時間帯には駅が大変混み合います。四季がはっきりしていて、春には桜、秋には紅葉を楽しむことができます。
+
+def moving_average(values, window):
+    """Return the moving average of a list of numbers."""
+    result = []
+    total = 0.0
+    for i, v in enumerate(values):
+        total += v
+        if i >= window:
+            total -= values[i - window]
+        result.append(total / min(i + 1, window))
+    return result
+
+print(moving_average([1, 2, 3, 4, 5, 6], 3))
+
+The capital of France is Paris, and the river Seine flows through it. The largest planet in the solar system is Jupiter, which has more than ninety known moons. Water boils at one hundred degrees Celsius at sea level, but at a lower temperature on a high mountain where the air pressure is smaller.

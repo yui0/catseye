@@ -6,3 +6,8 @@
 __pycache__/
 *.pyc
 /trllis/models/
+
+# inkling
+inkling/inkling
+inkling/inkling_quantize
+inkling/tests/tok_dump
