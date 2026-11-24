@@ -3173,6 +3173,11 @@ static inline float cats_half_to_float(unsigned h)
 {
 #ifdef __F16C__
 	return _cvtsh_ss((unsigned short)h);
+#elif defined(__aarch64__)
+	const uint16_t u=(uint16_t)h;
+	__fp16 f;
+	memcpy(&f,&u,2);
+	return (float)f;
 #else
 	uint32_t sign=(uint32_t)(h&0x8000u)<<16,exp=(h>>10)&0x1fu,man=h&0x3ffu,bits;
 	if (!exp) {
@@ -3627,6 +3632,20 @@ static inline void cats_q8_0_quantize(int8_t *out, const float *x, int n)
 {
 #if CATS_SIMD_X86
 	if (cats_cpu_simd_level() >= 1) { cats_q8_0_quantize_avx(out, x, n); return; }
+#elif CATS_SIMD_NEON
+	{
+		for (int g = 0; g < n / CATS_Q4_0_BLOCK; g++, x += CATS_Q4_0_BLOCK, out += CATS_Q8_0_BYTES) {
+			float32x4_t v[8], m = vdupq_n_f32(0);
+			for (int i = 0; i < 8; i++) { v[i] = vld1q_f32(x + 4 * i); m = vmaxq_f32(m, vabsq_f32(v[i])); }
+			const float d = vmaxvq_f32(m) / 127.0f, id = d ? 1.0f / d : 0.0f;
+			for (int i = 0; i < 8; i += 2) {
+				const int16x8_t h = vcombine_s16(vqmovn_s32(vcvtnq_s32_f32(vmulq_n_f32(v[i], id))), vqmovn_s32(vcvtnq_s32_f32(vmulq_n_f32(v[i + 1], id))));
+				vst1_s8(out + 4 * i, vqmovn_s16(h));
+			}
+			memcpy(out + 32, &d, 4);
+		}
+		return;
+	}
 #endif
 	cats_q8_0_quantize_scalar(out, x, n);
 }
@@ -3695,6 +3714,11 @@ static inline float cats_dot_q8_0w_q8_0(const uint8_t *w, const int8_t *a, int n
 	return cats_dot_q8_0w_q8_0_scalar(w, a, n);
 }
 
+#if CATS_SIMD_NEON && defined(__ARM_FEATURE_DOTPROD)
+#define CATS_HAVE_QGEMM_NEON 1	// SDOT kernels for Q8_0 / Q4_0 / Q3_0 weights (defined after the Q3_0 format below)
+static inline void cats_gemm_nt_qk_neon(float *c, const float *x, const uint8_t *w, size_t n, size_t in, size_t out, const float *bias, int type);
+#endif
+
 // C[n][out] = X[n][in] . W^T (+ bias) with W stored as Q4_0 rows.
 //   1..3 tokens: activations are quantized to Q8_0 and every output is an integer dot product, so the weights
 //     stay 4-bit in memory (a vector-matrix product is bound by reading the weights);
@@ -3708,6 +3732,9 @@ static inline void cats_gemm_nt_q4_0(float *c, const float *x, const uint8_t *w,
 				     const float *bias)
 {
 	if (!n || !in || !out || in % CATS_Q4_0_BLOCK) return;
+#ifdef CATS_HAVE_QGEMM_NEON
+	cats_gemm_nt_qk_neon(c, x, w, n, in, out, bias, 1); return;
+#endif
 	const size_t arow = cats_q8_0_row_bytes(in), wrow = cats_q4_0_row_bytes(in);
 	if (n >= CATS_Q4_0_DEQUANT_MIN) {
 		static float *scratch;
@@ -3756,6 +3783,9 @@ static inline void cats_gemm_nt_q8_0(float *c, const float *x, const uint8_t *w,
 				     const float *bias)
 {
 	if (!n || !in || !out || in % CATS_Q4_0_BLOCK) return;
+#ifdef CATS_HAVE_QGEMM_NEON
+	cats_gemm_nt_qk_neon(c, x, w, n, in, out, bias, 0); return;
+#endif
 	const size_t arow = cats_q8_0_row_bytes(in), wrow = cats_q8_0w_row_bytes(in);
 	if (n >= CATS_Q4_0_DEQUANT_MIN) {
 		static float *scratch;
@@ -3914,10 +3944,146 @@ static inline float cats_dot_q3_0_q8_0(const uint8_t *w, const int8_t *a, int n)
 	return cats_dot_q3_0_q8_0_scalar(w, a, n);
 }
 // C[n][out] = X[n][in] . W^T (+ bias) with W stored as Q3_0 rows (same strategy as cats_gemm_nt_q4_0).
+#if CATS_SIMD_NEON && defined(__ARM_FEATURE_DOTPROD)
+// ---- Apple silicon / ARMv8.2+: Q4_0 / Q8_0 weights x Q8_0 activations for any token count, with SDOT ----
+// A tile of R weight rows x T tokens is computed together: each weight block is unpacked once and used T times, each
+// activation block is loaded once and used R times, and the per-block scales are applied in vector registers (no
+// horizontal add per block). The weights never leave their quantized form, so a multi-token product costs about the
+// same memory traffic as a single-token one.
+static inline void cats_q8_0_quantize_neon(int8_t *q, const float *x, int n)
+{
+	for (int g = 0; g < n / CATS_Q4_0_BLOCK; g++, x += CATS_Q4_0_BLOCK, q += CATS_Q8_0_BYTES) {
+		float32x4_t v[8], m = vdupq_n_f32(0);
+		for (int i = 0; i < 8; i++) { v[i] = vld1q_f32(x + 4 * i); m = vmaxq_f32(m, vabsq_f32(v[i])); }
+		const float amax = vmaxvq_f32(m), d = amax / 127.0f, id = d ? 1.0f / d : 0.0f;
+		for (int i = 0; i < 8; i += 2) {
+			const int32x4_t a = vcvtnq_s32_f32(vmulq_n_f32(v[i], id)), b = vcvtnq_s32_f32(vmulq_n_f32(v[i + 1], id));
+			const int16x8_t h = vcombine_s16(vqmovn_s32(a), vqmovn_s32(b));
+			vst1_s8(q + 4 * i, vqmovn_s16(h));
+		}
+		memcpy(q + 32, &d, 4);
+	}
+}
+#define CATS_QK_TILE(NAME, R, T, TY)                                                                                   \
+static inline void NAME(float *c, size_t ldc, const int8_t *xq, size_t arow, const uint8_t *w, size_t wrow, int nb,   \
+			const float *bias)                                                                             \
+{                                                                                                                      \
+	const int BB = TY == 1 ? CATS_Q4_0_BYTES : TY == 2 ? CATS_Q3_0_BYTES : CATS_Q8_0W_BYTES;                                                        \
+	float32x4_t acc[R][T];                                                                                         \
+	for (int r = 0; r < R; r++) for (int t = 0; t < T; t++) acc[r][t] = vdupq_n_f32(0);                            \
+	const uint8x16_t m4 = vdupq_n_u8(0x0F);                                                                        \
+	const int8x16_t s8 = vdupq_n_s8(8);                                                                            \
+	static const uint8_t bitv[16] = { 1, 2, 4, 8, 16, 32, 64, 128, 1, 2, 4, 8, 16, 32, 64, 128 };                  \
+	static const int8_t sha[16] = { 0, 0, 0, 0, 0, 0, 0, 0, -2, -2, -2, -2, -2, -2, -2, -2 };                      \
+	static const int8_t shb[16] = { -4, -4, -4, -4, -4, -4, -4, -4, -6, -6, -6, -6, -6, -6, -6, -6 };              \
+	static const uint8_t ixa[16] = { 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1 };                             \
+	static const uint8_t ixb[16] = { 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3 };                             \
+	const uint8x16_t bits = vld1q_u8(bitv), ix_a = vld1q_u8(ixa), ix_b = vld1q_u8(ixb);                            \
+	const int8x16_t sh_a = vld1q_s8(sha), sh_b = vld1q_s8(shb);                                                    \
+	const uint8x16_t m3 = vdupq_n_u8(3), four = vdupq_n_u8(4);                                                     \
+	(void)bits; (void)ix_a; (void)ix_b; (void)sh_a; (void)sh_b; (void)m3; (void)four;                              \
+	for (int b = 0; b < nb; b++) {                                                                                 \
+		int8x16_t lo[R], hi[R];                                                                                \
+		float wd[R];                                                                                           \
+		for (int r = 0; r < R; r++) {                                                                          \
+			const uint8_t *p = w + (size_t)r * wrow + (size_t)b * BB;                                      \
+			__fp16 h; memcpy(&h, p, 2); wd[r] = (float)h;                                                  \
+			if (TY == 1) {                                                                                 \
+				const uint8x16_t q = vld1q_u8(p + 2);                                                  \
+				lo[r] = vsubq_s8(vreinterpretq_s8_u8(vandq_u8(q, m4)), s8);                           \
+				hi[r] = vsubq_s8(vreinterpretq_s8_u8(vshrq_n_u8(q, 4)), s8);                          \
+			} else if (TY == 2) {                                                                          \
+				/* bytes 2..9: 2-bit fields of values i, i+8, i+16, i+24; bytes 10..13: bit i = high bit  \
+				   of value i. value = field + 4 * high - 4 = field - (high ? 0 : 4) */                   \
+				uint64_t l64; uint32_t h32; memcpy(&l64, p + 2, 8); memcpy(&h32, p + 10, 4);           \
+				const uint8x16_t l = vreinterpretq_u8_u64(vdupq_n_u64(l64));                           \
+				const uint8x16_t hv = vreinterpretq_u8_u32(vdupq_n_u32(h32));                          \
+				const uint8x16_t va = vandq_u8(vshlq_u8(l, sh_a), m3);                                 \
+				const uint8x16_t vb = vandq_u8(vshlq_u8(l, sh_b), m3);                                 \
+				const uint8x16_t ha = vtstq_u8(vqtbl1q_u8(hv, ix_a), bits);                            \
+				const uint8x16_t hb = vtstq_u8(vqtbl1q_u8(hv, ix_b), bits);                            \
+				lo[r] = vreinterpretq_s8_u8(vsubq_u8(va, vbicq_u8(four, ha)));                         \
+				hi[r] = vreinterpretq_s8_u8(vsubq_u8(vb, vbicq_u8(four, hb)));                         \
+			} else { lo[r] = vld1q_s8((const int8_t*)p + 2); hi[r] = vld1q_s8((const int8_t*)p + 18); }    \
+		}                                                                                                      \
+		for (int t = 0; t < T; t++) {                                                                          \
+			const int8_t *a = xq + (size_t)t * arow + (size_t)b * CATS_Q8_0_BYTES;                         \
+			const int8x16_t xa = vld1q_s8(a), xb = vld1q_s8(a + 16);                                       \
+			float xd; memcpy(&xd, a + 32, 4);                                                              \
+			for (int r = 0; r < R; r++) {                                                                  \
+				const int32x4_t is = vdotq_s32(vdotq_s32(vdupq_n_s32(0), lo[r], xa), hi[r], xb);       \
+				acc[r][t] = vfmaq_n_f32(acc[r][t], vcvtq_f32_s32(is), wd[r] * xd);                     \
+			}                                                                                              \
+		}                                                                                                      \
+	}                                                                                                              \
+	for (int r = 0; r < R; r++) for (int t = 0; t < T; t++)                                                        \
+		c[(size_t)t * ldc + r] = vaddvq_f32(acc[r][t]) + (bias ? bias[r] : 0.0f);                              \
+}
+CATS_QK_TILE(cats_qk4_4x1, 4, 1, 1) CATS_QK_TILE(cats_qk4_4x2, 4, 2, 1) CATS_QK_TILE(cats_qk4_4x3, 4, 3, 1) CATS_QK_TILE(cats_qk4_4x4, 4, 4, 1)
+CATS_QK_TILE(cats_qk4_1x1, 1, 1, 1) CATS_QK_TILE(cats_qk4_1x4, 1, 4, 1)
+CATS_QK_TILE(cats_qk8_4x1, 4, 1, 0) CATS_QK_TILE(cats_qk8_4x2, 4, 2, 0) CATS_QK_TILE(cats_qk8_4x3, 4, 3, 0) CATS_QK_TILE(cats_qk8_4x4, 4, 4, 0)
+CATS_QK_TILE(cats_qk8_1x1, 1, 1, 0) CATS_QK_TILE(cats_qk8_1x4, 1, 4, 0)
+CATS_QK_TILE(cats_qk3_4x1, 4, 1, 2) CATS_QK_TILE(cats_qk3_4x2, 4, 2, 2) CATS_QK_TILE(cats_qk3_4x3, 4, 3, 2) CATS_QK_TILE(cats_qk3_4x4, 4, 4, 2)
+CATS_QK_TILE(cats_qk3_1x1, 1, 1, 2) CATS_QK_TILE(cats_qk3_1x4, 1, 4, 2)
+#undef CATS_QK_TILE
+typedef void (*cats_qk_fn)(float*, size_t, const int8_t*, size_t, const uint8_t*, size_t, int, const float*);
+typedef struct { float *c; const int8_t *xq; const uint8_t *w; const float *bias; size_t n, in, out, arow, wrow; int q4; } cats_qk_ctx;	// q4: weight type, 0 = Q8_0, 1 = Q4_0, 2 = Q3_0
+// rows [lo, hi) in units of 4-row groups (the last group may be short)
+static void cats_qk_rows(void *vp, long lo, long hi)
+{
+	const cats_qk_ctx *g = (const cats_qk_ctx*)vp;
+	static const cats_qk_fn f4[3][4] = { { cats_qk8_4x1, cats_qk8_4x2, cats_qk8_4x3, cats_qk8_4x4 },
+					     { cats_qk4_4x1, cats_qk4_4x2, cats_qk4_4x3, cats_qk4_4x4 },
+					     { cats_qk3_4x1, cats_qk3_4x2, cats_qk3_4x3, cats_qk3_4x4 } };
+	static const cats_qk_fn f14[3] = { cats_qk8_1x4, cats_qk4_1x4, cats_qk3_1x4 }, f11[3] = { cats_qk8_1x1, cats_qk4_1x1, cats_qk3_1x1 };
+	const int nb = (int)(g->in / CATS_Q4_0_BLOCK);
+	for (long rg = lo; rg < hi; rg++) {
+		const size_t r0 = (size_t)rg * 4;
+		const uint8_t *w = g->w + r0 * g->wrow;
+		const float *b = g->bias ? g->bias + r0 : NULL;
+		if (r0 + 4 <= g->out) {
+			for (size_t t = 0; t < g->n; t += 4) {
+				const size_t tt = g->n - t < 4 ? g->n - t : 4;
+				f4[g->q4][tt - 1](g->c + t * g->out + r0, g->out, g->xq + t * g->arow, g->arow, w, g->wrow, nb, b);
+			}
+		} else for (size_t r = r0; r < g->out; r++) {
+			const uint8_t *wr = g->w + r * g->wrow;
+			const float *br = g->bias ? g->bias + r : NULL;
+			size_t t = 0;
+			for (; t + 4 <= g->n; t += 4) f14[g->q4](g->c + t * g->out + r, g->out, g->xq + t * g->arow, g->arow, wr, g->wrow, nb, br);
+			for (; t < g->n; t++) f11[g->q4](g->c + t * g->out + r, g->out, g->xq + t * g->arow, g->arow, wr, g->wrow, nb, br);
+		}
+	}
+}
+// xq: n rows of Q8_0 activations (already quantized), see cats_q8_0_quantize
+static inline void cats_gemm_qk_neon(float *c, const int8_t *xq, const uint8_t *w, size_t n, size_t in, size_t out, const float *bias, int type)
+{
+	cats_qk_ctx g = { c, xq, w, bias, n, in, out, cats_q8_0_row_bytes(in), type == 1 ? cats_q4_0_row_bytes(in) : type == 2 ? cats_q3_0_row_bytes(in) : cats_q8_0w_row_bytes(in), type };
+	const long ng = (long)((out + 3) / 4);
+	if ((double)n * in * out < 2e5) { cats_qk_rows(&g, 0, ng); return; }
+	// chunks of row groups: ~64 chunks keep the cores balanced, and big enough that a token tile reuses its weights
+	long chunk = ng / 64; if (chunk < 1) chunk = 1;
+	cats_pfor(ng, chunk, cats_qk_rows, &g);
+}
+static inline void cats_gemm_nt_qk_neon(float *c, const float *x, const uint8_t *w, size_t n, size_t in, size_t out, const float *bias, int type)
+{
+	const size_t arow = cats_q8_0_row_bytes(in);
+	static int8_t *xq;
+	static size_t cap;
+	if (cap < n * arow) { (free)(xq); xq = (int8_t*)(malloc)(n * arow); cap = xq ? n * arow : 0; if (!xq) return; }
+	#pragma omp parallel for schedule(static) if(n > 8)
+	for (long t = 0; t < (long)n; t++) cats_q8_0_quantize_neon(xq + (size_t)t * arow, x + (size_t)t * in, (int)in);
+	cats_gemm_qk_neon(c, xq, w, n, in, out, bias, type);
+}
+#endif
+
 static inline void cats_gemm_nt_q3_0(float *c, const float *x, const uint8_t *w, size_t n, size_t in, size_t out,
 				     const float *bias)
 {
 	if (!n || !in || !out || in % CATS_Q4_0_BLOCK) return;
+#ifdef CATS_HAVE_QGEMM_NEON
+	cats_gemm_nt_qk_neon(c, x, w, n, in, out, bias, 2); return;
+#endif
 	const size_t arow = cats_q8_0_row_bytes(in), wrow = cats_q3_0_row_bytes(in);
 	if (n >= CATS_Q4_0_DEQUANT_MIN) {
 		static float *scratch;

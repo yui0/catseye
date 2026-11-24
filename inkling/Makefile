@@ -13,7 +13,8 @@ CFLAGS ?= -O3 -std=gnu11 -march=native
 endif
 ifeq ($(UNAME_S),Darwin)
 # Apple clang has no OpenMP of its own: use Homebrew's libomp (brew install libomp). Without it the build is single-threaded.
-LIBOMP := $(shell brew --prefix libomp 2>/dev/null)
+# (brew --prefix prints the path even when the formula is not installed: check for the header)
+LIBOMP := $(shell d=$$(brew --prefix libomp 2>/dev/null); [ -f "$$d/include/omp.h" ] && echo $$d)
 ifneq ($(and $(filter 1,$(OPENMP)),$(LIBOMP)),)
 OMP_FLAGS := -Xpreprocessor -fopenmp -I$(LIBOMP)/include
 LDLIBS += -L$(LIBOMP)/lib -lomp

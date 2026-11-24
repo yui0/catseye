@@ -22,6 +22,9 @@
 #include <time.h>
 #include <unistd.h>
 #include <pthread.h>
+#if defined(__APPLE__)
+#include <mach/mach.h>
+#endif
 #define CATS_INFER_ONLY
 #include "../catseye.h"
 #include "../catseye_openai.h"
@@ -30,7 +33,7 @@ static double tick(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t)
 static FILE *trace_f;	// INKLING_TRACE=file: binary (layer, expert) pairs of every routed expert, for cache studies
 static long pr_n, pr_hit, pr_hit2, pr_tot;	// next-layer expert prediction: recall of the top K / top 2K
 static int pr_for = -1, pr_top[64];
-static double t_pre, t_attn, t_moe, t_w13, t_w2, t_route;	// -v breakdown (ms)
+static double t_pre, t_attn, t_moe, t_w13, t_w2, t_route, t_dec;	// -v breakdown (ms)
 #define MAX_BLOCKS	16
 #define MAX_TOPK	32
 
@@ -175,6 +178,56 @@ static void dump_moe(const model_t *m, int l, int nt, const float *x)
 static int verbose_pred, opt_prefetch;	// --prefetch N: read the N most likely experts of the next layer in the background
 static int opt_cache_mb = -1;	// -1 = automatic, 0 = off (plain mmap), N = N MB
 
+static int is_streamed(const char *name)	// tensors left on disk: the routed experts and the embedding table
+{
+	const size_t n = strlen(name);
+	return (n > 4 && !strcmp(name + n - 4, ".w13")) || (n > 3 && !strcmp(name + n - 3, ".w2")) || !strcmp(name, "embed");
+}
+static int cmp_span(const void *a, const void *b) { const size_t *x = a, *y = b; return (x[0] > y[0]) - (x[0] < y[0]); }
+static size_t pinned_bytes;
+static void pin_dense(model_t *m)
+{
+#if !defined(_WIN32)
+	cats_st *st = &m->st;
+	if (m->fd < 0 || getenv("INKLING_NO_PIN")) return;
+	const size_t pg = m->page, base = (size_t)(st->data - st->map);
+	size_t *sp = (size_t*)malloc((size_t)st->count * 2 * sizeof(size_t));
+	int n = 0;
+	for (int i = 0; i < st->count; i++) {
+		const cats_st_tensor *t = &st->tensor[i];
+		if (is_streamed(t->name) || t->dtype == CATS_ST_F32 || t->end == t->begin) continue;	// F32: already copied by getf()
+		sp[2 * n] = (base + t->begin) & ~(pg - 1);
+		sp[2 * n + 1] = (base + t->end + pg - 1) & ~(pg - 1);
+		if (sp[2 * n + 1] > st->size) sp[2 * n + 1] = st->size;
+		n++;
+	}
+	qsort(sp, (size_t)n, 2 * sizeof(size_t), cmp_span);
+	int k = 0;	// merge spans that touch or are within 1 MB (one read is cheaper than two)
+	for (int i = 0; i < n; i++) {
+		if (k && sp[2 * i] <= sp[2 * k - 1] + (1 << 20)) { if (sp[2 * i + 1] > sp[2 * k - 1]) sp[2 * k - 1] = sp[2 * i + 1]; }
+		else { sp[2 * k] = sp[2 * i]; sp[2 * k + 1] = sp[2 * i + 1]; k++; }
+	}
+	int fail = 0;
+	#pragma omp parallel for schedule(dynamic, 1) num_threads(8) reduction(+:fail)
+	for (int i = 0; i < k; i++) {
+		const size_t a = sp[2 * i], len = sp[2 * i + 1] - a;
+		uint8_t *p = (uint8_t*)mmap(st->map + a, len, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_FIXED, -1, 0);
+		if (p == MAP_FAILED) { fail++; continue; }
+		for (size_t got = 0; got < len; ) {
+			const ssize_t r = pread(m->fd, p + got, len - got, (off_t)(a + got));
+			if (r <= 0) { fprintf(stderr, "read error on the model file\n"); exit(1); }
+			got += (size_t)r;
+		}
+		mprotect(p, len, PROT_READ);
+	}
+	if (fail) { fprintf(stderr, "cannot pin the dense weights\n"); exit(1); }
+	for (int i = 0; i < k; i++) pinned_bytes += sp[2 * i + 1] - sp[2 * i];
+	free(sp);
+#else
+	(void)m;
+#endif
+}
+
 static int load_model(model_t *m, const char *path, int ctx, int passes, int B, int topk)
 {
 	memset(m, 0, sizeof(*m));
@@ -183,6 +236,9 @@ static int load_model(model_t *m, const char *path, int ctx, int passes, int B, 
 #if !defined(_WIN32)
 	m->page = (size_t)sysconf(_SC_PAGESIZE);
 	m->fd = open(path, O_RDONLY);
+#if defined(__APPLE__)
+	if (m->fd >= 0) fcntl(m->fd, F_NOCACHE, 1);	// explicit reads go to private memory: don't keep a second copy in the file cache
+#endif
 #else
 	m->page = 4096;
 #endif
@@ -279,16 +335,13 @@ static int load_model(model_t *m, const char *path, int ctx, int passes, int B, 
 			}
 		}
 	}
-	// Everything but the experts and the embedding table is needed for every token: page it in now. The experts are
-	// read on demand (see moe_batch); random access means no read-ahead of the neighbours.
+	// Everything but the experts and the embedding table is needed for every token. Left as file-backed pages it is
+	// the first thing evicted when the experts stream through memory, and paged back in by small faults (on a USB drive
+	// that cost as much time as the experts). So read it with a few large reads into anonymous memory placed over the
+	// same addresses: every pointer into the mapping stays valid. The experts are read on demand (see moe_batch).
 #if !defined(_WIN32)
 	madvise(st->map, st->size, MADV_RANDOM);
-	for (int i = 0; i < st->count; i++) {
-		const cats_st_tensor *t = &st->tensor[i];
-		const size_t n = strlen(t->name);
-		if ((n > 4 && !strcmp(t->name + n - 4, ".w13")) || (n > 3 && !strcmp(t->name + n - 3, ".w2")) || !strcmp(t->name, "embed")) continue;
-		advise(m, st->data + t->begin, (size_t)(t->end - t->begin));
-	}
+	pin_dense(m);
 #endif
 	// caches: one per layer visit (the looped layers get a private copy per pass). The sliding ring holds the
 	// window plus one chunk, so a chunk can write its keys before its first token has read the oldest ones.
@@ -550,7 +603,22 @@ static int auto_cache_mb(const model_t *m)
 	double experts = 0;
 	for (int l = 0; l < c->NL; l++) experts += (double)c->E * ((double)2 * c->I * m->L[l].w13_rb + (double)c->H * m->L[l].w2_rb);
 	const double rest = (double)m->st.size - experts + 0.4e9;		// attention, tables, KV cache and scratch stay resident
-	const double budget = mem_budget_bytes() * 0.7 - rest;
+	double budget = mem_budget_bytes() * 0.7 - rest;
+#if defined(__APPLE__)
+	// macOS keeps little memory free and swaps (to the same SSD) rather than failing: a cache sized from the total RAM
+	// is pushed to swap, and reading a swapped expert back costs more than reading it from the model file. Size it from
+	// what is available now (free, inactive, speculative and purgeable pages) instead. On an 8 GB M1 with the Q4 file this
+	// picks ~1.5-2 GB; 1.5 GB measured fastest (2.7 tok/s; 3.5 GB from the old rule swapped and ran at 0.5 tok/s).
+	{
+		vm_statistics64_data_t vs;
+		mach_msg_type_number_t cnt = HOST_VM_INFO64_COUNT;
+		if (host_statistics64(mach_host_self(), HOST_VM_INFO64, (host_info64_t)&vs, &cnt) == KERN_SUCCESS) {
+			const double avail = ((double)vs.free_count + vs.inactive_count + vs.speculative_count + vs.purgeable_count) * (double)vm_page_size;
+			const double b2 = avail * 0.6 - (pinned_bytes ? 0.4e9 : rest);	// the pinned weights are already resident (not available)
+			if (b2 < budget) budget = b2;
+		}
+	}
+#endif
 	if (experts <= budget) return 0;
 	return budget > 256e6 ? (int)(budget / 1048576.0) : 256;
 }
@@ -615,7 +683,9 @@ static int cache_ensure(model_t *m, int l, const layer_t *y, const int *want, in
 			if (r <= 0) { fprintf(stderr, "read error on the model file\n"); exit(1); }
 			got += (size_t)r;
 		}
+#ifdef POSIX_FADV_DONTNEED
 		posix_fadvise(m->fd, off, (off_t)len, POSIX_FADV_DONTNEED);	// the copy lives in the cache: don't hold it twice
+#endif
 	}
 	return nm;
 }
@@ -646,7 +716,29 @@ static void cache_speculate(model_t *m, int l2, const int *pred, int n)
 	if (pthread_create(&m->pf_th, NULL, pf_main, m) == 0) m->pf_run = 1;
 }
 
-static void moe_decode_q4(model_t *m, const layer_t *y, float *out, const float *x,
+#ifdef CATS_HAVE_QGEMM_NEON
+typedef struct { const uint8_t *const *w13, *const *w2; const int8_t *x, *act; float *gate, *outv; size_t rb13, rb2, ar; int H, I, n; cats_qk_fn f13, f2; } moe_dec_ctx;
+static cats_qk_fn qk_4x1(int dtype) { return dtype == CATS_ST_Q4_0 ? cats_qk4_4x1 : dtype == CATS_ST_Q3_0 ? cats_qk3_4x1 : dtype == CATS_ST_Q8_0 ? cats_qk8_4x1 : NULL; }
+static void moe_dec_w13(void *vp, long lo, long hi)
+{
+	const moe_dec_ctx *g = (const moe_dec_ctx*)vp;
+	const long per = 2 * g->I / 4;
+	for (long i = lo; i < hi; i++) {
+		const int j = (int)(i / per), r = (int)(i % per) * 4;
+		g->f13(g->gate + (size_t)j * 2 * g->I + r, 1, g->x, 0, g->w13[j] + (size_t)r * g->rb13, g->rb13, g->H / 32, NULL);
+	}
+}
+static void moe_dec_w2(void *vp, long lo, long hi)
+{
+	const moe_dec_ctx *g = (const moe_dec_ctx*)vp;
+	const long per = g->H / 4;
+	for (long i = lo; i < hi; i++) {
+		const int j = (int)(i / per), r = (int)(i % per) * 4;
+		g->f2(g->outv + (size_t)j * g->H + r, 1, g->act + (size_t)j * g->ar, 0, g->w2[j] + (size_t)r * g->rb2, g->rb2, g->I / 32, NULL);
+	}
+}
+#endif
+static void moe_decode(model_t *m, const layer_t *y, float *out, const float *x,
 			  const int *experts, int n)
 {
 	const cfg_t *c = &m->c;
@@ -665,6 +757,21 @@ static void moe_decode_q4(model_t *m, const layer_t *y, float *out, const float 
 		}
 	}
 	cats_q8_0_quantize(m->decode_x, x, H);
+#ifdef CATS_HAVE_QGEMM_NEON
+	// all experts' w13 rows as one parallel job of 4-row groups, then their activations, then all w2 rows
+	moe_dec_ctx g = { w13, w2, m->decode_x, m->decode_activations, m->decode_gate, m->decode_output, y->w13_rb, y->w2_rb, ar, H, I, n, qk_4x1(y->xtype), qk_4x1(y->xtype2) };
+	cats_pfor((long)n * (2 * I / 4), 16, moe_dec_w13, &g);
+	#pragma omp parallel for schedule(static) if(n > 1)
+	for (int j = 0; j < n; j++) {
+		float *gu = m->decode_gate + (size_t)j * 2 * I;
+		for (int i = 0; i < I; i++) {
+			const float gg = gu[i], u = gu[I + i];
+			gu[i] = cats_softcap(gg, c->gate_cap) * cats_sigmoid(gg) * cats_softcap(u, c->up_cap);
+		}
+		cats_q8_0_quantize(m->decode_activations + (size_t)j * ar, gu, I);
+	}
+	cats_pfor((long)n * (H / 4), 16, moe_dec_w2, &g);
+#else
 	#pragma omp parallel
 	{
 		#pragma omp for schedule(static)
@@ -688,6 +795,7 @@ static void moe_decode_q4(model_t *m, const layer_t *y, float *out, const float 
 							      m->decode_activations + (size_t)j * ar, I);
 		}
 	}
+#endif
 	memset(out, 0, (size_t)H * sizeof(float));
 	for (int j = 0; j < n; j++) {
 		const float *value = m->decode_output + (size_t)j * H;
@@ -758,9 +866,16 @@ static void moe_batch(model_t *m, int l, int nt, float *out, const float *x)
 			for (int j = 0; j < nw; j++) m->eslot_of[want[j]] = m->eslot[j];
 		} else prefetch_experts(m, y, want, nw);
 		t_pre += tick() - tp;
-		if (nt == 1 && y->xtype == CATS_ST_Q4_0 && y->xtype2 == CATS_ST_Q4_0 &&
+#ifdef CATS_HAVE_QGEMM_NEON
+		const int dec_ok = qk_4x1(y->xtype) && qk_4x1(y->xtype2);
+#else
+		const int dec_ok = y->xtype == CATS_ST_Q4_0 && y->xtype2 == CATS_ST_Q4_0;
+#endif
+		if (nt == 1 && dec_ok &&
 		    m->decode_gate && m->decode_output && m->decode_x && m->decode_activations) {
-			moe_decode_q4(m, y, out, x, want, nw);
+			const double td = tick();
+			moe_decode(m, y, out, x, want, nw);
+			t_dec += tick() - td;
 			return;
 		}
 	}
@@ -1087,6 +1202,7 @@ int main(int argc, char **argv)
 	double t0 = now_ms();
 	if (load_model(&M, mp, ctx, passes, batch, topk)) return 1;
 	if (opt_cache_mb < 0) { opt_cache_mb = auto_cache_mb(&M); if (verbose && opt_cache_mb) fprintf(stderr, "experts exceed memory: automatic expert cache %d MB\n", opt_cache_mb); }
+	if (verbose) fprintf(stderr, "dense weights in memory: %.0f MB\n", pinned_bytes / 1048576.0);
 	if (verbose) fprintf(stderr, "loaded in %.0f ms: %d layers, %d experts, loop [%d,%d) x %d, ctx %d\n", now_ms() - t0, M.c.NL, M.c.E, M.c.loop_start, M.c.loop_end, M.passes, ctx);
 
 	ids_t in = { 0 };
@@ -1254,7 +1370,7 @@ int main(int argc, char **argv)
 			while (pf && fgets(ln, sizeof(ln), pf)) if (!strncmp(ln, "read_bytes:", 11)) rb = atof(ln + 11);
 			if (pf) fclose(pf);
 #endif
-			fprintf(stderr, "next-layer prediction: top-K recall %.1f%%, top-2K recall %.1f%% (%ld layer visits)\nexpert cache hits %ld misses %ld, speculative loads %ld\ntime: prefetch %.0f ms, attention %.0f ms, experts %.0f ms (w13 %.0f, w2 %.0f), storage reads %.2f GB\n", pr_tot ? 100.0 * pr_hit / pr_tot : 0, pr_tot ? 100.0 * pr_hit2 / pr_tot : 0, pr_n, M.chit, M.cmiss, M.cpf, t_pre, t_attn, t_moe, t_w13, t_w2, rb / 1e9);
+			fprintf(stderr, "next-layer prediction: top-K recall %.1f%%, top-2K recall %.1f%% (%ld layer visits)\nexpert cache hits %ld misses %ld, speculative loads %ld\ntime: prefetch %.0f ms, attention %.0f ms, experts %.0f ms (w13 %.0f, w2 %.0f, decode %.0f), storage reads %.2f GB\n", pr_tot ? 100.0 * pr_hit / pr_tot : 0, pr_tot ? 100.0 * pr_hit2 / pr_tot : 0, pr_n, M.chit, M.cmiss, M.cpf, t_pre, t_attn, t_moe, t_w13, t_w2, t_dec, rb / 1e9);
 		}
 		if (verbose) fprintf(stderr, "prompt %d tokens %.0f ms (%.1f tok/s), generated %d tokens %.0f ms (%.2f tok/s)\n",
 				     turn.n, tp, turn.n * 1e3 / (tp > 0 ? tp : 1), gen, now_ms() - t0, gen * 1e3 / (now_ms() - t0 > 0 ? now_ms() - t0 : 1));

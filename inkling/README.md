@@ -82,6 +82,8 @@ Use Q3 experts and Q4 attention and vocabulary tables to reduce the model file t
 
 Inkling memory-maps the model and reads routed experts as needed. When the experts exceed the memory budget, Inkling enables an expert cache automatically. A fast SSD helps when the weights cannot stay in memory. Start with the model's default expert count and loop passes for quality. If storage reads dominate, `--topk 6` can reduce the amount of expert data read, with a potential quality trade-off.
 
+On macOS, the expert cache is sized from the memory available at startup, so close other large apps before running. Keep the model file on the internal SSD: on an 8 GB M1, the Q3 file generates about 3.5 tokens/s from the internal SSD, while reading the Q4 file from a USB SSD ran below 1 token/s.
+
 ## Tests
 
 `make test` checks the SIMD kernels and compares inference on a small generated checkpoint with a PyTorch reference. It needs Python, PyTorch, NumPy, and `safetensors`. `make test-tokenizer MODEL_DIR=Inkling-2-Mini` checks the tokenizer against Hugging Face `tokenizers` using the downloaded tokenizer file.
