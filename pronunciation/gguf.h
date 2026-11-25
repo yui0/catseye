@@ -14,7 +14,7 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 
-enum { CG_F32 = 0, CG_F16 = 1, CG_Q4_0 = 2, CG_Q8_0 = 8 };
+enum { CG_F32 = 0, CG_F16 = 1, CG_Q4_0 = 2, CG_Q8_0 = 8, CG_PTQ1_0 = 143 };
 enum { CG_U8, CG_I8, CG_U16, CG_I16, CG_U32, CG_I32, CG_F32V, CG_BOOL, CG_STR, CG_ARR, CG_U64, CG_I64, CG_F64 };
 
 typedef struct { char name[128]; int nd; uint64_t dim[4]; int type; uint64_t n; const void *data; size_t bytes; } cg_tensor;
@@ -36,6 +36,7 @@ static inline size_t cg_type_bytes(int type, uint64_t n)
 	case CG_F16: return n * 2;
 	case CG_Q4_0: return n / 32 * 18;
 	case CG_Q8_0: return n / 32 * 34;
+	case CG_PTQ1_0: return n / 128 * 28;
 	}
 	return 0;
 }

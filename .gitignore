@@ -11,3 +11,9 @@ __pycache__/
 inkling/inkling
 inkling/inkling_quantize
 inkling/tests/tok_dump
+
+# bonsai
+/bonsai/models/
+/bonsai/bonsai
+/bonsai/test/test_ptq1_0
+/bonsai/test/test_bpe

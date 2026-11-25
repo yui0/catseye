@@ -3714,6 +3714,435 @@ static inline float cats_dot_q8_0w_q8_0(const uint8_t *w, const int8_t *a, int n
 	return cats_dot_q8_0w_q8_0_scalar(w, a, n);
 }
 
+// ---- PTQ1_0 weights (PrismML ternary, ggml type 143): 128 weights in {-1,0,+1} per 28-byte block ----
+//   uint8 qs[24]  trits packed 5 per byte (base 3, most significant trit first, see below)
+//   uint8 qh[2]   trits packed 4 per byte
+//   fp16  d       scale (weight = trit * d)
+// Same packing as llama.cpp TQ1_0 with a group of 128. A byte b holds trit n as ((uint8_t)(b * 3^n) * 3) >> 8, and the
+// trits of one byte are not neighbours: qs[0..15] hold elements n*16 + m (m = byte index), qs[16..23] hold
+// 80 + n*8 + m, qh[0..1] hold 120 + n*2 + m. The decoded order is the element order of the row.
+// A row is a matrix row of W[out][in]; `in` must be a multiple of 128. The matching activations are Q8_0 rows
+// (cats_q8_0_quantize); the dot product is an exact integer sum per 32 values, scaled by d * the Q8_0 scale.
+#define CATS_PTQ1_0_BLOCK	128
+#define CATS_PTQ1_0_BYTES	28
+static inline size_t cats_ptq1_0_row_bytes(size_t n) { return n / CATS_PTQ1_0_BLOCK * CATS_PTQ1_0_BYTES; }
+// Expands one block into 128 int8 trits (-1, 0, 1).
+static inline void cats_ptq1_0_decode_scalar(const uint8_t *b, int8_t *q)
+{
+	static const uint8_t p3[5] = { 1, 3, 9, 27, 81 };
+	for (int n = 0; n < 5; n++) for (int m = 0; m < 16; m++) q[n * 16 + m] = (int8_t)((((uint8_t)(b[m] * p3[n])) * 3 >> 8) - 1);
+	for (int n = 0; n < 5; n++) for (int m = 0; m < 8; m++) q[80 + n * 8 + m] = (int8_t)((((uint8_t)(b[16 + m] * p3[n])) * 3 >> 8) - 1);
+	for (int n = 0; n < 4; n++) for (int m = 0; m < 2; m++) q[120 + n * 2 + m] = (int8_t)((((uint8_t)(b[24 + m] * p3[n])) * 3 >> 8) - 1);
+}
+#if CATS_SIMD_X86
+// 128-bit integer ops only (AVX encoding), so this runs on AVX-only CPUs as well
+CATS_AVX_FN static inline void cats_ptq1_0_decode_avx(const uint8_t *b, int8_t *q)
+{
+	// trit n of byte v is ((uint8_t)(v * 3^n) * 3) >> 8. In 16-bit lanes mullo(v, 3^n * 256) leaves (v * 3^n mod 256) << 8,
+	// and mulhi(., 3) is then exactly that value (the 8-bit product times 3, shifted right by 8)
+	static const int16_t p3[5] = { 1 << 8, 3 << 8, 9 << 8, 27 << 8, 81 << 8 };
+	const __m128i one = _mm_set1_epi8(1), three = _mm_set1_epi16(3);
+	const __m128i raw = _mm_loadu_si128((const __m128i*)b);
+	const __m128i lo16 = _mm_cvtepu8_epi16(raw), hi16 = _mm_cvtepu8_epi16(_mm_srli_si128(raw, 8));
+	for (int n = 0; n < 5; n++) {
+		const __m128i pn = _mm_set1_epi16(p3[n]);
+		const __m128i a = _mm_mulhi_epu16(_mm_mullo_epi16(lo16, pn), three), c = _mm_mulhi_epu16(_mm_mullo_epi16(hi16, pn), three);
+		_mm_storeu_si128((__m128i*)(q + n * 16), _mm_sub_epi8(_mm_packus_epi16(a, c), one));
+	}
+	const __m128i s16 = _mm_cvtepu8_epi16(_mm_loadl_epi64((const __m128i*)(b + 16)));
+	for (int n = 0; n < 5; n++) {
+		const __m128i v = _mm_mulhi_epu16(_mm_mullo_epi16(s16, _mm_set1_epi16(p3[n])), three);
+		_mm_storel_epi64((__m128i*)(q + 80 + n * 8), _mm_sub_epi8(_mm_packus_epi16(v, v), one));
+	}
+	for (int n = 0; n < 4; n++) for (int m = 0; m < 2; m++) q[120 + n * 2 + m] = (int8_t)((((uint8_t)(b[24 + m] * (uint8_t)(n == 0 ? 1 : n == 1 ? 3 : n == 2 ? 9 : 27))) * 3 >> 8) - 1);
+}
+#endif
+#if CATS_SIMD_X86
+// AVX2: the 16 bytes of qs[0..15] are expanded to 16 lanes of int16 at once
+CATS_AVX2_FN static inline void cats_ptq1_0_decode_avx2(const uint8_t *b, int8_t *q)
+{
+	static const int16_t p3[5] = { 1 << 8, 3 << 8, 9 << 8, 27 << 8, 81 << 8 };	// see cats_ptq1_0_decode_avx
+	const __m128i one = _mm_set1_epi8(1);
+	const __m256i three = _mm256_set1_epi16(3);
+	const __m256i r16 = _mm256_cvtepu8_epi16(_mm_loadu_si128((const __m128i*)b));
+	for (int n = 0; n < 5; n++) {
+		const __m256i v = _mm256_mulhi_epu16(_mm256_mullo_epi16(r16, _mm256_set1_epi16(p3[n])), three);
+		const __m128i r = _mm_packus_epi16(_mm256_castsi256_si128(v), _mm256_extracti128_si256(v, 1));
+		_mm_storeu_si128((__m128i*)(q + n * 16), _mm_sub_epi8(r, one));
+	}
+	const __m128i s16 = _mm_cvtepu8_epi16(_mm_loadl_epi64((const __m128i*)(b + 16)));
+	for (int n = 0; n < 5; n++) {
+		const __m128i v = _mm_mulhi_epu16(_mm_mullo_epi16(s16, _mm_set1_epi16(p3[n])), _mm256_castsi256_si128(three));
+		_mm_storel_epi64((__m128i*)(q + 80 + n * 8), _mm_sub_epi8(_mm_packus_epi16(v, v), one));
+	}
+	for (int n = 0; n < 4; n++) for (int m = 0; m < 2; m++) q[120 + n * 2 + m] = (int8_t)((((uint8_t)(b[24 + m] * (uint8_t)(n == 0 ? 1 : n == 1 ? 3 : n == 2 ? 9 : 27))) * 3 >> 8) - 1);
+}
+#endif
+static inline void cats_ptq1_0_dequantize_row(const uint8_t *in, size_t n, float *out)
+{
+	int8_t q[CATS_PTQ1_0_BLOCK];
+	for (size_t b = 0; b < n / CATS_PTQ1_0_BLOCK; b++, in += CATS_PTQ1_0_BYTES, out += CATS_PTQ1_0_BLOCK) {
+		cats_ptq1_0_decode_scalar(in, q);
+		const float d = cats_half_to_float(cats_load_u16(in + 26));
+		for (int i = 0; i < CATS_PTQ1_0_BLOCK; i++) out[i] = q[i] * d;
+	}
+}
+// Decodes a whole row (n % 128 == 0) into int8 trits q[n] and the per-block scales d[n / 128].
+static inline void cats_ptq1_0_decode_row(const uint8_t *in, size_t n, int8_t *q, float *d)
+{
+	const size_t nb = n / CATS_PTQ1_0_BLOCK;
+#if CATS_SIMD_X86
+	if (cats_cpu_simd_level() >= 2) {
+		for (size_t b = 0; b < nb; b++) { cats_ptq1_0_decode_avx2(in + b * CATS_PTQ1_0_BYTES, q + b * CATS_PTQ1_0_BLOCK); d[b] = cats_half_to_float(cats_load_u16(in + b * CATS_PTQ1_0_BYTES + 26)); }
+		return;
+	}
+	if (cats_cpu_simd_level() >= 1) {
+		for (size_t b = 0; b < nb; b++) { cats_ptq1_0_decode_avx(in + b * CATS_PTQ1_0_BYTES, q + b * CATS_PTQ1_0_BLOCK); d[b] = cats_half_to_float(cats_load_u16(in + b * CATS_PTQ1_0_BYTES + 26)); }
+		return;
+	}
+#endif
+	for (size_t b = 0; b < nb; b++) { cats_ptq1_0_decode_scalar(in + b * CATS_PTQ1_0_BYTES, q + b * CATS_PTQ1_0_BLOCK); d[b] = cats_half_to_float(cats_load_u16(in + b * CATS_PTQ1_0_BYTES + 26)); }
+}
+// sum over a decoded row of trit * Q8_0 activation, scaled: q[n] int8 trits, d[n / 128], a = Q8_0 row (36-byte blocks)
+#if CATS_SIMD_X86
+CATS_AVX_FN static float cats_ptq1_0_rowdot_avx(const int8_t *q, const float *d, const int8_t *a, size_t n)
+{
+	const __m128i one8 = _mm_set1_epi8(1), one16 = _mm_set1_epi16(1);
+	__m128 acc = _mm_setzero_ps();
+	for (size_t j = 0; j < n / 32; j++, a += CATS_Q8_0_BYTES) {
+		const __m128i y0 = _mm_loadu_si128((const __m128i*)a), y1 = _mm_loadu_si128((const __m128i*)(a + 16));
+		const __m128i t0 = _mm_loadu_si128((const __m128i*)(q + j * 32)), t1 = _mm_loadu_si128((const __m128i*)(q + j * 32 + 16));
+		const __m128i s0 = _mm_madd_epi16(_mm_maddubs_epi16(one8, _mm_sign_epi8(y0, t0)), one16);
+		const __m128i s1 = _mm_madd_epi16(_mm_maddubs_epi16(one8, _mm_sign_epi8(y1, t1)), one16);
+		float ds;
+		memcpy(&ds, a + 32, 4);
+		acc = _mm_add_ps(acc, _mm_mul_ps(_mm_cvtepi32_ps(_mm_add_epi32(s0, s1)), _mm_set1_ps(ds * d[j >> 2])));
+	}
+	acc = _mm_add_ps(acc, _mm_movehl_ps(acc, acc));
+	acc = _mm_add_ss(acc, _mm_movehdup_ps(acc));
+	return _mm_cvtss_f32(acc);
+}
+#endif
+#if CATS_SIMD_X86
+// AVX2 + FMA: one 32-value Q8_0 block per step in 256-bit registers
+CATS_AVX2_FN static float cats_ptq1_0_rowdot_avx2(const int8_t *q, const float *d, const int8_t *a, size_t n)
+{
+	const __m256i one8 = _mm256_set1_epi8(1), one16 = _mm256_set1_epi16(1);
+	__m256 acc = _mm256_setzero_ps();
+	for (size_t j = 0; j < n / 32; j++, a += CATS_Q8_0_BYTES) {
+		const __m256i y = _mm256_loadu_si256((const __m256i*)a), t = _mm256_loadu_si256((const __m256i*)(q + j * 32));
+		const __m256i s = _mm256_madd_epi16(_mm256_maddubs_epi16(one8, _mm256_sign_epi8(y, t)), one16);
+		float ds;
+		memcpy(&ds, a + 32, 4);
+		acc = _mm256_fmadd_ps(_mm256_cvtepi32_ps(s), _mm256_set1_ps(ds * d[j >> 2]), acc);
+	}
+	return cats_hsum_ps(acc);
+}
+#endif
+static float cats_ptq1_0_rowdot_scalar(const int8_t *q, const float *d, const int8_t *a, size_t n)
+{
+	float sum = 0.0f;
+	for (size_t j = 0; j < n / 32; j++, a += CATS_Q8_0_BYTES) {
+		int32_t s = 0;
+		float ds;
+		for (int i = 0; i < 32; i++) s += (int32_t)q[j * 32 + i] * a[i];
+		memcpy(&ds, a + 32, 4);
+		sum += (float)s * ds * d[j >> 2];
+	}
+	return sum;
+}
+static inline float cats_ptq1_0_rowdot(const int8_t *q, const float *d, const int8_t *a, size_t n)
+{
+#if CATS_SIMD_X86
+	if (cats_cpu_simd_level() >= 2) return cats_ptq1_0_rowdot_avx2(q, d, a, n);
+	if (cats_cpu_simd_level() >= 1) return cats_ptq1_0_rowdot_avx(q, d, a, n);
+#endif
+	return cats_ptq1_0_rowdot_scalar(q, d, a, n);
+}
+// out[t * out_n + r] = W[r] . x[t] for t < nt, r < out_n. W is PTQ1_0 rows, xq holds nt Q8_0 rows of `in` values
+// (cats_q8_0_quantize, row stride cats_q8_0_row_bytes(in)). Every weight row is decoded once and reused for all
+// tokens, so batched prefill costs little more than one token. `in` is at most CATS_PTQ1_0_MAX_IN.
+#define CATS_PTQ1_0_MAX_IN	32768
+typedef struct { float *out; const uint8_t *w; const int8_t *xq; size_t in, out_n, nt; } cats_ptq1_0_ctx;
+static void cats_ptq1_0_body(void *vc, long lo, long hi)
+{
+	const cats_ptq1_0_ctx *c = (const cats_ptq1_0_ctx*)vc;
+	int8_t q[CATS_PTQ1_0_MAX_IN] __attribute__((aligned(32)));
+	float d[CATS_PTQ1_0_MAX_IN / CATS_PTQ1_0_BLOCK];
+	const size_t wrow = cats_ptq1_0_row_bytes(c->in), arow = cats_q8_0_row_bytes(c->in);
+	for (long r = lo; r < hi; r++) {
+		cats_ptq1_0_decode_row(c->w + (size_t)r * wrow, c->in, q, d);
+		for (size_t t = 0; t < c->nt; t++) c->out[t * c->out_n + r] = cats_ptq1_0_rowdot(q, d, c->xq + t * arow, c->in);
+	}
+}
+static inline void cats_matmul_ptq1_0_q8_0(float *out, const uint8_t *w, const int8_t *xq, size_t nt, size_t in, size_t out_n)
+{
+	if (!nt || !in || !out_n || in % CATS_PTQ1_0_BLOCK || in > CATS_PTQ1_0_MAX_IN) return;
+	cats_ptq1_0_ctx c = { out, w, xq, in, out_n, nt };
+	cats_pfor((long)out_n, 16, cats_ptq1_0_body, &c);
+}
+// C[n][out] = X[n][in] . W^T for float activations (quantized to Q8_0 internally; xq scratch is allocated here)
+static inline void cats_gemm_nt_ptq1_0(float *c, const float *x, const uint8_t *w, size_t n, size_t in, size_t out)
+{
+	const size_t arow = cats_q8_0_row_bytes(in);
+	int8_t *xq = (int8_t*)(malloc)(n * arow);
+	if (!xq) return;
+	for (size_t t = 0; t < n; t++) cats_q8_0_quantize(xq + t * arow, x + t * in, (int)in);
+	cats_matmul_ptq1_0_q8_0(c, w, xq, n, in, out);
+	(free)(xq);
+}
+
+// ---- PTQ1_0 repacked to 2-bit planes ("r2"): the same weights, laid out for the integer dot product ----
+// The 5-trits-per-byte packing needs multiplications to decode. Repacking once at load time (about 1.17x the memory)
+// stores trit + 1 (0, 1, 2) in 2 bits so that decoding is a shift and a mask. Layout per 128 weights: 32 bytes where byte i
+// holds the weights i, 32 + i, 64 + i and 96 + i at bits 0-1, 2-3, 4-5 and 6-7 (plane k = the weights of Q8_0 block k).
+// The dot product is then sum(u * y) - sum(y): maddubs (u8 x s8) adds the products, and sum(y) per activation block is
+// computed once per matmul, not per weight row. The scales are expanded to float, one per 128 weights.
+typedef struct { uint8_t *w; float *d; size_t rows, cols; } cats_ptq1_0_r2;
+typedef struct { cats_ptq1_0_r2 *r; const uint8_t *src; } cats_ptq1_0_pack_ctx;
+static void cats_ptq1_0_pack_body(void *vc, long lo, long hi)
+{
+	const cats_ptq1_0_pack_ctx *c = (const cats_ptq1_0_pack_ctx*)vc;
+	const size_t nb = c->r->cols / CATS_PTQ1_0_BLOCK, srow = nb * CATS_PTQ1_0_BYTES;
+	int8_t q[CATS_PTQ1_0_BLOCK];
+	for (long r = lo; r < hi; r++) {
+		const uint8_t *s = c->src + (size_t)r * srow;
+		uint8_t *w = c->r->w + (size_t)r * nb * 32;
+		for (size_t b = 0; b < nb; b++, s += CATS_PTQ1_0_BYTES, w += 32) {
+			cats_ptq1_0_decode_scalar(s, q);
+			for (int i = 0; i < 32; i++) w[i] = (uint8_t)((q[i] + 1) | (q[32 + i] + 1) << 2 | (q[64 + i] + 1) << 4 | (q[96 + i] + 1) << 6);
+			c->r->d[(size_t)r * nb + b] = cats_half_to_float(cats_load_u16(s + 26));
+		}
+	}
+}
+// Repacks rows x cols weights stored as PTQ1_0 (cols % 128 == 0). Returns 0 or -1 (out of memory).
+static inline int cats_ptq1_0_r2_pack(cats_ptq1_0_r2 *r, const uint8_t *src, size_t rows, size_t cols)
+{
+	memset(r, 0, sizeof *r);
+	if (cols % CATS_PTQ1_0_BLOCK) return -1;
+	r->rows = rows; r->cols = cols;
+	r->w = (uint8_t*)(malloc)(rows * cols / 4);
+	r->d = (float*)(malloc)(rows * cols / CATS_PTQ1_0_BLOCK * sizeof(float));
+	if (!r->w || !r->d) { (free)(r->w); (free)(r->d); memset(r, 0, sizeof *r); return -1; }
+	cats_ptq1_0_pack_ctx c = { r, src };
+	cats_pfor((long)rows, 64, cats_ptq1_0_pack_body, &c);
+	return 0;
+}
+static inline void cats_ptq1_0_r2_free(cats_ptq1_0_r2 *r) { (free)(r->w); (free)(r->d); memset(r, 0, sizeof *r); }
+
+#define CATS_R2_TT	4	// tokens handled together per weight row
+typedef struct { float *out; const cats_ptq1_0_r2 *r; const int8_t *xq; const float *corr; size_t nt; } cats_r2_ctx;
+// scalar reference (also the fallback)
+static void cats_r2_body_scalar(void *vc, long lo, long hi)
+{
+	const cats_r2_ctx *c = (const cats_r2_ctx*)vc;
+	const size_t nb = c->r->cols / CATS_PTQ1_0_BLOCK, arow = cats_q8_0_row_bytes(c->r->cols);
+	for (long r = lo; r < hi; r++) {
+		const uint8_t *w = c->r->w + (size_t)r * nb * 32;
+		const float *d = c->r->d + (size_t)r * nb;
+		for (size_t t = 0; t < c->nt; t++) {
+			const int8_t *y = c->xq + t * arow;
+			float tot = 0;
+			for (size_t b = 0; b < nb; b++) {
+				float f = 0;
+				for (int k = 0; k < 4; k++, y += CATS_Q8_0_BYTES) {
+					int32_t s = 0;
+					float ds;
+					for (int i = 0; i < 32; i++) s += (int32_t)((w[b * 32 + i] >> (2 * k)) & 3) * y[i];
+					memcpy(&ds, y + 32, 4);
+					f += (float)s * ds;
+				}
+				tot += d[b] * (f - c->corr[t * nb + b]);
+			}
+			c->out[t * c->r->rows + r] = tot;
+		}
+	}
+}
+#if CATS_SIMD_X86
+CATS_AVX_FN __attribute__((always_inline)) static inline void cats_r2_tile_avx(const cats_r2_ctx *c, long lo, long hi, size_t t0, const int NU)
+{
+	const size_t nb = c->r->cols / CATS_PTQ1_0_BLOCK, arow = cats_q8_0_row_bytes(c->r->cols);
+	const __m128i m3 = _mm_set1_epi8(3), one16 = _mm_set1_epi16(1);
+	for (long r = lo; r < hi; r++) {
+		const uint8_t *w = c->r->w + (size_t)r * nb * 32;
+		const float *d = c->r->d + (size_t)r * nb;
+		{
+			const int8_t *y[CATS_R2_TT];
+			__m128 tot[CATS_R2_TT];
+			float corr[CATS_R2_TT];
+			for (int u = 0; u < NU; u++) { y[u] = c->xq + (t0 + u < c->nt ? t0 + u : c->nt - 1) * arow; tot[u] = _mm_setzero_ps(); corr[u] = 0; }
+			for (size_t b = 0; b < nb; b++) {
+				const __m128i B0 = _mm_loadu_si128((const __m128i*)(w + b * 32)), B1 = _mm_loadu_si128((const __m128i*)(w + b * 32 + 16));
+				const __m128i lo0 = _mm_and_si128(B0, m3), hi0 = _mm_and_si128(B1, m3);
+				const __m128i lo1 = _mm_and_si128(_mm_srli_epi16(B0, 2), m3), hi1 = _mm_and_si128(_mm_srli_epi16(B1, 2), m3);
+				const __m128i lo2 = _mm_and_si128(_mm_srli_epi16(B0, 4), m3), hi2 = _mm_and_si128(_mm_srli_epi16(B1, 4), m3);
+				const __m128i lo3 = _mm_and_si128(_mm_srli_epi16(B0, 6), m3), hi3 = _mm_and_si128(_mm_srli_epi16(B1, 6), m3);
+				const __m128 db = _mm_set1_ps(d[b]);
+				for (int u = 0; u < NU; u++) {
+					const int8_t *yb = y[u] + b * 4 * CATS_Q8_0_BYTES;
+					__m128i s = _mm_madd_epi16(_mm_add_epi16(_mm_maddubs_epi16(lo0, _mm_loadu_si128((const __m128i*)yb)), _mm_maddubs_epi16(hi0, _mm_loadu_si128((const __m128i*)(yb + 16)))), one16);
+					__m128 f = _mm_mul_ps(_mm_cvtepi32_ps(s), _mm_broadcast_ss((const float*)(yb + 32)));
+					yb += CATS_Q8_0_BYTES;
+					s = _mm_madd_epi16(_mm_add_epi16(_mm_maddubs_epi16(lo1, _mm_loadu_si128((const __m128i*)yb)), _mm_maddubs_epi16(hi1, _mm_loadu_si128((const __m128i*)(yb + 16)))), one16);
+					f = _mm_add_ps(f, _mm_mul_ps(_mm_cvtepi32_ps(s), _mm_broadcast_ss((const float*)(yb + 32))));
+					yb += CATS_Q8_0_BYTES;
+					s = _mm_madd_epi16(_mm_add_epi16(_mm_maddubs_epi16(lo2, _mm_loadu_si128((const __m128i*)yb)), _mm_maddubs_epi16(hi2, _mm_loadu_si128((const __m128i*)(yb + 16)))), one16);
+					f = _mm_add_ps(f, _mm_mul_ps(_mm_cvtepi32_ps(s), _mm_broadcast_ss((const float*)(yb + 32))));
+					yb += CATS_Q8_0_BYTES;
+					s = _mm_madd_epi16(_mm_add_epi16(_mm_maddubs_epi16(lo3, _mm_loadu_si128((const __m128i*)yb)), _mm_maddubs_epi16(hi3, _mm_loadu_si128((const __m128i*)(yb + 16)))), one16);
+					f = _mm_add_ps(f, _mm_mul_ps(_mm_cvtepi32_ps(s), _mm_broadcast_ss((const float*)(yb + 32))));
+					tot[u] = _mm_add_ps(tot[u], _mm_mul_ps(f, db));
+					corr[u] += d[b] * c->corr[(t0 + u < c->nt ? t0 + u : c->nt - 1) * nb + b];
+				}
+			}
+			for (int u = 0; u < NU && t0 + u < c->nt; u++) {
+				__m128 a = _mm_add_ps(tot[u], _mm_movehl_ps(tot[u], tot[u]));
+				a = _mm_add_ss(a, _mm_movehdup_ps(a));
+				c->out[(t0 + u) * c->r->rows + r] = _mm_cvtss_f32(a) - corr[u];
+			}
+		}
+	}
+}
+CATS_AVX2_FN __attribute__((always_inline)) static inline void cats_r2_tile_avx2(const cats_r2_ctx *c, long lo, long hi, size_t t0, const int NU)
+{
+	const size_t nb = c->r->cols / CATS_PTQ1_0_BLOCK, arow = cats_q8_0_row_bytes(c->r->cols);
+	const __m256i m3 = _mm256_set1_epi8(3), one16 = _mm256_set1_epi16(1);
+	for (long r = lo; r < hi; r++) {
+		const uint8_t *w = c->r->w + (size_t)r * nb * 32;
+		const float *d = c->r->d + (size_t)r * nb;
+		{
+			const int8_t *y[CATS_R2_TT];
+			__m256 tot[CATS_R2_TT];
+			float corr[CATS_R2_TT];
+			for (int u = 0; u < NU; u++) { y[u] = c->xq + (t0 + u < c->nt ? t0 + u : c->nt - 1) * arow; tot[u] = _mm256_setzero_ps(); corr[u] = 0; }
+			for (size_t b = 0; b < nb; b++) {
+				const __m256i B = _mm256_loadu_si256((const __m256i*)(w + b * 32));
+				const __m256i u0 = _mm256_and_si256(B, m3), u1 = _mm256_and_si256(_mm256_srli_epi16(B, 2), m3);
+				const __m256i u2 = _mm256_and_si256(_mm256_srli_epi16(B, 4), m3), u3 = _mm256_and_si256(_mm256_srli_epi16(B, 6), m3);
+				const __m256 db = _mm256_set1_ps(d[b]);
+				for (int u = 0; u < NU; u++) {
+					const int8_t *yb = y[u] + b * 4 * CATS_Q8_0_BYTES;
+					__m256 f = _mm256_mul_ps(_mm256_cvtepi32_ps(_mm256_madd_epi16(_mm256_maddubs_epi16(u0, _mm256_loadu_si256((const __m256i*)yb)), one16)), _mm256_broadcast_ss((const float*)(yb + 32)));
+					yb += CATS_Q8_0_BYTES;
+					f = _mm256_fmadd_ps(_mm256_cvtepi32_ps(_mm256_madd_epi16(_mm256_maddubs_epi16(u1, _mm256_loadu_si256((const __m256i*)yb)), one16)), _mm256_broadcast_ss((const float*)(yb + 32)), f);
+					yb += CATS_Q8_0_BYTES;
+					f = _mm256_fmadd_ps(_mm256_cvtepi32_ps(_mm256_madd_epi16(_mm256_maddubs_epi16(u2, _mm256_loadu_si256((const __m256i*)yb)), one16)), _mm256_broadcast_ss((const float*)(yb + 32)), f);
+					yb += CATS_Q8_0_BYTES;
+					f = _mm256_fmadd_ps(_mm256_cvtepi32_ps(_mm256_madd_epi16(_mm256_maddubs_epi16(u3, _mm256_loadu_si256((const __m256i*)yb)), one16)), _mm256_broadcast_ss((const float*)(yb + 32)), f);
+					tot[u] = _mm256_fmadd_ps(f, db, tot[u]);
+					corr[u] += d[b] * c->corr[(t0 + u < c->nt ? t0 + u : c->nt - 1) * nb + b];
+				}
+			}
+			for (int u = 0; u < NU && t0 + u < c->nt; u++) c->out[(t0 + u) * c->r->rows + r] = cats_hsum_ps(tot[u]) - corr[u];
+		}
+	}
+}
+CATS_AVX_FN static void cats_r2_body_avx(void *vc, long lo, long hi)
+{
+	const cats_r2_ctx *c = (const cats_r2_ctx*)vc;
+	size_t t0 = 0;
+	for (; t0 + 4 <= c->nt; t0 += 4) cats_r2_tile_avx(c, lo, hi, t0, 4);
+	if (c->nt - t0 >= 2) { cats_r2_tile_avx(c, lo, hi, t0, 2); t0 += 2; }
+	if (t0 < c->nt) cats_r2_tile_avx(c, lo, hi, t0, 1);
+}
+CATS_AVX2_FN static void cats_r2_body_avx2(void *vc, long lo, long hi)
+{
+	const cats_r2_ctx *c = (const cats_r2_ctx*)vc;
+	size_t t0 = 0;
+	for (; t0 + 4 <= c->nt; t0 += 4) cats_r2_tile_avx2(c, lo, hi, t0, 4);
+	if (c->nt - t0 >= 2) { cats_r2_tile_avx2(c, lo, hi, t0, 2); t0 += 2; }
+	if (t0 < c->nt) cats_r2_tile_avx2(c, lo, hi, t0, 1);
+}
+#endif
+// out[t * rows + r] = W[r] . x[t] with W repacked (cats_ptq1_0_r2_pack) and x as Q8_0 rows (cats_q8_0_quantize)
+static inline void cats_matmul_r2_q8_0(float *out, const cats_ptq1_0_r2 *r, const int8_t *xq, size_t nt)
+{
+	if (!nt || !r->rows) return;
+	const size_t nb = r->cols / CATS_PTQ1_0_BLOCK, arow = cats_q8_0_row_bytes(r->cols);
+	float *corr = (float*)(malloc)(nt * nb * sizeof(float));	// per token and 128-block: sum over its 4 Q8_0 blocks of scale * sum(y)
+	if (!corr) return;
+	for (size_t t = 0; t < nt; t++) for (size_t b = 0; b < nb; b++) {
+		const int8_t *y = xq + t * arow + b * 4 * CATS_Q8_0_BYTES;
+		float acc = 0;
+		for (int k = 0; k < 4; k++, y += CATS_Q8_0_BYTES) {
+			int32_t s = 0;
+			float ds;
+			for (int i = 0; i < 32; i++) s += y[i];
+			memcpy(&ds, y + 32, 4);
+			acc += ds * (float)s;
+		}
+		corr[t * nb + b] = acc;
+	}
+	cats_r2_ctx c = { out, r, xq, corr, nt };
+	cats_pf_fn fn = cats_r2_body_scalar;
+#if CATS_SIMD_X86
+	if (cats_cpu_simd_level() >= 2) fn = cats_r2_body_avx2;
+	else if (cats_cpu_simd_level() >= 1) fn = cats_r2_body_avx;
+#endif
+	cats_pfor((long)r->rows, 16, fn, &c);
+	(free)(corr);
+}
+
+// ---- Walsh-Hadamard transform (Sylvester order), orthonormal: H = H^T = H^-1, entries +-1/sqrt(n) ----
+// In-place on n = 2^k floats.
+static inline void cats_fwht(float *x, int n)
+{
+	for (int h = 1; h < n; h <<= 1)
+		for (int i = 0; i < n; i += h << 1)
+			for (int j = i; j < i + h; j++) { const float a = x[j], b = x[j + h]; x[j] = a + b; x[j + h] = a - b; }
+	const float s = 1.0f / sqrtf((float)n);
+	for (int i = 0; i < n; i++) x[i] *= s;
+}
+// Rotates every row of x[nt][width]: x *= sign (elementwise, optional), then H over each `block` of the row.
+// Models whose weights were folded as W' = W D H (rows of W' = (W row) D H) need y = W' (H D x).
+// inverse != 0 undoes it for a stored row (e' = e D H  ->  e = H(e') D): H first, then the signs.
+static inline void cats_hadamard_rows(float *x, size_t nt, size_t width, int block, const int8_t *sign, int inverse)
+{
+	for (size_t t = 0; t < nt; t++) {
+		float *r = x + t * width;
+		if (sign && !inverse) for (size_t i = 0; i < width; i++) r[i] *= sign[i];
+		for (size_t b = 0; b < width; b += block) cats_fwht(r + b, block);
+		if (sign && inverse) for (size_t i = 0; i < width; i++) r[i] *= sign[i];
+	}
+}
+
+// ---- token sampling: temperature, top-k, top-p, min-p over the logits (modified in place); temp <= 0 is greedy ----
+static inline float cats_rand01(uint64_t *s)
+{
+	*s ^= *s << 13; *s ^= *s >> 7; *s ^= *s << 17;
+	return (float)((*s >> 40) * (1.0 / 16777216.0));
+}
+static inline int cats_sample_logits(const float *logits, int n, float temp, int top_k, float top_p, float min_p, uint64_t *rng)
+{
+	enum { KMAX = 256 };
+	int K = top_k > 0 && top_k < KMAX ? top_k : KMAX;
+	if (K > n) K = n;
+	int idx[KMAX]; float val[KMAX]; int cnt = 0;
+	for (int i = 0; i < n; i++) {	// keep the K largest, sorted in descending order
+		const float v = logits[i];
+		if (cnt == K && v <= val[cnt - 1]) continue;
+		int p = cnt < K ? cnt++ : cnt - 1;
+		while (p > 0 && val[p - 1] < v) { val[p] = val[p - 1]; idx[p] = idx[p - 1]; p--; }
+		val[p] = v; idx[p] = i;
+	}
+	if (temp <= 0.0f) return idx[0];
+	float prob[KMAX], sum = 0.0f;
+	for (int i = 0; i < cnt; i++) { prob[i] = expf((val[i] - val[0]) / temp); sum += prob[i]; }
+	int m = cnt;
+	float cum = 0.0f;
+	for (int i = 0; i < cnt; i++) {
+		prob[i] /= sum;
+		if (min_p > 0.0f && prob[i] < min_p * prob[0]) { m = i; break; }
+		cum += prob[i];
+		if (top_p > 0.0f && top_p < 1.0f && cum >= top_p) { m = i + 1; break; }
+	}
+	float tot = 0.0f;
+	for (int i = 0; i < m; i++) tot += prob[i];
+	float r = cats_rand01(rng) * tot;
+	for (int i = 0; i < m; i++) { r -= prob[i]; if (r <= 0.0f) return idx[i]; }
+	return idx[m - 1];
+}
+
 #if CATS_SIMD_NEON && defined(__ARM_FEATURE_DOTPROD)
 #define CATS_HAVE_QGEMM_NEON 1	// SDOT kernels for Q8_0 / Q4_0 / Q3_0 weights (defined after the Q3_0 format below)
 static inline void cats_gemm_nt_qk_neon(float *c, const float *x, const uint8_t *w, size_t n, size_t in, size_t out, const float *bias, int type);
@@ -4926,6 +5355,7 @@ typedef struct {
 	int64_t *mkey; int *mval; size_t mcap;	// (a << 32 | b) -> rank
 	int byte_id[256];
 	int *sp; int nsp;		// special token ids, longest first
+	int split_qwen;			// 1: Qwen2/3/3.5 pre-tokenizer (single digits) instead of the o200k-like one
 } cats_bpe;
 
 static inline uint32_t cats_bpe_hash(const uint8_t *s, size_t n)
@@ -5088,6 +5518,41 @@ static inline size_t cats_bpe_word(const uint32_t *cp, size_t n, size_t i)
 	return i + 1;
 }
 
+// Qwen2/3/3.5 pre-tokenizer: (?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?[\p{L}\p{M}]+|\p{N}|
+// ?[^\s\p{L}\p{M}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+   (letters here include marks: classes 1, 2, 3 and 6)
+static inline int cats_bpe_isL(uint32_t c) { const int k = cats_ucls(c); return k == 1 || k == 2 || k == 3 || k == 6; }
+static inline size_t cats_bpe_word_qwen(const uint32_t *cp, size_t n, size_t i)
+{
+	const uint32_t c = cp[i];
+	const int k = cats_ucls(c);
+	size_t e;
+	if (c == '\'') { e = cats_bpe_contraction(cp, n, i); if (e > i) return e; }
+	if (cats_bpe_isL(c)) { e = i + 1; while (e < n && cats_bpe_isL(cp[e])) e++; return e; }
+	if (c != '\r' && c != '\n' && k != 4 && i + 1 < n && cats_bpe_isL(cp[i + 1])) {	// one optional leading non-letter
+		e = i + 2;
+		while (e < n && cats_bpe_isL(cp[e])) e++;
+		return e;
+	}
+	if (k == 4) return i + 1;
+	{
+		const size_t s = c == ' ' ? i + 1 : i;
+		e = s;
+		while (e < n && cats_ucls(cp[e]) == 0) e++;
+		if (e > s) { while (e < n && (cp[e] == '\r' || cp[e] == '\n')) e++; return e; }
+	}
+	if (k == 5) {
+		size_t w = i;
+		while (w < n && cats_ucls(cp[w]) == 5) w++;
+		size_t nl = w;	// \s*[\r\n]+
+		while (nl > i && cp[nl - 1] != '\r' && cp[nl - 1] != '\n') nl--;
+		if (nl > i) return nl;
+		if (w == n) return w;	// \s+(?!\S)
+		if (w - i >= 2) return w - 1;
+		return w;
+	}
+	return i + 1;
+}
+
 // Byte-level BPE of one pre-token (raw bytes). Appends ids to ids[*n] (capacity cap; *n counts all of them).
 static inline void cats_bpe_word_encode(const cats_bpe *t, const uint8_t *w, size_t len, int *ids, int cap, int *n)
 {
@@ -5127,7 +5592,7 @@ static inline int cats_bpe_encode_plain(const cats_bpe *t, const uint8_t *s, siz
 	for (size_t i = 0; i < len; ) { off[m] = i; cp[m++] = cats_u8_next(s, len, &i); }
 	off[m] = len;
 	for (size_t i = 0; i < m; ) {
-		size_t e = cats_bpe_word(cp, m, i);
+		size_t e = t->split_qwen ? cats_bpe_word_qwen(cp, m, i) : cats_bpe_word(cp, m, i);
 		if (e <= i) e = i + 1;
 		cats_bpe_word_encode(t, s + off[i], off[e] - off[i], ids, cap, &n);
 		i = e;
@@ -5411,6 +5876,69 @@ done:
 	for (size_t i = 0; i < cap; i++) (free)(toks[i]);
 	(free)(toks); (free)(tl); (free)(special); (free)(blob.b);
 	return ok;
+}
+// Builds the blob (and loads `t` from it) from a GGUF vocabulary: tokenizer.ggml.tokens in the GPT-2 byte<->unicode
+// spelling, tokenizer.ggml.token_type (3 = control, 4 = user defined: matched literally in text), and
+// tokenizer.ggml.merges ("a b" strings, priority order). The blob is malloc'ed into *blob and must outlive `t`.
+typedef struct { const char *s; int id; } cats_bpe_ent;
+static inline int cats_bpe_ent_cmp(const void *a, const void *b) { return strcmp(((const cats_bpe_ent*)a)->s, ((const cats_bpe_ent*)b)->s); }
+static inline int cats_bpe_from_gguf(cats_bpe *t, uint8_t **blob, char **tok, int ntok, const int8_t *type, char **mrg, int nmrg, int qwen_split)
+{
+	short cp2b[512];
+	for (int i = 0; i < 512; i++) cp2b[i] = -1;
+	for (int c = 0, k = 0; c < 256; c++) {
+		const int vis = (c >= '!' && c <= '~') || (c >= 0xA1 && c <= 0xAC) || (c >= 0xAE && c <= 0xFF);
+		cp2b[vis ? c : 256 + k++] = (short)c;
+	}
+	cats_bpe_ent *ent = (cats_bpe_ent*)(malloc)((size_t)ntok * sizeof(*ent));
+	if (!ent) return -1;
+	int ne = 0;
+	for (int i = 0; i < ntok; i++) if (!type || (type[i] != 3 && type[i] != 4)) { ent[ne].s = tok[i]; ent[ne].id = i; ne++; }
+	qsort(ent, (size_t)ne, sizeof(*ent), cats_bpe_ent_cmp);
+	cats_buf o = { 0 };
+	cats_buf_put(&o, "CBPE", 4); cats_buf_u32(&o, 1); cats_buf_u32(&o, (uint32_t)ntok); cats_buf_u32(&o, (uint32_t)nmrg); cats_buf_u32(&o, 0);
+	for (int i = 0; i < ntok; i++) {
+		const int sp = type && (type[i] == 3 || type[i] == 4);
+		uint8_t raw[512];
+		size_t n = 0;
+		if (sp) { n = strlen(tok[i]); if (n > sizeof raw) n = sizeof raw; memcpy(raw, tok[i], n); }
+		else for (const uint8_t *p = (const uint8_t*)tok[i]; *p && n < sizeof raw; ) {
+			size_t adv = 0;
+			const uint32_t cp = cats_u8_next(p, strlen((const char*)p), &adv);
+			p += adv;
+			raw[n++] = (uint8_t)(cp < 512 && cp2b[cp] >= 0 ? cp2b[cp] : '?');
+		}
+		cats_buf_u32(&o, (uint32_t)n); cats_buf_put(&o, sp ? "\1" : "\0", 1); cats_buf_put(&o, raw, n);
+	}
+	while (o.n & 3) cats_buf_put(&o, "\0", 1);
+	int bad = 0, first_bad = -1;
+	for (int r = 0; r < nmrg; r++) {
+		const int bad0 = bad;
+		char key[1024];
+		const char *sp = strchr(mrg[r], ' ');
+		uint32_t v[3] = { 0, 0, 0 };
+		if (sp && strlen(mrg[r]) < sizeof key) {
+			cats_bpe_ent q, *f;
+			strcpy(key, mrg[r]); key[sp - mrg[r]] = 0;
+			q.s = key; f = (cats_bpe_ent*)bsearch(&q, ent, (size_t)ne, sizeof(*ent), cats_bpe_ent_cmp); v[0] = f ? (uint32_t)f->id : 0;
+			if (!f) bad++;
+			q.s = key + (sp - mrg[r]) + 1; strcpy(key + (sp - mrg[r]) + 1, sp + 1);
+			f = (cats_bpe_ent*)bsearch(&q, ent, (size_t)ne, sizeof(*ent), cats_bpe_ent_cmp); v[1] = f ? (uint32_t)f->id : 0;
+			if (!f) bad++;
+			char cat[1024];
+			snprintf(cat, sizeof cat, "%.*s%s", (int)(sp - mrg[r]), mrg[r], sp + 1);
+			q.s = cat; f = (cats_bpe_ent*)bsearch(&q, ent, (size_t)ne, sizeof(*ent), cats_bpe_ent_cmp); v[2] = f ? (uint32_t)f->id : 0;
+			if (!f) bad++;
+		} else bad++;
+		if (bad > bad0 && first_bad < 0) first_bad = r;
+		cats_buf_u32(&o, v[0]); cats_buf_u32(&o, v[1]); cats_buf_u32(&o, v[2]);
+	}
+	(free)(ent);
+	if (bad) fprintf(stderr, "cats_bpe_from_gguf: %d merge parts not found in the vocabulary (first: merge %d \"%s\")\n", bad, first_bad, mrg[first_bad]);
+	if (cats_bpe_load(t, o.b, o.n)) { (free)(o.b); return -1; }
+	t->split_qwen = qwen_split;
+	*blob = o.b;
+	return 0;
 }
 
 // ---- tiny helpers for config.json style files ----
